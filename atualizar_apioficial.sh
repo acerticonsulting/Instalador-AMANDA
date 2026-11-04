@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/tools/mf_operacoes_seguras.sh" || exit 1
 
 if [ -z "${PURPLE:-}" ]; then
   if [ "${COLORTERM:-}" = "truecolor" ] || [ "${COLORTERM:-}" = "24bit" ] || [ -n "${WT_SESSION:-}" ] || [[ "${TERM:-}" =~ (xterm|256color|screen|tmux|linux|alacritty|kitty) ]]; then
@@ -75,7 +76,7 @@ detectar_instancias_instaladas() {
     local subdominio_backend_original="${subdominio_backend:-}"
     local subdominio_frontend_original="${subdominio_frontend:-}"
     # shellcheck source=/dev/null
-    source "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" 2>/dev/null
+    mf_carregar_config "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" 2>/dev/null
     temp_empresa="${empresa:-}"
     if [ -n "${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}/backend" ] && [ -d "/home/deploy/${temp_empresa}/api_oficial" ]; then
       instancias+=("${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO")
@@ -94,7 +95,7 @@ detectar_instancias_instaladas() {
         local subdominio_backend_original="${subdominio_backend:-}"
         local subdominio_frontend_original="${subdominio_frontend:-}"
         # shellcheck source=/dev/null
-        source "$arquivo_instancia" 2>/dev/null
+        mf_carregar_config "$arquivo_instancia" 2>/dev/null
         temp_empresa="${empresa:-}"
         if [ -n "${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}/backend" ] && [ -d "/home/deploy/${temp_empresa}/api_oficial" ]; then
           instancias+=("$arquivo_instancia")
@@ -127,7 +128,7 @@ selecionar_instancia_apioficial() {
     printf "${GREEN} >> Instância: ${BLUE}${NOMES_EMPRESAS_DETECTADAS[0]}${WHITE}\n\n"
     ARQUIVO_VARIAVEIS="${INSTANCIAS_DETECTADAS[0]}"
     # shellcheck source=/dev/null
-    source "$ARQUIVO_VARIAVEIS"
+    mf_carregar_config "$ARQUIVO_VARIAVEIS"
     sleep 1
     return 0
   fi
@@ -143,7 +144,7 @@ selecionar_instancia_apioficial() {
     local subdominio_backend_original="${subdominio_backend:-}"
     local subdominio_frontend_original="${subdominio_frontend:-}"
     # shellcheck source=/dev/null
-    source "$arquivo_instancia" 2>/dev/null
+    mf_carregar_config "$arquivo_instancia" 2>/dev/null
     local tb="${subdominio_backend:-}"
     local tf="${subdominio_frontend:-}"
     empresa="${empresa_original}"
@@ -164,7 +165,7 @@ selecionar_instancia_apioficial() {
   local indice_selecionado=$((escolha_instancia - 1))
   ARQUIVO_VARIAVEIS="${INSTANCIAS_DETECTADAS[$indice_selecionado]}"
   # shellcheck source=/dev/null
-  source "$ARQUIVO_VARIAVEIS"
+  mf_carregar_config "$ARQUIVO_VARIAVEIS"
   printf "${GREEN} >> Instância selecionada: ${BLUE}${empresa}${WHITE}\n\n"
   sleep 1
 }
@@ -173,7 +174,7 @@ selecionar_instancia_apioficial() {
 carregar_variaveis() {
   if [ -f "$ARQUIVO_VARIAVEIS" ]; then
     # shellcheck source=/dev/null
-    source "$ARQUIVO_VARIAVEIS"
+    mf_carregar_config "$ARQUIVO_VARIAVEIS"
   else
     empresa="multiflow"
     nome_titulo="MultiFlow"
@@ -259,12 +260,11 @@ EOF_API_DF
 
     # Recompilar e reiniciar contêiner da API Oficial
     printf "${PURPLE} >> Reconstruindo contêiner Docker da API Oficial...${WHITE}\n"
-    cd "${compose_dir}" && docker compose -p "${empresa}" up -d --build --force-recreate api_oficial
+    (cd "${compose_dir}" && docker compose -p "${empresa}" up -d --build --force-recreate api_oficial) || return 1
     sleep 5
 
     printf "${WHITE} >> Executando migrações Prisma dentro do contêiner...${WHITE}\n"
-    docker exec "${empresa}_apioficial" npx prisma migrate deploy 2>/dev/null || true
-    docker exec "${empresa}_apioficial" npx prisma db push --accept-data-loss 2>/dev/null || true
+    docker exec "${empresa}_apioficial" npx prisma migrate deploy || return 1
 
     printf "${GREEN} >> Código e contêiner da API Oficial atualizados com sucesso!${WHITE}\n"
     sleep 2
@@ -277,7 +277,7 @@ reiniciar_apioficial() {
   printf "${WHITE} >> Verificando status final do contêiner Docker...\n"
   echo
   {
-    docker restart "${empresa}_apioficial" 2>/dev/null || true
+    docker restart "${empresa}_apioficial" || return 1
   } || trata_erro "reiniciar_apioficial"
   printf "${GREEN} >> Contêiner da API Oficial operacional e reiniciado!${WHITE}\n"
   echo
@@ -286,11 +286,11 @@ reiniciar_apioficial() {
 
 # Função principal
 main() {
-  selecionar_instancia_apioficial
+  selecionar_instancia_apioficial || return 1
   carregar_variaveis
-  verificar_instalacao_apioficial
-  atualizar_codigo_apioficial
-  reiniciar_apioficial
+  verificar_instalacao_apioficial || return 1
+  atualizar_codigo_apioficial || return 1
+  reiniciar_apioficial || return 1
   
   banner
   printf "${GREEN} >> Atualização da API Oficial concluída com sucesso em Contêiner Docker!${WHITE}\n"

@@ -17,18 +17,15 @@ instalar_docker_compartilhado() {
     sleep 2
     wait_count=$((wait_count + 1))
     if [ $wait_count -ge $max_wait ]; then
-      killall apt apt-get unattended-upgrades 2>/dev/null || true
-      sleep 1
-      rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock 2>/dev/null || true
-      dpkg --configure -a 2>/dev/null || true
-      break
+      printf '%s\n' 'APT/DPKG continua ocupado. Aguarde a operação existente terminar e tente novamente.' >&2
+      return 1
     fi
   done
 
   # 2. Instalar dependências essenciais
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y >/dev/null 2>&1 || true
-  apt-get install -y ca-certificates curl gnupg lsb-release iptables git python3 >/dev/null 2>&1 || true
+  apt-get update -y || return 1
+  apt-get install -y -o DPkg::Lock::Timeout=120 ca-certificates curl gnupg lsb-release iptables git python3 || return 1
 
   # 3. Verificar/Instalar Docker Engine
   if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
@@ -58,7 +55,7 @@ instalar_docker_compartilhado() {
   # 4. Verificar/Instalar Docker Compose (v2 plugin e CLI)
   if ! docker compose version >/dev/null 2>&1; then
     printf " >> Instalando Docker Compose Plugin via APT...\n"
-    apt-get update -y >/dev/null 2>&1 || true
+    apt-get update -y || return 1
     apt-get install -y docker-compose-plugin docker-compose-v2 >/dev/null 2>&1 || true
   fi
 

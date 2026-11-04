@@ -1,4 +1,7 @@
 #!/bin/bash
+MF_INSTALADOR_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+readonly MF_INSTALADOR_ROOT
+source "${MF_INSTALADOR_ROOT}/tools/mf_operacoes_seguras.sh" || exit 1
 _mf_baileys_tools="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tools/baileys_hineken_package_json.sh"
 [ -f "$_mf_baileys_tools" ] && . "$_mf_baileys_tools"
 
@@ -37,7 +40,7 @@ UBUNTU_VERSION=$(lsb_release -sr)
 ARQUIVO_VARIAVEIS="VARIAVEIS_INSTALACAO"
 ARQUIVO_ETAPAS="ETAPA_INSTALACAO"
 # Modo Alta Performance: Redis, Postgres e PgBouncer via Docker (não instala nativos)
-[ -f "ALTA_PERFORMANCE_MODE" ] && source ALTA_PERFORMANCE_MODE 2>/dev/null || true
+[ -f "ALTA_PERFORMANCE_MODE" ] && mf_carregar_config ALTA_PERFORMANCE_MODE 2>/dev/null || true
 FFMPEG="$(pwd)/ffmpeg.x"
 FFMPEG_DIR="$(pwd)/ffmpeg"
 ip_atual=$(curl -s http://checkip.amazonaws.com)
@@ -184,56 +187,61 @@ tentar_corrigir_dns() {
 
 # Salvar variáveis
 salvar_variaveis() {
+  local -a mf_cfg_pairs=()
+  mf_validar_empresa "${empresa:-}" || return 1
   local arq_dest="${ARQUIVO_VARIAVEIS:-VARIAVEIS_INSTALACAO}"
-  echo "subdominio_backend=${subdominio_backend}" >"$arq_dest"
-  echo "subdominio_frontend=${subdominio_frontend}" >>"$arq_dest"
-  echo "email_deploy=${email_deploy}" >>"$arq_dest"
-  echo "empresa=${empresa}" >>"$arq_dest"
-  echo "senha_deploy=${senha_deploy}" >>"$arq_dest"
-  echo "senha_master=${senha_master}" >>"$arq_dest"
-  echo "nome_titulo=\"${nome_titulo}\"" >>"$arq_dest"
-  echo "numero_suporte=${numero_suporte}" >>"$arq_dest"
-  echo "facebook_app_id=${facebook_app_id}" >>"$arq_dest"
-  echo "facebook_app_secret=${facebook_app_secret}" >>"$arq_dest"
-  echo "github_token=${github_token}" >>"$arq_dest"
-  echo "repo_url=${repo_url}" >>"$arq_dest"
-  echo "proxy=${proxy}" >>"$arq_dest"
-  echo "backend_port=${backend_port:-8080}" >>"$arq_dest"
-  echo "frontend_port=${frontend_port:-3000}" >>"$arq_dest"
-  echo "PORT_DB=${PORT_DB:-5432}" >>"$arq_dest"
-  echo "PORT_REDIS=${PORT_REDIS:-6379}" >>"$arq_dest"
-  echo "PORT_PGBOUNCER=${PORT_PGBOUNCER:-6432}" >>"$arq_dest"
-  echo "PORT_TRANSCRIBER=${PORT_TRANSCRIBER:-4002}" >>"$arq_dest"
-  echo "PORT_WUZAPI=${PORT_WUZAPI:-8090}" >>"$arq_dest"
-  echo "PORT_DISPATCHER=${PORT_DISPATCHER:-8095}" >>"$arq_dest"
-  echo "PORT_APIOFICIAL=${PORT_APIOFICIAL:-6000}" >>"$arq_dest"
+  [[ "$arq_dest" = /* ]] || arq_dest="${MF_INSTALADOR_ROOT}/${arq_dest}"
+  mf_cfg_pairs+=("subdominio_backend" "${subdominio_backend}")
+  mf_cfg_pairs+=("subdominio_frontend" "${subdominio_frontend}")
+  mf_cfg_pairs+=("email_deploy" "${email_deploy}")
+  mf_cfg_pairs+=("empresa" "${empresa}")
+  mf_cfg_pairs+=("senha_deploy" "${senha_deploy}")
+  mf_cfg_pairs+=("senha_master" "${senha_master}")
+  mf_cfg_pairs+=("nome_titulo" "${nome_titulo}")
+  mf_cfg_pairs+=("numero_suporte" "${numero_suporte}")
+  mf_cfg_pairs+=("facebook_app_id" "${facebook_app_id}")
+  mf_cfg_pairs+=("facebook_app_secret" "${facebook_app_secret}")
+  mf_cfg_pairs+=("github_token" "${github_token}")
+  mf_cfg_pairs+=("repo_url" "${repo_url}")
+  mf_cfg_pairs+=("proxy" "${proxy}")
+  mf_cfg_pairs+=("backend_port" "${backend_port:-8080}")
+  mf_cfg_pairs+=("frontend_port" "${frontend_port:-3000}")
+  mf_cfg_pairs+=("PORT_DB" "${PORT_DB:-5432}")
+  mf_cfg_pairs+=("PORT_REDIS" "${PORT_REDIS:-6379}")
+  mf_cfg_pairs+=("PORT_PGBOUNCER" "${PORT_PGBOUNCER:-6432}")
+  mf_cfg_pairs+=("PORT_TRANSCRIBER" "${PORT_TRANSCRIBER:-4002}")
+  mf_cfg_pairs+=("PORT_WUZAPI" "${PORT_WUZAPI:-8090}")
+  mf_cfg_pairs+=("PORT_DISPATCHER" "${PORT_DISPATCHER:-8095}")
+  mf_cfg_pairs+=("PORT_APIOFICIAL" "${PORT_APIOFICIAL:-6000}")
   # Salvar versão (usar underscore se for "Mais Recente" para evitar problemas com espaços)
   local versao_para_salvar="${versao_instalacao}"
   if [ "${versao_instalacao}" = "Mais Recente" ] || [ "${versao_instalacao}" = "Mais_Recente" ]; then
     versao_para_salvar="Mais_Recente"
   fi
-  echo "versao_instalacao=${versao_para_salvar}" >>"$arq_dest"
-  echo "commit_instalacao=${commit_instalacao}" >>"$arq_dest"
+  mf_cfg_pairs+=("versao_instalacao" "${versao_para_salvar}")
+  mf_cfg_pairs+=("commit_instalacao" "${commit_instalacao}")
   # Registro se a instalação foi em modo Alta Performance (Redis, Postgres e PgBouncer via Docker)
-  echo "# Instalação em modo Alta Performance (1=sim, 0=não)" >>"$arq_dest"
-  echo "ALTA_PERFORMANCE=${ALTA_PERFORMANCE:-0}" >>"$arq_dest"
-  echo "subdominio_oficial=${subdominio_oficial}" >>"$arq_dest"
-  echo "INSTALACAO_SEM_DOMINIO=${INSTALACAO_SEM_DOMINIO:-0}" >>"$arq_dest"
-  echo "perfil_otimizacao_vps=${perfil_otimizacao_vps:-0}" >>"$arq_dest"
+  mf_cfg_pairs+=("ALTA_PERFORMANCE" "${ALTA_PERFORMANCE:-0}")
+  mf_cfg_pairs+=("subdominio_oficial" "${subdominio_oficial}")
+  mf_cfg_pairs+=("INSTALACAO_SEM_DOMINIO" "${INSTALACAO_SEM_DOMINIO:-0}")
+  mf_cfg_pairs+=("perfil_otimizacao_vps" "${perfil_otimizacao_vps:-0}")
+
+  mf_gravar_config "$arq_dest" "${mf_cfg_pairs[@]}" || return 1
 
   # Sincronizar cópia individual da instância para compatibilidade total
   if [ -n "${empresa:-}" ]; then
     local instalador_dir_local
-    instalador_dir_local="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    cp -f "$arq_dest" "${instalador_dir_local}/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa}" 2>/dev/null || true
+    instalador_dir_local="${MF_INSTALADOR_ROOT}"
+    mf_gravar_config "${instalador_dir_local}/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa}" "${mf_cfg_pairs[@]}" || return 1
   fi
 }
 
 # Carregar variáveis
 carregar_variaveis() {
   local arq_carregar="${ARQUIVO_VARIAVEIS:-VARIAVEIS_INSTALACAO}"
+  [[ "$arq_carregar" = /* ]] || arq_carregar="${MF_INSTALADOR_ROOT}/${arq_carregar}"
   if [ -f "$arq_carregar" ]; then
-    source "$arq_carregar"
+    mf_carregar_config "$arq_carregar" || return 1
     empresa="${empresa:-amanda}"
     nome_titulo="${nome_titulo:-AMANDA}"
     INSTALACAO_SEM_DOMINIO="${INSTALACAO_SEM_DOMINIO:-0}"
@@ -261,10 +269,11 @@ carregar_variaveis() {
 # Salvar etapa concluída
 salvar_etapa() {
   local arq_e="${ARQUIVO_ETAPAS:-ETAPA_INSTALACAO}"
+  [[ "$arq_e" = /* ]] || arq_e="${MF_INSTALADOR_ROOT}/${arq_e}"
   echo "$1" >"$arq_e"
-  if [ -n "${empresa:-}" ] && [ "$arq_e" = "ETAPA_INSTALACAO" ]; then
+  if [ -n "${empresa:-}" ] && [ "$arq_e" = "${MF_INSTALADOR_ROOT}/ETAPA_INSTALACAO" ]; then
     local instalador_dir_local
-    instalador_dir_local="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    instalador_dir_local="${MF_INSTALADOR_ROOT}"
     echo "$1" >"${instalador_dir_local}/ETAPA_INSTALACAO_${empresa}" 2>/dev/null || true
   fi
 }
@@ -272,6 +281,7 @@ salvar_etapa() {
 # Carregar última etapa
 carregar_etapa() {
   local arq_e="${ARQUIVO_ETAPAS:-ETAPA_INSTALACAO}"
+  [[ "$arq_e" = /* ]] || arq_e="${MF_INSTALADOR_ROOT}/${arq_e}"
   if [ -f "$arq_e" ]; then
     etapa=$(cat "$arq_e" 2>/dev/null | tr -d '\r\n ')
     if ! [[ "$etapa" =~ ^[0-9]+$ ]]; then
@@ -751,18 +761,15 @@ garantir_docker_e_compose() {
     sleep 2
     wait_count=$((wait_count + 1))
     if [ $wait_count -ge $max_wait ]; then
-      killall apt apt-get unattended-upgrades 2>/dev/null || true
-      sleep 1
-      rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock 2>/dev/null || true
-      dpkg --configure -a 2>/dev/null || true
-      break
+      printf '%s\n' 'APT/DPKG continua ocupado. Aguarde a operação existente terminar e tente novamente.' >&2
+      return 1
     fi
   done
 
   # 3. Instalar dependências essenciais
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y >/dev/null 2>&1 || true
-  apt-get install -y ca-certificates curl gnupg lsb-release iptables git python3 >/dev/null 2>&1 || true
+  apt-get update -y || return 1
+  apt-get install -y -o DPkg::Lock::Timeout=120 ca-certificates curl gnupg lsb-release iptables git python3 || return 1
 
   # 4. Instalar Docker se ausente ou daemon inativo
   if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
@@ -792,7 +799,7 @@ garantir_docker_e_compose() {
   # 5. Instalar Docker Compose (v2 plugin e CLI)
   if ! docker compose version >/dev/null 2>&1; then
     printf "${PURPLE} >> Instalando Docker Compose Plugin...${WHITE}\n"
-    apt-get update -y >/dev/null 2>&1 || true
+    apt-get update -y || return 1
     apt-get install -y docker-compose-plugin docker-compose-v2 >/dev/null 2>&1 || true
   fi
 
@@ -824,7 +831,8 @@ garantir_docker_e_compose() {
   if docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     printf "${GREEN} >> Docker e Docker Compose prontos e validados com sucesso!${WHITE}\n"
   else
-    printf "${RED} >> AVISO: Não foi possível validar o Docker/Compose completamente.${WHITE}\n"
+    printf "${RED} >> Não foi possível validar o Docker/Compose.${WHITE}\n"
+    return 1
   fi
   sleep 1
 }
@@ -870,16 +878,6 @@ proxima_porta_livre() {
   printf '%s\n' "$p"
 }
 
-sincronizar_porta_env() {
-  local key="$1"
-  local val="$2"
-  local file="$3"
-  if grep -q "^${key}=" "$file" 2>/dev/null; then
-    sed -i "s|^${key}=.*|${key}=${val}|" "$file" 2>/dev/null || true
-  else
-    echo "${key}=${val}" >> "$file"
-  fi
-}
 
 sincronizar_todas_portas_env() {
   local file="${1:-${compose_dir}/.env}"
@@ -974,7 +972,7 @@ instalar_amanda_docker_stack() {
   config_firewall_base || trata_erro "config_firewall_base"
 
   # Garantir Docker e Docker Compose instalados e 100% operacionais automaticamente
-  garantir_docker_e_compose
+  garantir_docker_e_compose || return 1
 
   local proj_name="${empresa:-amanda}"
 
@@ -1134,7 +1132,8 @@ PYEOF
   fi
 
   chown -R deploy:deploy "${app_dir}"
-  chmod -R 775 "${app_dir}"
+  chmod -R u+rwX,go+rX,go-w "${app_dir}" || return 1
+  find "${app_dir}" -type f \( -name '.env' -o -name '.env.*' \) -exec chmod 600 {} + || return 1
 
   # Criar volumes externos necessários com o nome da empresa/projeto
   local proj_name="${empresa:-amanda}"
@@ -1205,12 +1204,9 @@ PYEOF
 
   # Localizar dinamicamente os nomes dos contêineres iniciados para este projeto
   local pg_container be_container oficial_container
-  pg_container=$(docker ps --format '{{.Names}}' | grep -E "^${proj_name}_postgres" | head -n 1)
-  [ -z "$pg_container" ] && pg_container=$(docker ps --format '{{.Names}}' | grep -E "${proj_name}.*postgres" | head -n 1)
-  be_container=$(docker ps --format '{{.Names}}' | grep -E "^${proj_name}_backend" | head -n 1)
-  [ -z "$be_container" ] && be_container=$(docker ps --format '{{.Names}}' | grep -E "${proj_name}.*backend" | head -n 1)
-  oficial_container=$(docker ps --format '{{.Names}}' | grep -E "^${proj_name}_apioficial" | head -n 1)
-  [ -z "$oficial_container" ] && oficial_container=$(docker ps --format '{{.Names}}' | grep -E "${proj_name}.*oficial" | head -n 1)
+  pg_container=$(mf_container_servico "$proj_name" postgres) || return 1
+  be_container=$(mf_container_servico "${empresa:-amanda}" backend) || return 1
+  oficial_container=$(mf_container_servico "${empresa:-amanda}" api_oficial) || oficial_container=""
 
   # Aguardar banco de dados ficar pronto
   banner
@@ -1224,21 +1220,22 @@ PYEOF
     fi
     tentativas=$((tentativas + 1))
     sleep 2
-    [ -z "$pg_container" ] && pg_container=$(docker ps --format '{{.Names}}' | grep -E "^${proj_name}_postgres" | head -n 1)
   done
+
+  [ "$tentativas" -lt 30 ] || { printf '%s\n' 'PostgreSQL não ficou pronto no prazo esperado.' >&2; return 1; }
 
   # Executar migrações e seeds do Backend
   if [ -n "$be_container" ]; then
     banner
     printf "${WHITE} >> Executando migrações do Backend (db:migrate)...\n"
     echo
-    docker exec "$be_container" npx sequelize db:migrate 2>/dev/null || true
+    docker exec "$be_container" npx sequelize db:migrate || return 1
     sleep 2
 
     banner
     printf "${WHITE} >> Inserindo registros iniciais do sistema Backend (db:seed:all)...\n"
     echo
-    docker exec "$be_container" npx sequelize db:seed:all 2>/dev/null || true
+    docker exec "$be_container" npx sequelize db:seed:all || return 1
     sleep 2
 
     # Sincronizar credenciais oficiais AMANDA no banco de dados
@@ -1319,13 +1316,8 @@ mf_verificar_servicos_criticos_docker() {
   local falha=0
 
   if [ "${#containers[@]}" -eq 0 ]; then
-    local default_be
-    default_be=$(docker ps --format '{{.Names}}' | grep -E "backend" | head -n 1)
-    [ -n "$default_be" ] && containers+=("$default_be")
-  fi
-
-  if [ "${#containers[@]}" -eq 0 ]; then
-    return 0
+    printf '%s\n' 'Nenhum container crítico da instância foi identificado.' >&2
+    return 1
   fi
 
   sleep 5
@@ -1338,7 +1330,9 @@ mf_verificar_servicos_criticos_docker() {
     fi
 
     state=$(docker inspect --format '{{.State.Status}}' "${container}" 2>/dev/null)
-    if [ "${state}" != "running" ]; then
+    local health
+    health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container}" 2>/dev/null) || return 1
+    if [ "${state}" != "running" ] || { [ "$health" != "none" ] && [ "$health" != "healthy" ]; }; then
       printf "${RED} >> ${container} está com estado '${state:-desconhecido}'. Últimos logs:${WHITE}\n"
       docker logs --tail 80 "${container}" 2>&1
       falha=1
@@ -1517,11 +1511,11 @@ atualizar_amanda_docker() {
   # Assegurar que o .env do Docker Compose existe (restaura a partir das variáveis salvas se necessário)
   if [ ! -f "${compose_dir}/.env" ]; then
     if [ -n "${ARQUIVO_VARIAVEIS_USADO:-}" ] && [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
-      source "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
+      mf_carregar_config "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
     elif [ -f "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa:-amanda}" ]; then
-      source "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa:-amanda}" 2>/dev/null
+      mf_carregar_config "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa:-amanda}" 2>/dev/null
     elif [ -f "/root/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa:-amanda}" ]; then
-      source "/root/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa:-amanda}" 2>/dev/null
+      mf_carregar_config "/root/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa:-amanda}" 2>/dev/null
     fi
     cat <<EOF > "${compose_dir}/.env"
 COMPOSE_PROJECT_NAME=${empresa:-amanda}
@@ -1602,22 +1596,20 @@ PYEOF
   fi
 
   docker compose -p "${empresa:-amanda}" pull 2>/dev/null || true
-  docker compose -p "${empresa:-amanda}" up -d --build --force-recreate backend frontend api_transcricao goflow_dispatcher
+  docker compose -p "${empresa:-amanda}" up -d --build --force-recreate backend frontend api_transcricao goflow_dispatcher || return 1
 
   # Localizar contêineres dinamicamente para esta empresa
   local be_container oficial_container
-  be_container=$(docker ps --format '{{.Names}}' | grep -E "^${empresa:-amanda}_backend" | head -n 1)
-  [ -z "$be_container" ] && be_container=$(docker ps --format '{{.Names}}' | grep -E "${empresa:-amanda}.*backend" | head -n 1)
-  oficial_container=$(docker ps --format '{{.Names}}' | grep -E "^${empresa:-amanda}_apioficial" | head -n 1)
-  [ -z "$oficial_container" ] && oficial_container=$(docker ps --format '{{.Names}}' | grep -E "${empresa:-amanda}.*oficial" | head -n 1)
+  be_container=$(mf_container_servico "${empresa:-amanda}" backend) || return 1
+  oficial_container=$(mf_container_servico "${empresa:-amanda}" api_oficial) || oficial_container=""
 
   banner
   printf "${PURPLE} >> Executando migrações do banco de dados (Backend e API Oficial)...${WHITE}\n"
   echo
-  [ -n "$be_container" ] && docker exec "$be_container" npx sequelize db:migrate 2>/dev/null || true
+  [ -n "$be_container" ] || return 1
+  docker exec "$be_container" npx sequelize db:migrate || return 1
   [ -n "$oficial_container" ] && {
-    docker exec "$oficial_container" npx prisma migrate deploy 2>/dev/null || true
-    docker exec "$oficial_container" npx prisma db push --accept-data-loss 2>/dev/null || true
+    docker exec "$oficial_container" npx prisma migrate deploy || return 1
   }
 
   local criticos=()
@@ -1634,6 +1626,7 @@ PYEOF
   echo
   printf "${WHITE}>> Pressione Enter para voltar ao menu principal...${WHITE}\n"
   read -r
+  return 0
 }
 
 # Atualiza uma variável sem substituir o restante do arquivo .env.
@@ -1923,15 +1916,18 @@ exec_backup_banco_docker() {
   banner
   printf "${PURPLE} >> Gerando backup do banco de dados PostgreSQL ([%s])...${WHITE}\n" "${empresa:-amanda}"
   local backup_dir="/home/deploy/backups"
-  mkdir -p "$backup_dir"
-  local backup_file="${backup_dir}/${empresa:-amanda}_backup_$(date +%Y%m%d_%H%M%S).sql"
-  local pg_container
-  pg_container=$(docker ps --format '{{.Names}}' | grep -E "^${empresa:-amanda}_postgres" | head -n 1)
-  [ -z "$pg_container" ] && pg_container=$(docker ps --format '{{.Names}}' | grep -E "${empresa:-amanda}.*postgres" | head -n 1)
-  if [ -n "$pg_container" ] && docker exec "$pg_container" pg_dump -U "${empresa:-amanda}" "${empresa:-amanda}" > "$backup_file" 2>/dev/null; then
+  mf_validar_empresa "${empresa:-amanda}" || return 1
+  mkdir -p "$backup_dir" || return 1
+  local pg_container backup_tmp backup_file
+  pg_container=$(mf_container_servico "${empresa:-amanda}" postgres) || return 1
+  backup_tmp=$(mktemp "${backup_dir}/${empresa:-amanda}_backup_$(date +%Y%m%d_%H%M%S)_XXXXXX") || return 1
+  backup_file="${backup_tmp}.sql"
+  if docker exec "$pg_container" pg_dump -U "${empresa:-amanda}" "${empresa:-amanda}" > "$backup_tmp" && [ -s "$backup_tmp" ] && mv -- "$backup_tmp" "$backup_file"; then
     printf "${GREEN} >> Backup gerado com sucesso em: ${PURPLE}%s${WHITE}\n" "$backup_file"
   else
     printf "${RED} >> Erro ao gerar backup do banco de dados.${WHITE}\n"
+    rm -f -- "$backup_tmp"
+    return 1
   fi
   echo
   printf "${WHITE}>> Pressione Enter para continuar...${WHITE}\n"
@@ -1952,14 +1948,16 @@ exec_restaurar_banco_docker() {
     sleep 2
     return 1
   fi
-  printf "${YELLOW} >> ATENÇÃO: Os dados atuais de [%s] serão substituídos pelo backup. Deseja continuar? (S/N): ${PURPLE}" "${empresa:-amanda}"
+  printf "${YELLOW} >> Importar SQL em [%s] em uma transação? A base deve estar preparada para o dump; conflitos interrompem a importação. (S/N): ${PURPLE}" "${empresa:-amanda}"
   read -r conf_rest
   conf_rest=$(echo "$conf_rest" | tr '[:lower:]' '[:upper:]')
   if [ "$conf_rest" = "S" ]; then
     local pg_c
-    pg_c=$(docker ps --format '{{.Names}}' | grep -E "^${empresa:-amanda}_postgres" | head -n 1)
-    [ -z "$pg_c" ] && pg_c="${empresa:-amanda}_postgres"
-    cat "$arq_backup" | docker exec -i "$pg_c" psql -U "${empresa:-amanda}" "${empresa:-amanda}"
+    pg_c=$(mf_container_servico "${empresa:-amanda}" postgres) || return 1
+    if ! docker exec -i "$pg_c" psql -X -v ON_ERROR_STOP=1 --single-transaction -U "${empresa:-amanda}" "${empresa:-amanda}" < "$arq_backup"; then
+      printf '%s\n' 'Falha na restauração; nenhuma conclusão de sucesso foi registrada.' >&2
+      return 1
+    fi
     printf "${GREEN} >> Restauração concluída! Reiniciando backend...${WHITE}\n"
     docker restart "${empresa:-amanda}_backend" 2>/dev/null || true
   fi
@@ -2045,7 +2043,7 @@ selecionar_instancia_para_reinstalar() {
   local idx=$((sel - 1))
   if [ $idx -ge 0 ] && [ $idx -lt ${#INSTANCIAS_DETECTADAS[@]} ]; then
     ARQUIVO_VARIAVEIS="${INSTANCIAS_DETECTADAS[$idx]}"
-    source "$ARQUIVO_VARIAVEIS" 2>/dev/null
+    mf_carregar_config "$ARQUIVO_VARIAVEIS" 2>/dev/null
     if [ -f "ETAPA_INSTALACAO_${empresa}" ]; then
       ARQUIVO_ETAPAS="ETAPA_INSTALACAO_${empresa}"
     else
@@ -3181,14 +3179,14 @@ ferramentas_restaurar_sql_em_banco() {
     fi
   fi
   printf "${WHITE} >> Restaurando backup em ${db_alvo}...${WHITE}\n"
-  if PGPASSWORD="${PG_SENHA}" psql -U "${PG_USUARIO}" -h "${PG_HOST}" -p "${PG_PORT}" -d "${db_alvo}" -f "$arquivo_sql"; then
+  if PGPASSWORD="${PG_SENHA}" psql -X -v ON_ERROR_STOP=1 --single-transaction -U "${PG_USUARIO}" -h "${PG_HOST}" -p "${PG_PORT}" -d "${db_alvo}" -f "$arquivo_sql"; then
     printf "${GREEN} >> Banco ${db_alvo} restaurado com sucesso.${WHITE}\n"
     ferramentas_pm2_aviso_retomada_manual_pg || true
     return 0
   fi
-  printf "${YELLOW} >> Restauração finalizada (verifique mensagens acima).${WHITE}\n"
+  printf "${YELLOW} >> Falha na restauração. O banco não foi recuperado; mantenha os serviços parados.${WHITE}\n"
   ferramentas_pm2_aviso_retomada_manual_pg || true
-  return 0
+  return 1
 }
 
 # Importar/restaurar backup do banco nativo (PostgreSQL): instância, lista de bancos, substituir ou criar novo.
@@ -3343,10 +3341,12 @@ importar_backup_banco_ferramentas() {
       fi
     fi
     printf "${WHITE} >> Restaurando backup em ${db_destino}...${WHITE}\n"
-    if PGPASSWORD="${PG_SENHA}" psql -U "${PG_USUARIO}" -h "${PG_HOST}" -p "${PG_PORT}" -d "${db_destino}" -f "$arquivo_escolhido"; then
+    if PGPASSWORD="${PG_SENHA}" psql -X -v ON_ERROR_STOP=1 --single-transaction -U "${PG_USUARIO}" -h "${PG_HOST}" -p "${PG_PORT}" -d "${db_destino}" -f "$arquivo_escolhido"; then
       printf "${GREEN} >> Banco ${db_destino} restaurado com sucesso.${WHITE}\n"
     else
-      printf "${YELLOW} >> Restauração finalizada (verifique mensagens acima).${WHITE}\n"
+      printf "${YELLOW} >> Falha na restauração. O banco não foi recuperado; mantenha os serviços parados.${WHITE}\n"
+      ferramentas_pm2_aviso_retomada_manual_pg || true
+      return 1
     fi
     ferramentas_pm2_aviso_retomada_manual_pg || true
     if [ "$db_destino" != "${PG_DB_NAME}" ]; then
@@ -3376,7 +3376,7 @@ importar_backup_banco_api_oficial_ferramentas() {
 
   if [ -n "${ARQUIVO_VARIAVEIS_USADO:-}" ] && [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
     # shellcheck source=/dev/null
-    source "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
+    mf_carregar_config "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
   fi
   local alta_perf="${ALTA_PERFORMANCE:-0}"
 
@@ -3642,7 +3642,7 @@ backup_banco_ferramentas() {
   INSTALADOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   ARQUIVO_VARIAVEIS_INSTALADOR="${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO"
   if [ -f "$ARQUIVO_VARIAVEIS_INSTALADOR" ]; then
-    source "$ARQUIVO_VARIAVEIS_INSTALADOR" 2>/dev/null
+    mf_carregar_config "$ARQUIVO_VARIAVEIS_INSTALADOR" 2>/dev/null
   fi
   local empresa_listagem="${empresa:-}"
   if [ -z "${empresa_listagem}" ]; then
@@ -3773,7 +3773,7 @@ listar_bancos_ferramentas() {
   INSTALADOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   ARQUIVO_VARIAVEIS_INSTALADOR="${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO"
   if [ -f "$ARQUIVO_VARIAVEIS_INSTALADOR" ]; then
-    source "$ARQUIVO_VARIAVEIS_INSTALADOR" 2>/dev/null
+    mf_carregar_config "$ARQUIVO_VARIAVEIS_INSTALADOR" 2>/dev/null
   fi
   if [ -z "${empresa}" ]; then
     printf "${YELLOW} >> Empresa não encontrada nas variáveis. Informe o nome da empresa (ex: multiflow):${WHITE}\n"
@@ -3838,7 +3838,7 @@ restaurar_backup_banco_alta_performance_ferramentas() {
   INSTALADOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   ARQUIVO_VARIAVEIS_INSTALADOR="${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO"
   if [ -f "$ARQUIVO_VARIAVEIS_INSTALADOR" ]; then
-    source "$ARQUIVO_VARIAVEIS_INSTALADOR" 2>/dev/null
+    mf_carregar_config "$ARQUIVO_VARIAVEIS_INSTALADOR" 2>/dev/null
   fi
   if [ "${ALTA_PERFORMANCE}" != "1" ]; then
     printf "${RED} >> Esta opção é apenas para instalação em modo Alta Performance.${WHITE}\n"
@@ -4286,7 +4286,7 @@ atualizar_baileys_pro_heineken_ferramentas() {
 
   if [ -n "${ARQUIVO_VARIAVEIS_USADO:-}" ] && [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
     # shellcheck source=/dev/null
-    source "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
+    mf_carregar_config "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
   fi
 
   if ! echo "${repo_url:-}" | grep -Eqi 'github\.com'; then
@@ -4309,7 +4309,7 @@ atualizar_baileys_pro_heineken_ferramentas() {
 
   if [ -n "${ARQUIVO_VARIAVEIS_USADO:-}" ] && [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
     # shellcheck source=/dev/null
-    source "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
+    mf_carregar_config "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
   fi
 
   local backend_dir="/home/deploy/${empresa}/backend"
@@ -4824,334 +4824,40 @@ selecionar_plataforma_desinstalacao() {
 desinstalar_amanda_preservando_dados() {
   local plataforma_escolhida=""
   selecionar_plataforma_desinstalacao || return 0
-
-  local empresa_alvo="${plataforma_escolhida}"
-  local app_dir="/home/deploy/${empresa_alvo}"
-  local compose_dir
-  compose_dir=$(localizar_diretorio_compose "${app_dir}")
-
-  banner
-  printf "${WHITE}╔══════════════════════════════════════════════════════════════════════╗${WHITE}\n"
-  printf "${WHITE}║       ${GREEN}DESINSTALAÇÃO PRESERVANDO BANCOS DE DADOS E VOLUMES${WHITE}            ║${WHITE}\n"
-  printf "${WHITE}╚══════════════════════════════════════════════════════════════════════╝${WHITE}\n"
-  echo
-  printf "${YELLOW} >> Plataforma alvo: ${PURPLE}%s${WHITE}\n" "${empresa_alvo}"
-  printf "${YELLOW} >> Esta ação irá parar e remover APENAS os contêineres Docker e códigos da ${PURPLE}%s${YELLOW}.${WHITE}\n" "${empresa_alvo}"
-  printf "${GREEN} >> Seus BANCOS DE DADOS (PostgreSQL, Redis, WuzAPI) serão 100%% MANTIDOS.${WHITE}\n"
-  printf "${CYAN} >> Processos nativos ou rodando via PM2 no servidor NÃO serão tocados!${WHITE}\n\n"
-  printf "${WHITE} >> Confirmar desinstalação da plataforma ${PURPLE}%s${WHITE}? (S/N): " "${empresa_alvo}"
-  read -r conf_desinstala
-  conf_desinstala=$(echo "${conf_desinstala}" | tr '[:lower:]' '[:upper:]')
-  if [ "$conf_desinstala" != "S" ]; then
-    printf "\n${YELLOW} >> Operação cancelada pelo usuário.${WHITE}\n"
-    sleep 2
-    return 0
-  fi
-
-  banner
-  printf "${WHITE} >> 1. Parando e removendo contêineres Docker da ${PURPLE}%s${WHITE} (Preservando Volumes)...${WHITE}\n" "${empresa_alvo}"
-  echo
-  if [ -d "${compose_dir}" ] && [ -f "${compose_dir}/docker-compose.yml" ]; then
-    (cd "${compose_dir}" && docker compose -p "${empresa_alvo}" down --rmi local --remove-orphans 2>/dev/null || true)
-  fi
-  docker compose -p "${empresa_alvo}" down --rmi local --remove-orphans 2>/dev/null || true
-
-  # Remover APENAS contêineres que pertençam a esta plataforma específica
-  local c_ids
-  c_ids=$(docker ps -a --format '{{.ID}} {{.Names}}' 2>/dev/null | grep -E " (${empresa_alvo}_|${empresa_alvo}-)" | awk '{print $1}')
-  local c_ids_label
-  c_ids_label=$(docker ps -a -q --filter "label=com.docker.compose.project=${empresa_alvo}" 2>/dev/null)
-  local all_c_ids
-  all_c_ids=$(printf "%s\n%s\n" "$c_ids" "$c_ids_label" | sed '/^$/d' | sort -u)
-  if [ -n "$all_c_ids" ]; then
-    docker rm -f $all_c_ids 2>/dev/null || true
-  fi
-
-  printf "${WHITE} >> 2. Removendo imagens Docker exclusivas de ${PURPLE}%s${WHITE}...${WHITE}\n" "${empresa_alvo}"
-  local imgs_by_label
-  imgs_by_label=$(docker images -q --filter "label=com.docker.compose.project=${empresa_alvo}" 2>/dev/null)
-  local imgs_by_name
-  imgs_by_name=$(docker images --format '{{.ID}} {{.Repository}}' 2>/dev/null | grep -E " (${empresa_alvo}-|${empresa_alvo}_|${empresa_alvo}:)" | awk '{print $1}')
-  local all_imgs
-  all_imgs=$(printf "%s\n%s\n" "$imgs_by_label" "$imgs_by_name" | sed '/^$/d' | sort -u)
-  if [ -n "$all_imgs" ]; then
-    for img in $all_imgs; do
-      local img_repo
-      img_repo=$(docker images --format '{{.Repository}}:{{.Tag}}' "$img" 2>/dev/null | head -1)
-      printf "   ${GRAY}- Removendo imagem: %s (%s)${WHITE}\n" "$img" "${img_repo:-sem tag}"
-      docker rmi -f "$img" 2>/dev/null || true
-    done
-    docker image prune -f 2>/dev/null || true
-  fi
-
-  # Remover imagens base auxiliares utilizadas pela AMANDA caso não estejam em uso por nenhum outro contêiner restante
-  local imgs_auxiliares=("asternic/wuzapi" "postgres:17" "redis:7.4-alpine" "edoburu/pgbouncer")
-  for img_pat in "${imgs_auxiliares[@]}"; do
-    local img_ids
-    img_ids=$(docker images --format '{{.ID}} {{.Repository}}:{{.Tag}}' 2>/dev/null | grep "$img_pat" | awk '{print $1}' | sort -u)
-    for i_id in $img_ids; do
-      local em_uso
-      em_uso=$(docker ps -a --filter "ancestor=$i_id" -q 2>/dev/null)
-      if [ -z "$em_uso" ]; then
-        local repo_tag
-        repo_tag=$(docker images --format '{{.Repository}}:{{.Tag}}' "$i_id" 2>/dev/null | head -1)
-        printf "   ${GRAY}- Removendo imagem base auxiliar da AMANDA: %s (%s)${WHITE}\n" "$i_id" "${repo_tag:-$img_pat}"
-        docker rmi -f "$i_id" 2>/dev/null || true
-      fi
-    done
-  done
-
-  printf "${WHITE} >> 3. Removendo rede Docker exclusiva de ${PURPLE}%s${WHITE}...${WHITE}\n" "${empresa_alvo}"
-  docker network rm "${empresa_alvo}_net" 2>/dev/null || true
-  docker network rm "${empresa_alvo}-net" 2>/dev/null || true
-  docker network rm "${empresa_alvo}_default" 2>/dev/null || true
-
-  printf "${WHITE} >> 4. Removendo configurações do Nginx exclusivas de ${PURPLE}%s${WHITE}...${WHITE}\n" "${empresa_alvo}"
-  rm -f /etc/nginx/sites-enabled/${empresa_alvo}-* 2>/dev/null || true
-  rm -f /etc/nginx/sites-available/${empresa_alvo}-* 2>/dev/null || true
-  rm -f /etc/nginx/sites-enabled/${empresa_alvo}.* 2>/dev/null || true
-  rm -f /etc/nginx/sites-available/${empresa_alvo}.* 2>/dev/null || true
-  rm -f /etc/nginx/conf.d/${empresa_alvo}-*.conf 2>/dev/null || true
-  rm -f /etc/nginx/conf.d/${empresa_alvo}.*.conf 2>/dev/null || true
-  systemctl reload nginx 2>/dev/null || true
-
-  printf "${WHITE} >> 5. Removendo diretório de código da plataforma (${app_dir})...${WHITE}\n"
-  sudo rm -rf "${app_dir}" 2>/dev/null || true
-  if [ "${empresa_alvo}" = "multiflow" ]; then
-    [ -d "/home/deploy/multiflow" ] && sudo rm -rf "/home/deploy/multiflow" 2>/dev/null || true
-  fi
-  sudo rm -rf "/home/deploy/personalizacoes/${empresa_alvo}" 2>/dev/null || true
-  rm -f "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa_alvo}" 2>/dev/null || true
-  rm -f "${INSTALADOR_DIR}/ETAPA_INSTALACAO_${empresa_alvo}" 2>/dev/null || true
-  if [ -f "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" ] && grep -qw "empresa=${empresa_alvo}" "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" 2>/dev/null; then
-    rm -f "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" "${INSTALADOR_DIR}/ETAPA_INSTALACAO" 2>/dev/null || true
-  fi
-
-  local outras_plataformas=0
-  if [ -d "/home/deploy" ]; then
-    for item in /home/deploy/*; do
-      if [ -d "$item" ]; then
-        local b_item
-        b_item=$(basename "$item")
-        case "$b_item" in
-          .*|backup*|lost+found|personalizacoes) continue ;;
-        esac
-        [ "$b_item" = "${empresa_alvo}" ] && continue
-        if [ -f "${item}/docker-compose.yml" ] || \
-           [ -f "${item}/amanda/docker-compose.yml" ] || \
-           [ -f "${item}/.env" ] || \
-           [ -f "${item}/amanda/.env" ] || \
-           [ -d "${item}/backend" ] || \
-           [ -d "${item}/amanda" ]; then
-          outras_plataformas=1
-          break
-        fi
-      fi
-    done
-  fi
-
-  if [ $outras_plataformas -eq 0 ]; then
-    printf "${GREEN} >> Plataforma ${empresa_alvo} removida de /home/deploy (diretório /home/deploy/backups preservado).${WHITE}\n"
-  else
-    printf "${GREEN} >> Plataforma ${empresa_alvo} removida de /home/deploy. Demais plataformas preservadas.${WHITE}\n"
-  fi
-
-  echo
-  printf "${GREEN}══════════════════════════════════════════════════════════════════${WHITE}\n"
-  printf "${GREEN}✅ PLATAFORMA DOCKER [%s] DESINSTALADA COM SUCESSO!${WHITE}\n" "${empresa_alvo}"
-  printf "${WHITE}   Os contêineres, imagens e códigos da plataforma foram removidos.\n"
-  printf "${WHITE}   Nenhum processo do PM2 ou de outras plataformas foi afetado.\n"
-  printf "${GREEN}   ✓ Volumes de dados preservados na VPS:${WHITE}\n"
-  docker volume ls --filter "name=${empresa_alvo}_" --format "     - {{.Name}}" 2>/dev/null || true
-  printf "${GREEN}══════════════════════════════════════════════════════════════════${WHITE}\n\n"
-  printf "${WHITE}Pressione Enter para voltar ao menu...${WHITE}"
-  read -r
+  local empresa_alvo="$plataforma_escolhida" confirmacao
+  mf_validar_empresa "$empresa_alvo" || { printf '%s\n' 'Nome de instância inválido.' >&2; return 1; }
+  printf 'Remover containers da instância %s, preservando volumes, arquivos e configurações? (S/N): ' "$empresa_alvo"
+  read -r confirmacao
+  [[ "$confirmacao" = [sS] ]] || return 0
+  mf_remover_recursos_instancia "$empresa_alvo" 0 || return 1
+  printf '%s\n' 'Containers identificados removidos. Dados, código, chaves e configuração foram preservados.'
+  printf '%s\n' 'Recursos sem label de propriedade, imagens e configuração do proxy foram mantidos para revisão manual.'
 }
 
 desinstalar_amanda_apagando_dados() {
   local plataforma_escolhida=""
   selecionar_plataforma_desinstalacao || return 0
-
-  local empresa_alvo="${plataforma_escolhida}"
-  local app_dir="/home/deploy/${empresa_alvo}"
-  local compose_dir
-  compose_dir=$(localizar_diretorio_compose "${app_dir}")
-
-  banner
-  printf "${RED}╔══════════════════════════════════════════════════════════════════════╗${WHITE}\n"
-  printf "${RED}║  ⚠️  AVISO DE SEGURANÇA: PERIGO CRÍTICO DE PERDA TOTAL DE DADOS!    ║${WHITE}\n"
-  printf "${RED}╚══════════════════════════════════════════════════════════════════════╝${WHITE}\n"
-  echo
-  printf "${RED} Plataforma selecionada para DELEÇÃO COMPLETA: ${YELLOW}%s${WHITE}\n\n" "${empresa_alvo}"
-  printf "${RED} Esta ação é TOTALMENTE DESTRUTIVA e NÃO PODERÁ SER DESFEITA!${WHITE}\n\n"
-  printf "${YELLOW} Serão APAGADOS PERMANENTEMENTE da plataforma [${empresa_alvo}]:${WHITE}\n"
-  printf "   ${RED}✖${WHITE} Todos os Bancos de Dados PostgreSQL de ${empresa_alvo} (mensagens, tickets, clientes)\n"
-  printf "   ${RED}✖${WHITE} Todas as Filas e Cache Redis de ${empresa_alvo}\n"
-  printf "   ${RED}✖${WHITE} Todas as sessões salvas de WhatsApp e arquivos de mídia da ${empresa_alvo}\n"
-  printf "   ${RED}✖${WHITE} Todos os Volumes Docker persistentes e anônimos exclusivos da ${empresa_alvo}\n"
-  printf "   ${RED}✖${WHITE} Todas as Imagens Docker criadas para a ${empresa_alvo}\n"
-  printf "   ${RED}✖${WHITE} Todos os contêineres e código em /home/deploy/${empresa_alvo}\n\n"
-  printf "${CYAN} ℹ️  Processos do PM2, Portainer e outras plataformas no servidor NÃO serão tocados.${WHITE}\n\n"
-
-  printf "${WHITE} >> Tem certeza absoluta que deseja DESTRUIR OS DADOS da plataforma ${PURPLE}%s${WHITE}? (S/N): " "${empresa_alvo}"
-  read -r resp_conf1
-  resp_conf1=$(echo "${resp_conf1}" | tr '[:lower:]' '[:upper:]')
-  if [ "$resp_conf1" != "S" ]; then
-    printf "\n${GREEN} >> Operação cancelada! Nenhum dado foi alterado.${WHITE}\n"
-    sleep 2
-    return 0
+  local empresa_alvo="$plataforma_escolhida" confirmacao app_dir caminho_real
+  mf_validar_empresa "$empresa_alvo" || { printf '%s\n' 'Nome de instância inválido.' >&2; return 1; }
+  app_dir="/home/deploy/$empresa_alvo"
+  caminho_real=$(realpath -m -- "$app_dir") || return 1
+  if [ "$caminho_real" != "$app_dir" ] || [ -L "$app_dir" ]; then
+    printf '%s\n' 'Diretório da instância fora do caminho permitido ou vinculado por symlink.' >&2
+    return 1
   fi
-
-  echo
-  printf "${RED} >> [CONFIRMAÇÃO FINAL ANTI-ACIDENTE]:${WHITE}\n"
-  printf "${WHITE} >> Para confirmar a DELEÇÃO PERMANENTE de [${empresa_alvo}], digite exatamente: ${RED}DELETAR TUDO${WHITE}\n"
-  read -p "> " resp_conf2
-  if [ "$resp_conf2" != "DELETAR TUDO" ]; then
-    printf "\n${GREEN} >> Confirmação incorreta! Operação cancelada com segurança. Nenhum dado foi afetado.${WHITE}\n"
-    sleep 3
-    return 0
-  fi
-
-  banner
-  printf "${RED} >> 1. Parando contêineres e volumes Compose da plataforma ${empresa_alvo}...${WHITE}\n"
-  echo
-  if [ -d "${compose_dir}" ] && [ -f "${compose_dir}/docker-compose.yml" ]; then
-    (cd "${compose_dir}" && docker compose -p "${empresa_alvo}" down --rmi local -v --remove-orphans 2>/dev/null || true)
-  fi
-  docker compose -p "${empresa_alvo}" down --rmi local -v --remove-orphans 2>/dev/null || true
-
-  printf "${RED} >> 2. Forçando remoção de contêineres residuais de ${empresa_alvo}...${WHITE}\n"
-  local c_ids
-  c_ids=$(docker ps -a --format '{{.ID}} {{.Names}}' 2>/dev/null | grep -E " (${empresa_alvo}_|${empresa_alvo}-)" | awk '{print $1}')
-  local c_ids_label
-  c_ids_label=$(docker ps -a -q --filter "label=com.docker.compose.project=${empresa_alvo}" 2>/dev/null)
-  local all_c_ids
-  all_c_ids=$(printf "%s\n%s\n" "$c_ids" "$c_ids_label" | sed '/^$/d' | sort -u)
-  if [ -n "$all_c_ids" ]; then
-    docker rm -f -v $all_c_ids 2>/dev/null || true
-  fi
-
-  printf "${RED} >> 3. APAGANDO TODOS OS VOLUMES DOCKER EXCLUSIVOS DA ${empresa_alvo}...${WHITE}\n"
-  local vols_by_prefix
-  vols_by_prefix=$(docker volume ls -q 2>/dev/null | grep -E "^(${empresa_alvo}_|${empresa_alvo}-)")
-  local vols_by_label
-  vols_by_label=$(docker volume ls -q --filter "label=com.docker.compose.project=${empresa_alvo}" 2>/dev/null)
-  local all_vols
-  all_vols=$(printf "%s\n%s\n" "$vols_by_prefix" "$vols_by_label" | sed '/^$/d' | sort -u)
-  if [ -n "$all_vols" ]; then
-    for v in $all_vols; do
-      printf "   ${GRAY}- Apagando volume: ${v}${WHITE}\n"
-      docker volume rm -f "$v" 2>/dev/null || true
-    done
-  else
-    printf "   ${GRAY}(Nenhum volume residual encontrado para ${empresa_alvo})${WHITE}\n"
-  fi
-
-  printf "${RED} >> 4. APAGANDO TODAS AS IMAGENS DOCKER EXCLUSIVAS DA ${empresa_alvo}...${WHITE}\n"
-  # Imagens com label do Compose da empresa
-  local imgs_by_label
-  imgs_by_label=$(docker images -q --filter "label=com.docker.compose.project=${empresa_alvo}" 2>/dev/null)
-  # Imagens com tag/nome contendo o prefixo da empresa (ex: amanda-backend, amanda-frontend, amanda_*)
-  local imgs_by_name
-  imgs_by_name=$(docker images --format '{{.ID}} {{.Repository}}' 2>/dev/null | grep -E " (${empresa_alvo}-|${empresa_alvo}_|${empresa_alvo}:)" | awk '{print $1}')
-  local all_imgs
-  all_imgs=$(printf "%s\n%s\n" "$imgs_by_label" "$imgs_by_name" | sed '/^$/d' | sort -u)
-  if [ -n "$all_imgs" ]; then
-    for img in $all_imgs; do
-      local img_repo
-      img_repo=$(docker images --format '{{.Repository}}:{{.Tag}}' "$img" 2>/dev/null | head -1)
-      printf "   ${GRAY}- Apagando imagem: %s (%s)${WHITE}\n" "$img" "${img_repo:-sem tag}"
-      docker rmi -f "$img" 2>/dev/null || true
-    done
-  else
-    printf "   ${GRAY}(Nenhuma imagem residual encontrada para ${empresa_alvo})${WHITE}\n"
-  fi
-
-  # Remover imagens base auxiliares utilizadas pela AMANDA caso não estejam em uso por nenhum outro contêiner restante (ex: portainer ou outra plataforma)
-  local imgs_auxiliares=("asternic/wuzapi" "postgres:17" "redis:7.4-alpine" "edoburu/pgbouncer")
-  for img_pat in "${imgs_auxiliares[@]}"; do
-    local img_ids
-    img_ids=$(docker images --format '{{.ID}} {{.Repository}}:{{.Tag}}' 2>/dev/null | grep "$img_pat" | awk '{print $1}' | sort -u)
-    for i_id in $img_ids; do
-      local em_uso
-      em_uso=$(docker ps -a --filter "ancestor=$i_id" -q 2>/dev/null)
-      if [ -z "$em_uso" ]; then
-        local repo_tag
-        repo_tag=$(docker images --format '{{.Repository}}:{{.Tag}}' "$i_id" 2>/dev/null | head -1)
-        printf "   ${GRAY}- Apagando imagem base auxiliar da AMANDA: %s (%s)${WHITE}\n" "$i_id" "${repo_tag:-$img_pat}"
-        docker rmi -f "$i_id" 2>/dev/null || true
-      fi
-    done
-  done
-
-  # Limpar imagens intermediárias/órfãs (dangling) sem tag geradas durante o build desta plataforma
-  docker image prune -f 2>/dev/null || true
-
-  printf "${RED} >> 5. Removendo rede Docker exclusiva da ${empresa_alvo}...${WHITE}\n"
-  docker network rm "${empresa_alvo}_net" 2>/dev/null || true
-  docker network rm "${empresa_alvo}-net" 2>/dev/null || true
-  docker network rm "${empresa_alvo}_default" 2>/dev/null || true
-
-  printf "${RED} >> 6. Removendo configurações do Nginx de ${empresa_alvo}...${WHITE}\n"
-  rm -f /etc/nginx/sites-enabled/${empresa_alvo}-* 2>/dev/null || true
-  rm -f /etc/nginx/sites-available/${empresa_alvo}-* 2>/dev/null || true
-  rm -f /etc/nginx/sites-enabled/${empresa_alvo}.* 2>/dev/null || true
-  rm -f /etc/nginx/sites-available/${empresa_alvo}.* 2>/dev/null || true
-  rm -f /etc/nginx/conf.d/${empresa_alvo}-*.conf 2>/dev/null || true
-  rm -f /etc/nginx/conf.d/${empresa_alvo}.*.conf 2>/dev/null || true
-  systemctl reload nginx 2>/dev/null || true
-
-  printf "${RED} >> 7. Apagando código-fonte e dados em disco (${app_dir})...${WHITE}\n"
-  sudo rm -rf "${app_dir}" 2>/dev/null || true
-  if [ "${empresa_alvo}" = "multiflow" ]; then
-    [ -d "/home/deploy/multiflow" ] && sudo rm -rf "/home/deploy/multiflow" 2>/dev/null || true
-  fi
-  sudo rm -rf "/home/deploy/personalizacoes/${empresa_alvo}" 2>/dev/null || true
-
-  local outras_plataformas=0
-  if [ -d "/home/deploy" ]; then
-    for item in /home/deploy/*; do
-      if [ -d "$item" ]; then
-        local b_item
-        b_item=$(basename "$item")
-        case "$b_item" in
-          .*|backup*|lost+found|personalizacoes) continue ;;
-        esac
-        [ "$b_item" = "${empresa_alvo}" ] && continue
-        if [ -f "${item}/docker-compose.yml" ] || \
-           [ -f "${item}/amanda/docker-compose.yml" ] || \
-           [ -f "${item}/.env" ] || \
-           [ -f "${item}/amanda/.env" ] || \
-           [ -d "${item}/backend" ] || \
-           [ -d "${item}/amanda" ]; then
-          outras_plataformas=1
-          break
-        fi
-      fi
-    done
-  fi
-
-  if [ $outras_plataformas -eq 0 ]; then
-    printf "${GREEN} >> Plataforma ${empresa_alvo} removida de /home/deploy (diretório /home/deploy/backups preservado).${WHITE}\n"
-  else
-    printf "${GREEN} >> Plataforma ${empresa_alvo} removida de /home/deploy. Demais plataformas preservadas.${WHITE}\n"
-  fi
-
-  printf "${RED} >> 8. Removendo registros da instância ${empresa_alvo} no instalador...${WHITE}\n"
-  rm -f "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa_alvo}" 2>/dev/null || true
-  rm -f "${INSTALADOR_DIR}/ETAPA_INSTALACAO_${empresa_alvo}" 2>/dev/null || true
-  if [ -f "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" ] && grep -qw "empresa=${empresa_alvo}" "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" 2>/dev/null; then
-    rm -f "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" "${INSTALADOR_DIR}/ETAPA_INSTALACAO" 2>/dev/null || true
-  fi
-
-  echo
-  printf "${RED}══════════════════════════════════════════════════════════════════${WHITE}\n"
-  printf "${RED}💥 DESINSTALAÇÃO DA PLATAFORMA [%s] CONCLUÍDA!${WHITE}\n" "${empresa_alvo}"
-  printf "${WHITE}   Contêineres, imagens, volumes, códigos e bancos de dados de [%s] foram removidos.\n" "${empresa_alvo}"
-  printf "${GREEN}   Nenhum processo PM2, imagem base ou contêiner de outras plataformas foi tocado.${WHITE}\n"
-  printf "${RED}══════════════════════════════════════════════════════════════════${WHITE}\n\n"
-  printf "${WHITE}Pressione Enter para voltar ao menu...${WHITE}"
-  read -r
+  printf 'Apagar containers, volumes identificados e diretório %s? (S/N): ' "$app_dir"
+  read -r confirmacao
+  [[ "$confirmacao" = [sS] ]] || return 0
+  printf 'Para confirmar a exclusão de %s, digite DELETAR TUDO: ' "$empresa_alvo"
+  read -r confirmacao
+  [ "$confirmacao" = 'DELETAR TUDO' ] || return 0
+  mf_remover_recursos_instancia "$empresa_alvo" 1 || return 1
+  [ "$(realpath -m -- "$app_dir")" = "$app_dir" ] && [ ! -L "$app_dir" ] || return 1
+  rm -rf -- "$app_dir" || return 1
+  rm -f -- "${MF_INSTALADOR_ROOT}/VARIAVEIS_INSTALACAO_INSTANCIA_${empresa_alvo}" \
+    "${MF_INSTALADOR_ROOT}/ETAPA_INSTALACAO_${empresa_alvo}" || return 1
+  printf '%s\n' 'Recursos com propriedade comprovada e diretório da instância removidos.'
+  printf '%s\n' 'Volumes externos sem label, imagens, proxy e configurações compartilhadas foram mantidos para revisão manual.'
 }
 
 menu_desinstalar_plataforma() {
@@ -5163,10 +4869,10 @@ menu_desinstalar_plataforma() {
     echo
     printf "   ${WHITE}Escolha como deseja proceder com a desinstalação:${WHITE}\n\n"
     printf "   [${BLUE}1${WHITE}] ${GREEN}Desinstalar Plataforma PRESERVANDO os Bancos de Dados${WHITE}\n"
-    printf "       ${GRAY}(Remove apenas contêineres Docker e código da plataforma escolhida,${WHITE}\n"
-    printf "       ${GRAY} MANTENDO todos os volumes de dados de PostgreSQL, Redis e mídias salvos)${WHITE}\n\n"
+    printf "       ${GRAY}(Remove contêineres identificados da plataforma escolhida,${WHITE}\n"
+    printf "       ${GRAY} MANTENDO volumes, arquivos, código e configuração)${WHITE}\n\n"
     printf "   [${BLUE}2${WHITE}] ${RED}Desinstalar Plataforma e APAGAR OS BANCOS DE DADOS (Destrutivo)${WHITE}\n"
-    printf "       ${YELLOW}(Wipeout total: remove contêineres, código, bancos, mídias e volumes.${WHITE}\n"
+    printf "       ${YELLOW}(Remove contêineres e volumes identificados, além do diretório da instância.${WHITE}\n"
     printf "       ${RED} ATENÇÃO: Todos os dados da plataforma serão PERDIDOS PERMANENTEMENTE!)${WHITE}\n\n"
     printf "   [${BLUE}0${WHITE}] Voltar ao Menu Principal\n\n"
     printf "${WHITE}   Escolha uma opção: ${PURPLE}"
@@ -5492,7 +5198,7 @@ selecionar_instancia_atualizar() {
     sleep 2
     
     # Carregar variáveis da instância única
-    source "${INSTANCIAS_DETECTADAS[0]}"
+    mf_carregar_config "${INSTANCIAS_DETECTADAS[0]}"
     # Salvar arquivo usado em variável global para uso posterior
     declare -g ARQUIVO_VARIAVEIS_USADO="${INSTANCIAS_DETECTADAS[0]}"
     return 0
@@ -5514,7 +5220,7 @@ selecionar_instancia_atualizar() {
       local subdominio_frontend_original="${subdominio_frontend:-}"
       
       # Tentar carregar informações adicionais da instância
-      source "$arquivo_instancia" 2>/dev/null
+      mf_carregar_config "$arquivo_instancia" 2>/dev/null
       
       local temp_subdominio_backend="${subdominio_backend:-}"
       local temp_subdominio_frontend="${subdominio_frontend:-}"
@@ -5571,7 +5277,7 @@ selecionar_instancia_atualizar() {
     
     # Carregar variáveis da instância selecionada
     local indice_selecionado=$((escolha_instancia - 1))
-    source "${INSTANCIAS_DETECTADAS[$indice_selecionado]}"
+    mf_carregar_config "${INSTANCIAS_DETECTADAS[$indice_selecionado]}"
     # Salvar arquivo usado em variável global para uso posterior
     declare -g ARQUIVO_VARIAVEIS_USADO="${INSTANCIAS_DETECTADAS[$indice_selecionado]}"
     
@@ -7106,7 +6812,7 @@ validar_token_git_clone() {
 validar_e_atualizar_token_antes_atualizar() {
   # Garantir que temos repo_url e github_token da instância selecionada
   if [ -n "${ARQUIVO_VARIAVEIS_USADO:-}" ] && [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
-    source "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
+    mf_carregar_config "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
   fi
 
   local app_root="/home/deploy/${empresa:-}"
@@ -7472,48 +7178,27 @@ baixa_codigo_base() {
       cd ${dest_dir} || trata_erro "cd para diretório do projeto"
       
       # Fazer checkout para a branch principal (prioridade: davi-alteracoes > davi-alteraçoes > main > master)
-      sudo su - deploy <<CHECKOUTRECENT
-cd ${dest_dir}
-git config --global --add safe.directory "${dest_dir}" 2>/dev/null || true
-git fetch --all --prune 2>/dev/null || true
-
-# Limpar qualquer modificação residual anterior
-git clean -fdx 2>/dev/null || true
-git checkout -f 2>/dev/null || true
-git reset --hard 2>/dev/null || true
-
-# Tentar fazer checkout e reset para a branch selecionada (ou com fallback limpo)
-target_br="${BRANCH_AMANDA_ESCOLHIDA:-}"
-if [ -n "${target_br}" ] && git show-ref --verify --quiet "refs/remotes/origin/${target_br}"; then
-  git checkout -f -B "${target_br}" "origin/${target_br}"
-  git reset --hard "origin/${target_br}"
-else
-  _cur_br=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-  if [ -n "$_cur_br" ] && [ "$_cur_br" != "HEAD" ] && git show-ref --verify --quiet "refs/remotes/origin/${_cur_br}"; then
-    git checkout -f -B "${_cur_br}" "origin/${_cur_br}"
-    git reset --hard "origin/${_cur_br}"
-  elif git show-ref --verify --quiet refs/remotes/origin/davi-alteracoes; then
-    git checkout -f -B davi-alteracoes origin/davi-alteracoes
-    git reset --hard origin/davi-alteracoes
-  elif git show-ref --verify --quiet refs/remotes/origin/davi-alteraçoes; then
-    git checkout -f -B davi-alteraçoes origin/davi-alteraçoes
-    git reset --hard origin/davi-alteraçoes
-  elif git show-ref --verify --quiet refs/remotes/origin/alan-alteracoes; then
-    git checkout -f -B alan-alteracoes origin/alan-alteracoes
-    git reset --hard origin/alan-alteracoes
-  elif git show-ref --verify --quiet refs/remotes/origin/main; then
-    git checkout -f -B main origin/main
-    git reset --hard origin/main
-  elif git show-ref --verify --quiet refs/remotes/origin/master; then
-    git checkout -f -B master origin/master
-    git reset --hard origin/master
-  elif git show-ref --verify --quiet refs/remotes/origin/MULTI100-OFICIAL-u21; then
-    git checkout -f -B MULTI100-OFICIAL-u21 origin/MULTI100-OFICIAL-u21
-    git reset --hard origin/MULTI100-OFICIAL-u21
-  fi
+      chown -R deploy:deploy "$dest_dir" || return 1
+      if ! sudo -u deploy bash -s -- "$dest_dir" "${BRANCH_AMANDA_ESCOLHIDA:-}" <<'CHECKOUTRECENT'
+set -e
+cd -- "$1"
+git fetch --all --prune
+target_br="$2"
+if [ -z "$target_br" ]; then
+  target_br=$(git symbolic-ref --quiet --short HEAD) || exit 1
 fi
-git clean -fdx 2>/dev/null || true
+git check-ref-format --branch "$target_br" >/dev/null
+git show-ref --verify --quiet "refs/remotes/origin/$target_br" || {
+  printf 'Branch remota não encontrada: %s\n' "$target_br" >&2
+  exit 1
+}
+git checkout -B "$target_br" "origin/$target_br"
+git reset --hard "origin/$target_br"
 CHECKOUTRECENT
+      then
+        printf '%s\n' 'Falha ao selecionar a versão solicitada.' >&2
+        return 1
+      fi
       
       printf "${GREEN} >> Versão mais recente do repositório será instalada${WHITE}\n"
       echo
@@ -8216,7 +7901,7 @@ EOF
     else
       printf "${YELLOW} >> Aviso: Validação de sintaxe Nginx antes do SSL:${WHITE}\n"
       nginx -t || true
-      systemctl restart nginx 2>/dev/null || true
+      return 1
     fi
 
     local email_arg
@@ -8262,7 +7947,7 @@ EOF
 # Configura Traefik
 config_traefik_base() {
   {
-    source /home/deploy/${empresa}/backend/.env
+    mf_carregar_config /home/deploy/${empresa}/backend/.env
     subdominio_backend=$(echo ${BACKEND_URL} | sed 's|https://||')
     subdominio_frontend=$(echo ${FRONTEND_URL} | sed 's|https://||')
     sudo su - root <<EOF
@@ -8361,7 +8046,7 @@ fim_instalacao_base() {
   # Instalar Portainer ao final quando Alta Performance (senha admin = senha_deploy)
   # Usa arquivo de senha PERSISTENTE para o container poder reiniciar (evita erro de mount com /tmp)
   if [ "${ALTA_PERFORMANCE}" = "1" ]; then
-    [ -f "$ARQUIVO_VARIAVEIS" ] && source "$ARQUIVO_VARIAVEIS" 2>/dev/null
+    [ -f "$ARQUIVO_VARIAVEIS" ] && mf_carregar_config "$ARQUIVO_VARIAVEIS" 2>/dev/null
     if [ -z "${senha_deploy}" ]; then
       senha_deploy=""
     fi
@@ -8402,7 +8087,7 @@ fim_instalacao_base() {
     fi
   fi
 
-  [ -f "$ARQUIVO_VARIAVEIS" ] && source "$ARQUIVO_VARIAVEIS" 2>/dev/null
+  [ -f "$ARQUIVO_VARIAVEIS" ] && mf_carregar_config "$ARQUIVO_VARIAVEIS" 2>/dev/null
   portainer_porta=${portainer_porta:-9443}
 
   banner
@@ -8562,7 +8247,7 @@ backup_app_atualizar() {
     exit 1
   fi
   
-  source /home/deploy/${empresa}/backend/.env
+  mf_carregar_config /home/deploy/${empresa}/backend/.env
   {
     banner
     printf "${WHITE} >> Antes de atualizar deseja fazer backup do banco de dados? ${GREEN}S/${RED}N:${WHITE}\n"
@@ -8631,12 +8316,12 @@ baixa_codigo_atualizar() {
   echo
   sleep 2
 
-  source /home/deploy/${empresa}/frontend/.env 2>/dev/null || true
+  mf_carregar_config /home/deploy/${empresa}/frontend/.env 2>/dev/null || true
   frontend_port=${SERVER_PORT:-3000}
   ativar_tela_atualizacao_frontend
   # Carregar porta da transcrição da instância (após git reset --hard o main.py volta ao padrão)
   if [ -n "${ARQUIVO_VARIAVEIS_USADO:-}" ] && [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
-    source "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
+    mf_carregar_config "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
   fi
   porta_transcricao=${porta_transcricao:-4002}
   INSTALADOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8750,7 +8435,7 @@ MF_GIT_SYNC_INLINE
   # Recarrega token (pode ter sido renovado no prompt)
   if [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
     # shellcheck source=/dev/null
-    source "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null || true
+    mf_carregar_config "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null || true
   fi
   printf "${GREEN} >> Repositório sincronizado.${WHITE}\n"
 
@@ -9316,7 +9001,7 @@ instalar_transcricao_audio_nativa() {
     # Verificar se é a instalação base
     if [ -f "${INSTALADOR_DIR}/${ARQUIVO_VARIAVEIS}" ]; then
       local temp_empresa_base=""
-      source "${INSTALADOR_DIR}/${ARQUIVO_VARIAVEIS}" 2>/dev/null
+      mf_carregar_config "${INSTALADOR_DIR}/${ARQUIVO_VARIAVEIS}" 2>/dev/null
       temp_empresa_base="${empresa:-}"
       empresa="${empresa_atual}"
       
@@ -9330,7 +9015,7 @@ instalar_transcricao_audio_nativa() {
       for arquivo_instancia in "${INSTALADOR_DIR}"/VARIAVEIS_INSTALACAO_INSTANCIA_*; do
         if [ -f "$arquivo_instancia" ]; then
           local temp_empresa_inst=""
-          source "$arquivo_instancia" 2>/dev/null
+          mf_carregar_config "$arquivo_instancia" 2>/dev/null
           temp_empresa_inst="${empresa:-}"
           empresa="${empresa_atual}"
           
@@ -10862,7 +10547,7 @@ EOF
   # 1.7 Integrar api_oficial no docker-compose.yml
   if [ -f "${compose_dir}/docker-compose.yml" ]; then
     printf "${PURPLE} >> Integrando serviço api_oficial no docker-compose.yml...${WHITE}\n"
-    python3 - "${compose_dir}/docker-compose.yml" "${emp}" "${porta_escolhida}" "${db_pass_real}" "${db_user_real}" << 'PYINJECT'
+    if ! python3 - "${compose_dir}/docker-compose.yml" "${emp}" "${porta_escolhida}" "${db_pass_real}" "${db_user_real}" "${url_escolhida}" << 'PYINJECT'
 import sys, re
 
 compose_file = sys.argv[1]
@@ -10870,6 +10555,7 @@ proj = sys.argv[2]
 port = sys.argv[3]
 db_pass = sys.argv[4]
 db_user = sys.argv[5] if len(sys.argv) > 5 else proj
+url_escolhida = sys.argv[6]
 
 with open(compose_file, "r", encoding="utf-8") as f:
     content = f.read()
@@ -10943,6 +10629,10 @@ else:
 with open(compose_file, "w", encoding="utf-8") as f:
     f.write(content)
 PYINJECT
+    then
+      printf '%s\n' 'Falha ao integrar API Oficial no Compose.' >&2
+      return 1
+    fi
   fi
 
   # 1.8 Sincronizar variáveis no .env da AMANDA
@@ -10958,37 +10648,35 @@ PYINJECT
   for env_f in "${env_files[@]}"; do
     if [ -f "$env_f" ]; then
       sincronizar_porta_env "PORT_APIOFICIAL" "${porta_escolhida}" "$env_f"
-      sed -i "s|^URL_API_OFICIAL=.*|URL_API_OFICIAL=${url_escolhida}|" "$env_f" 2>/dev/null || echo "URL_API_OFICIAL=${url_escolhida}" >> "$env_f"
-      sed -i "s|^API_OFICIAL_URL=.*|API_OFICIAL_URL=${url_escolhida}|" "$env_f" 2>/dev/null || echo "API_OFICIAL_URL=${url_escolhida}" >> "$env_f"
-      sed -i "s|^USE_WHATSAPP_OFICIAL=.*|USE_WHATSAPP_OFICIAL=true|" "$env_f" 2>/dev/null || echo "USE_WHATSAPP_OFICIAL=true" >> "$env_f"
-      sed -i "s|^TOKEN_API_OFICIAL=.*|TOKEN_API_OFICIAL=adminpro|" "$env_f" 2>/dev/null || echo "TOKEN_API_OFICIAL=adminpro" >> "$env_f"
-      sed -i "s|^API_OFICIAL_TOKEN=.*|API_OFICIAL_TOKEN=adminpro|" "$env_f" 2>/dev/null || echo "API_OFICIAL_TOKEN=adminpro" >> "$env_f"
+      sincronizar_porta_env "URL_API_OFICIAL" "${url_escolhida}" "$env_f" || return 1
+      sincronizar_porta_env "API_OFICIAL_URL" "${url_escolhida}" "$env_f" || return 1
+      sincronizar_porta_env "USE_WHATSAPP_OFICIAL" "true" "$env_f" || return 1
+      sincronizar_porta_env "TOKEN_API_OFICIAL" "adminpro" "$env_f" || return 1
+      sincronizar_porta_env "API_OFICIAL_TOKEN" "adminpro" "$env_f" || return 1
       chown deploy:deploy "$env_f" 2>/dev/null || true
       chmod 600 "$env_f" 2>/dev/null || true
     fi
   done
 
   if [ -n "${ARQUIVO_VARIAVEIS_USADO:-}" ] && [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
-    sed -i "s|^subdominio_oficial=.*|subdominio_oficial=${url_escolhida}|" "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null || echo "subdominio_oficial=${url_escolhida}" >> "${ARQUIVO_VARIAVEIS_USADO}"
-    sed -i "s|^PORT_APIOFICIAL=.*|PORT_APIOFICIAL=${porta_escolhida}|" "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null || echo "PORT_APIOFICIAL=${porta_escolhida}" >> "${ARQUIVO_VARIAVEIS_USADO}"
+    sincronizar_porta_env "subdominio_oficial" "${url_escolhida}" "${ARQUIVO_VARIAVEIS_USADO}" || return 1
+    sincronizar_porta_env "PORT_APIOFICIAL" "${porta_escolhida}" "${ARQUIVO_VARIAVEIS_USADO}" || return 1
   fi
 
   # 1.9 Compilar e subir contêiner da API Oficial
   banner
   printf "${PURPLE} >> Construindo e iniciando o contêiner ${emp}_apioficial...${WHITE}\n"
   printf "${YELLOW} >> Esse processo pode levar de 1 a 3 minutos na primeira compilação...${WHITE}\n\n"
-  cd "${compose_dir}" && docker compose -p "${emp}" up -d --build api_oficial
+  (cd "${compose_dir}" && docker compose -p "${emp}" up -d --build api_oficial) || return 1
   sleep 6
 
   # 1.10 Executar migrações do Prisma no contêiner
   local c_oficial
-  c_oficial=$(docker ps --format '{{.Names}}' | grep -E "^${emp}_apioficial" | head -n 1)
-  [ -z "$c_oficial" ] && c_oficial=$(docker ps --format '{{.Names}}' | grep -E "${emp}.*oficial" | head -n 1)
+  c_oficial=$(mf_container_servico "$emp" api_oficial) || return 1
 
   if [ -n "$c_oficial" ]; then
     printf "\n${PURPLE} >> Executando migrações do Prisma no contêiner ${c_oficial}...${WHITE}\n"
-    docker exec "$c_oficial" npx prisma migrate deploy 2>/dev/null || true
-    docker exec "$c_oficial" npx prisma db push --accept-data-loss 2>/dev/null || true
+    docker exec "$c_oficial" npx prisma migrate deploy || return 1
     printf "${GREEN} >> Migrações e tabelas aplicadas com sucesso!${WHITE}\n"
   fi
 
@@ -11066,16 +10754,15 @@ EOF_API_DF
   if [ -f "${compose_dir}/docker-compose.yml" ] && ! grep -q "api_oficial:" "${compose_dir}/docker-compose.yml"; then
     printf "${WHITE} >> Integrando serviço api_oficial no docker-compose.yml...${WHITE}\n"
     instalar_api_oficial_docker "$emp" "$compose_dir"
-    return 0
+    return $?
   fi
 
   printf "${PURPLE} >> Reconstruindo contêiner da API Oficial...${WHITE}\n"
-  cd "${compose_dir}" && docker compose -p "${emp}" up -d --build --force-recreate api_oficial
+  (cd "${compose_dir}" && docker compose -p "${emp}" up -d --build --force-recreate api_oficial) || return 1
   sleep 5
 
   printf "${WHITE} >> Executando migrações do banco de dados (Prisma)...${WHITE}\n"
-  docker exec "${emp}_apioficial" npx prisma migrate deploy 2>/dev/null || true
-  docker exec "${emp}_apioficial" npx prisma db push --accept-data-loss 2>/dev/null || true
+  docker exec "${emp}_apioficial" npx prisma migrate deploy || return 1
 
   printf "\n${GREEN} >> API Oficial atualizada com sucesso no Docker!${WHITE}\n\n"
   docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "${emp}_apioficial|NAMES" || true
@@ -11307,11 +10994,11 @@ sincronizar_integracao_backend_api_oficial() {
   for env_f in "${env_files[@]}"; do
     if [ -f "$env_f" ]; then
       sincronizar_porta_env "PORT_APIOFICIAL" "${porta}" "$env_f"
-      sed -i "s|^URL_API_OFICIAL=.*|URL_API_OFICIAL=${url}|" "$env_f" 2>/dev/null || echo "URL_API_OFICIAL=${url}" >> "$env_f"
-      sed -i "s|^API_OFICIAL_URL=.*|API_OFICIAL_URL=${url}|" "$env_f" 2>/dev/null || echo "API_OFICIAL_URL=${url}" >> "$env_f"
-      sed -i "s|^USE_WHATSAPP_OFICIAL=.*|USE_WHATSAPP_OFICIAL=true|" "$env_f" 2>/dev/null || echo "USE_WHATSAPP_OFICIAL=true" >> "$env_f"
-      sed -i "s|^TOKEN_API_OFICIAL=.*|TOKEN_API_OFICIAL=adminpro|" "$env_f" 2>/dev/null || echo "TOKEN_API_OFICIAL=adminpro" >> "$env_f"
-      sed -i "s|^API_OFICIAL_TOKEN=.*|API_OFICIAL_TOKEN=adminpro|" "$env_f" 2>/dev/null || echo "API_OFICIAL_TOKEN=adminpro" >> "$env_f"
+      sincronizar_porta_env "URL_API_OFICIAL" "${url}" "$env_f" || return 1
+      sincronizar_porta_env "API_OFICIAL_URL" "${url}" "$env_f" || return 1
+      sincronizar_porta_env "USE_WHATSAPP_OFICIAL" "true" "$env_f" || return 1
+      sincronizar_porta_env "TOKEN_API_OFICIAL" "adminpro" "$env_f" || return 1
+      sincronizar_porta_env "API_OFICIAL_TOKEN" "adminpro" "$env_f" || return 1
       chown deploy:deploy "$env_f" 2>/dev/null || true
       chmod 600 "$env_f" 2>/dev/null || true
     fi
@@ -11358,8 +11045,7 @@ PYEOF
   c_oficial=$(docker ps --format '{{.Names}}' | grep -E "^${emp}_apioficial" | head -n 1)
   if [ -n "$c_oficial" ]; then
     printf "${WHITE} >> Garantindo tabelas e migrações do Prisma no banco de dados...${WHITE}\n"
-    docker exec "$c_oficial" npx prisma migrate deploy 2>/dev/null || true
-    docker exec "$c_oficial" npx prisma db push --accept-data-loss 2>/dev/null || true
+    docker exec "$c_oficial" npx prisma migrate deploy || return 1
   fi
 
   printf "\n${GREEN} >> Integração sincronizada com sucesso! O Backend agora reconhece a API Oficial.${WHITE}\n\n"
@@ -11537,9 +11223,7 @@ PYREM
   del_banco=$(echo "${del_banco}" | tr '[:lower:]' '[:upper:]')
   if [ "${del_banco}" = "S" ]; then
     local pg_c
-    pg_c=$(docker ps --format '{{.Names}}' | grep -E "^${emp}_postgres" | head -n 1)
-    [ -z "$pg_c" ] && pg_c=$(docker ps --format '{{.Names}}' | grep -E "${emp}.*postgres" | head -n 1)
-    [ -z "$pg_c" ] && pg_c=$(docker ps --format '{{.Names}}' | grep -E "postgres" | head -n 1)
+    pg_c=$(mf_container_servico "$emp" postgres) || return 1
     if [ -n "$pg_c" ]; then
       docker exec -e PGPASSWORD="${senha_deploy:-Acertitech13@}" "$pg_c" psql -U "${emp}" -d postgres -c "DROP DATABASE \"api_oficial\";" 2>/dev/null || true
       printf "${GREEN} >> Banco 'api_oficial' removido do PostgreSQL Docker.${WHITE}\n"
@@ -11793,7 +11477,7 @@ atualizar_ultrawhats() {
 
   if [ -n "${ARQUIVO_VARIAVEIS_USADO:-}" ] && [ -f "${ARQUIVO_VARIAVEIS_USADO}" ]; then
     # shellcheck source=/dev/null
-    source "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
+    mf_carregar_config "${ARQUIVO_VARIAVEIS_USADO}" 2>/dev/null
   fi
 
   if [ -z "${empresa:-}" ]; then
@@ -11987,8 +11671,8 @@ exec_instalador_alta_performance() {
 
 # Modo: executar instalação completa Alta Performance sem menu (chamado pelo instalador_alta_performance.sh)
 if [ "${1:-}" = "--executar-instalacao-alta-performance" ]; then
-  [ -f "ALTA_PERFORMANCE_MODE" ] && source "ALTA_PERFORMANCE_MODE" 2>/dev/null
-  [ -f "$ARQUIVO_VARIAVEIS" ] && source "$ARQUIVO_VARIAVEIS" 2>/dev/null
+  [ -f "ALTA_PERFORMANCE_MODE" ] && mf_carregar_config "ALTA_PERFORMANCE_MODE" 2>/dev/null
+  [ -f "$ARQUIVO_VARIAVEIS" ] && mf_carregar_config "$ARQUIVO_VARIAVEIS" 2>/dev/null
   export ALTA_PERFORMANCE=1
   instalar_amanda_docker_stack || exit 1
   exit 0
@@ -11996,7 +11680,7 @@ fi
 
 # Modo: apenas coletar variáveis para instalação Alta Performance (chamado pelo instalador_alta_performance.sh)
 if [ "${1:-}" = "--coletar-variaveis-alta-performance" ]; then
-  [ -f "ALTA_PERFORMANCE_MODE" ] && source "ALTA_PERFORMANCE_MODE" 2>/dev/null
+  [ -f "ALTA_PERFORMANCE_MODE" ] && mf_carregar_config "ALTA_PERFORMANCE_MODE" 2>/dev/null
   export ALTA_PERFORMANCE=1
   questoes_dns_base || trata_erro "questoes_dns_base"
   verificar_dns_base || trata_erro "verificar_dns_base"
@@ -12045,7 +11729,7 @@ fi
 if [ "${1:-}" = "--atualizar" ] || [ "${1:-}" = "atualizar" ] || [ "${1:-}" = "2" ]; then
   carregar_variaveis
   atualizar_amanda_docker
-  exit 0
+  exit $?
 fi
 
 carregar_variaveis

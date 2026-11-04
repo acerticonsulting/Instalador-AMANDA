@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/mf_operacoes_seguras.sh" || exit 1
 
 if [ -z "${PURPLE:-}" ]; then
   if [ "${COLORTERM:-}" = "truecolor" ] || [ "${COLORTERM:-}" = "24bit" ] || [ -n "${WT_SESSION:-}" ] || [[ "${TERM:-}" =~ (xterm|256color|screen|tmux|linux|alacritty|kitty) ]]; then
@@ -45,7 +46,7 @@ detectar_instancias_instaladas() {
     local empresa_original="${empresa:-}"
     
     # Carregar variáveis do arquivo
-    source "${ARQUIVO_VARIAVEIS}" 2>/dev/null
+    mf_carregar_config "${ARQUIVO_VARIAVEIS}" 2>/dev/null
     temp_empresa="${empresa:-}"
     
     if [ -n "${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}/backend" ]; then
@@ -65,7 +66,7 @@ detectar_instancias_instaladas() {
         local empresa_original="${empresa:-}"
         
         # Carregar variáveis do arquivo
-        source "$arquivo_instancia" 2>/dev/null
+        mf_carregar_config "$arquivo_instancia" 2>/dev/null
         temp_empresa="${empresa:-}"
         
         if [ -n "${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}/backend" ]; then
@@ -104,7 +105,7 @@ selecionar_instancia() {
     sleep 2
     
     # Carregar variáveis da instância única
-    source "${INSTANCIAS_DETECTADAS[0]}"
+    mf_carregar_config "${INSTANCIAS_DETECTADAS[0]}"
     return 0
   else
     # Múltiplas instâncias, perguntar qual usar
@@ -123,7 +124,7 @@ selecionar_instancia() {
       local subdominio_backend_original="${subdominio_backend:-}"
       local subdominio_frontend_original="${subdominio_frontend:-}"
       
-      source "$arquivo_instancia" 2>/dev/null
+      mf_carregar_config "$arquivo_instancia" 2>/dev/null
       local temp_backend="${subdominio_backend:-}"
       local temp_frontend="${subdominio_frontend:-}"
       
@@ -155,7 +156,7 @@ selecionar_instancia() {
     local indice_selecionado=$((opcao_selecionada - 1))
     
     # Carregar variáveis da instância selecionada
-    source "${INSTANCIAS_DETECTADAS[$indice_selecionado]}"
+    mf_carregar_config "${INSTANCIAS_DETECTADAS[$indice_selecionado]}"
     printf "${GREEN} >> Instância selecionada: ${BLUE}${empresa}${WHITE}\n"
     echo
     sleep 2
@@ -303,7 +304,7 @@ echo "VAPID_SUBJECT=${VAPID_SUBJECT_VALUE}" >> "$BACKEND_ENV"
 
 # Garantir permissões corretas
 chown deploy:deploy "$BACKEND_ENV" 2>/dev/null || true
-chmod 644 "$BACKEND_ENV" 2>/dev/null || true
+chmod 600 "$BACKEND_ENV" 2>/dev/null || true
 
 printf "${GREEN}    VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}${WHITE}\n"
 printf "${GREEN}    VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}${WHITE}\n"

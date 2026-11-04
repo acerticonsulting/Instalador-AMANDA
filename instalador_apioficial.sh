@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/tools/mf_operacoes_seguras.sh" || exit 1
 
 if [ -z "${PURPLE:-}" ]; then
   if [ "${COLORTERM:-}" = "truecolor" ] || [ "${COLORTERM:-}" = "24bit" ] || [ -n "${WT_SESSION:-}" ] || [[ "${TERM:-}" =~ (xterm|256color|screen|tmux|linux|alacritty|kitty) ]]; then
@@ -126,7 +127,7 @@ detectar_instancias_instaladas() {
     local subdominio_backend_original="${subdominio_backend:-}"
     local subdominio_frontend_original="${subdominio_frontend:-}"
     # shellcheck source=/dev/null
-    source "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" 2>/dev/null
+    mf_carregar_config "${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO" 2>/dev/null
     temp_empresa="${empresa:-}"
     if [ -n "${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}/backend" ]; then
       instancias+=("${INSTALADOR_DIR}/VARIAVEIS_INSTALACAO")
@@ -145,7 +146,7 @@ detectar_instancias_instaladas() {
         local subdominio_backend_original="${subdominio_backend:-}"
         local subdominio_frontend_original="${subdominio_frontend:-}"
         # shellcheck source=/dev/null
-        source "$arquivo_instancia" 2>/dev/null
+        mf_carregar_config "$arquivo_instancia" 2>/dev/null
         temp_empresa="${empresa:-}"
         if [ -n "${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}" ] && [ -d "/home/deploy/${temp_empresa}/backend" ]; then
           instancias+=("$arquivo_instancia")
@@ -177,7 +178,7 @@ selecionar_instancia_apioficial() {
     printf "${GREEN} >> Instância: ${BLUE}${NOMES_EMPRESAS_DETECTADAS[0]}${WHITE}\n\n"
     ARQUIVO_VARIAVEIS="${INSTANCIAS_DETECTADAS[0]}"
     # shellcheck source=/dev/null
-    source "$ARQUIVO_VARIAVEIS"
+    mf_carregar_config "$ARQUIVO_VARIAVEIS"
     sleep 1
     return 0
   fi
@@ -193,7 +194,7 @@ selecionar_instancia_apioficial() {
     local subdominio_backend_original="${subdominio_backend:-}"
     local subdominio_frontend_original="${subdominio_frontend:-}"
     # shellcheck source=/dev/null
-    source "$arquivo_instancia" 2>/dev/null
+    mf_carregar_config "$arquivo_instancia" 2>/dev/null
     local tb="${subdominio_backend:-}"
     local tf="${subdominio_frontend:-}"
     empresa="${empresa_original}"
@@ -214,7 +215,7 @@ selecionar_instancia_apioficial() {
   local indice_selecionado=$((escolha_instancia - 1))
   ARQUIVO_VARIAVEIS="${INSTANCIAS_DETECTADAS[$indice_selecionado]}"
   # shellcheck source=/dev/null
-  source "$ARQUIVO_VARIAVEIS"
+  mf_carregar_config "$ARQUIVO_VARIAVEIS"
   printf "${GREEN} >> Instância selecionada: ${BLUE}${empresa}${WHITE}\n\n"
   sleep 1
 }
@@ -223,7 +224,7 @@ selecionar_instancia_apioficial() {
 carregar_variaveis() {
   if [ -f "$ARQUIVO_VARIAVEIS" ]; then
     # shellcheck source=/dev/null
-    source "$ARQUIVO_VARIAVEIS"
+    mf_carregar_config "$ARQUIVO_VARIAVEIS"
   else
     empresa="multiflow"
     nome_titulo="MultiFlow"
@@ -531,7 +532,7 @@ configurar_env_apioficial() {
     apioficial_definir_nome_banco
     # Carregar variáveis necessárias
     # shellcheck source=/dev/null
-    source "$ARQUIVO_VARIAVEIS"
+    mf_carregar_config "$ARQUIVO_VARIAVEIS"
     carregar_config_banco_backend
     
     # Buscar JWT_REFRESH_SECRET do backend existente
@@ -665,12 +666,11 @@ PYINJECT
     fi
 
     printf "${WHITE} >> Construindo e iniciando contêiner Docker da API Oficial...${WHITE}\n"
-    cd "${compose_dir}" && docker compose -p "${empresa}" up -d --build api_oficial
+    (cd "${compose_dir}" && docker compose -p "${empresa}" up -d --build api_oficial) || return 1
     sleep 6
 
     printf "${WHITE} >> Executando migrações Prisma dentro do contêiner...${WHITE}\n"
-    docker exec "${empresa}_apioficial" npx prisma migrate deploy 2>/dev/null || true
-    docker exec "${empresa}_apioficial" npx prisma db push --accept-data-loss 2>/dev/null || true
+    docker exec "${empresa}_apioficial" npx prisma migrate deploy || return 1
 
     printf "${GREEN} >> API Oficial instalada e executando em contêiner Docker com sucesso!${WHITE}\n"
     sleep 2
@@ -693,20 +693,20 @@ atualizar_env_backend() {
 
     # Atualizar .env do compose se existir
     if [ -n "$compose_dir" ] && [ -f "${compose_dir}/.env" ]; then
-      sed -i "s|^URL_API_OFICIAL=.*|URL_API_OFICIAL=https://${subdominio_oficial}|" "${compose_dir}/.env" 2>/dev/null || echo "URL_API_OFICIAL=https://${subdominio_oficial}" >> "${compose_dir}/.env"
-      sed -i "s|^API_OFICIAL_URL=.*|API_OFICIAL_URL=https://${subdominio_oficial}|" "${compose_dir}/.env" 2>/dev/null || echo "API_OFICIAL_URL=https://${subdominio_oficial}" >> "${compose_dir}/.env"
-      sed -i "s|^USE_WHATSAPP_OFICIAL=.*|USE_WHATSAPP_OFICIAL=true|" "${compose_dir}/.env" 2>/dev/null || echo "USE_WHATSAPP_OFICIAL=true" >> "${compose_dir}/.env"
-      sed -i "s|^TOKEN_API_OFICIAL=.*|TOKEN_API_OFICIAL=adminpro|" "${compose_dir}/.env" 2>/dev/null || echo "TOKEN_API_OFICIAL=adminpro" >> "${compose_dir}/.env"
-      sed -i "s|^API_OFICIAL_TOKEN=.*|API_OFICIAL_TOKEN=adminpro|" "${compose_dir}/.env" 2>/dev/null || echo "API_OFICIAL_TOKEN=adminpro" >> "${compose_dir}/.env"
+      sincronizar_porta_env "URL_API_OFICIAL" "https://${subdominio_oficial}" "${compose_dir}/.env" || return 1
+      sincronizar_porta_env "API_OFICIAL_URL" "https://${subdominio_oficial}" "${compose_dir}/.env" || return 1
+      sincronizar_porta_env "USE_WHATSAPP_OFICIAL" "true" "${compose_dir}/.env" || return 1
+      sincronizar_porta_env "TOKEN_API_OFICIAL" "adminpro" "${compose_dir}/.env" || return 1
+      sincronizar_porta_env "API_OFICIAL_TOKEN" "adminpro" "${compose_dir}/.env" || return 1
     fi
 
     # Atualizar backend/.env
     if [ -f "/home/deploy/${empresa}/backend/.env" ]; then
-      sed -i "s|^URL_API_OFICIAL=.*|URL_API_OFICIAL=https://${subdominio_oficial}|" "/home/deploy/${empresa}/backend/.env" 2>/dev/null || echo "URL_API_OFICIAL=https://${subdominio_oficial}" >> "/home/deploy/${empresa}/backend/.env"
-      sed -i "s|^API_OFICIAL_URL=.*|API_OFICIAL_URL=https://${subdominio_oficial}|" "/home/deploy/${empresa}/backend/.env" 2>/dev/null || echo "API_OFICIAL_URL=https://${subdominio_oficial}" >> "/home/deploy/${empresa}/backend/.env"
-      sed -i "s|^USE_WHATSAPP_OFICIAL=.*|USE_WHATSAPP_OFICIAL=true|" "/home/deploy/${empresa}/backend/.env" 2>/dev/null || echo "USE_WHATSAPP_OFICIAL=true" >> "/home/deploy/${empresa}/backend/.env"
-      sed -i "s|^TOKEN_API_OFICIAL=.*|TOKEN_API_OFICIAL=adminpro|" "/home/deploy/${empresa}/backend/.env" 2>/dev/null || echo "TOKEN_API_OFICIAL=adminpro" >> "/home/deploy/${empresa}/backend/.env"
-      sed -i "s|^API_OFICIAL_TOKEN=.*|API_OFICIAL_TOKEN=adminpro|" "/home/deploy/${empresa}/backend/.env" 2>/dev/null || echo "API_OFICIAL_TOKEN=adminpro" >> "/home/deploy/${empresa}/backend/.env"
+      sincronizar_porta_env "URL_API_OFICIAL" "https://${subdominio_oficial}" "/home/deploy/${empresa}/backend/.env" || return 1
+      sincronizar_porta_env "API_OFICIAL_URL" "https://${subdominio_oficial}" "/home/deploy/${empresa}/backend/.env" || return 1
+      sincronizar_porta_env "USE_WHATSAPP_OFICIAL" "true" "/home/deploy/${empresa}/backend/.env" || return 1
+      sincronizar_porta_env "TOKEN_API_OFICIAL" "adminpro" "/home/deploy/${empresa}/backend/.env" || return 1
+      sincronizar_porta_env "API_OFICIAL_TOKEN" "adminpro" "/home/deploy/${empresa}/backend/.env" || return 1
       chown deploy:deploy "/home/deploy/${empresa}/backend/.env" 2>/dev/null || true
       chmod 600 "/home/deploy/${empresa}/backend/.env" 2>/dev/null || true
     fi
@@ -750,7 +750,7 @@ EOF
 
 # Função principal
 main() {
-  selecionar_instancia_apioficial
+  selecionar_instancia_apioficial || return 1
   carregar_variaveis
   solicitar_porta_apioficial
   solicitar_dados_apioficial
@@ -758,9 +758,9 @@ main() {
   configurar_nginx_apioficial
   criar_banco_apioficial
   configurar_env_apioficial
-  instalar_apioficial
-  atualizar_env_backend
-  reiniciar_servicos
+  instalar_apioficial || return 1
+  atualizar_env_backend || return 1
+  reiniciar_servicos || return 1
   
   banner
   printf "${GREEN} >> Instalação da API Oficial concluída com sucesso!${WHITE}\n"
