@@ -5,14 +5,25 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 source "$ROOT/tools/mf_operacoes_seguras.sh"
 WORK=$(mktemp -d)
 trap 'rm -rf -- "$WORK"' EXIT
+cd "$WORK"
 LOG="$WORK/docker.log"
 export LOG
 falhar() { printf 'FALHOU: %s\n' "$*" >&2; exit 1; }
 extrair() {
-  awk -v nome="$1" '$0 == nome "() {" { ativo=1 } ativo { print } ativo && /^}$/ { exit }' "$ROOT/instalador_single.sh"
+  awk -v nome="$1" '
+    $0 == nome "() {" { ativo=1; encontrado=1 }
+    ativo { print }
+    ativo && /^}$/ { completo=1; exit }
+    END { if (!encontrado || !completo) exit 1 }
+  ' "${2:-$ROOT/instalador_single.sh}"
+}
+carregar_funcao() {
+  local codigo
+  codigo=$(extrair "$@") || falhar "função ausente ou incompleta: $1"
+  source /dev/stdin <<< "$codigo"
 }
 for nome in mf_verificar_servicos_criticos_docker salvar_etapa carregar_etapa ferramentas_restaurar_sql_em_banco; do
-  source /dev/stdin <<< "$(extrair "$nome")"
+  carregar_funcao "$nome"
 done
 RED='' WHITE='' YELLOW=''
 sleep() { :; }
@@ -149,13 +160,13 @@ instalar_apioficial() { return 1; }
 reiniciar_apioficial() { falhar 'reinício depois de falha'; }
 atualizar_env_backend() { falhar 'integração depois de falha'; }
 for arquivo in atualizar_apioficial.sh instalador_apioficial.sh; do
-  source /dev/stdin <<< "$(awk '/^main\(\) \{/ { ativo=1 } ativo { print } ativo && /^}$/ { exit }' "$ROOT/$arquivo")"
+  carregar_funcao main "$ROOT/$arquivo"
   if main; then falhar "erro não propagado em $arquivo"; fi
 done
 
 # Lock do APT ocupado deve interromper o provisionamento sem matar processos.
 (
-  source /dev/stdin <<< "$(extrair garantir_docker_e_compose)"
+  carregar_funcao garantir_docker_e_compose
   banner() { :; }
   PURPLE='' GREEN=''
   docker() { return 1; }
@@ -165,7 +176,7 @@ done
   dpkg() { falhar 'tentativa de reparar dpkg durante outra operação'; }
   apt-get() { falhar 'APT chamado com lock ocupado'; }
   if garantir_docker_e_compose; then falhar 'lock APT ignorado'; fi
-  source /dev/stdin <<< "$(awk '/^instalar_docker_compartilhado\(\) \{/ { ativo=1 } ativo { print } ativo && /^}$/ { exit }' "$ROOT/tools/instalar_docker_compartilhado.sh")"
+  carregar_funcao instalar_docker_compartilhado "$ROOT/tools/instalar_docker_compartilhado.sh"
   if instalar_docker_compartilhado; then falhar 'lock APT ignorado pelo helper compartilhado'; fi
 )
 

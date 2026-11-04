@@ -1,0 +1,9 @@
+#!/bin/sh
+# Valida o conteúdo do índice, inclusive quando há mudanças não preparadas.
+set -eu
+git diff --cached --check
+test_dir=$(mktemp -d "${TMPDIR:-/tmp}/amanda-index.XXXXXX")
+trap 'rm -rf -- "$test_dir"' EXIT HUP INT TERM
+git -c core.autocrlf=false checkout-index --all --prefix="$test_dir/"
+printf '%s\n' 'Validando a versão preparada para o commit...'
+BASH_ENV= ENV= bash --noprofile --norc "$test_dir/tests/validar_instalador.sh"

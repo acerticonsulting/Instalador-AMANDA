@@ -2,6 +2,13 @@
 
 Suite oficial de instalação, atualização e gerenciamento 100% Docker para a plataforma **AMANDA**.
 
+### Validação depois de alterações
+
+Execute `bash tests/validar_instalador.sh` antes de cada commit. Para ativar a
+verificação automática neste clone, execute `bash tests/ativar_validacao.sh`.
+O [plano de testes](tests/PLANO_DE_TESTES.md) descreve a cobertura, os testes de
+homologação e o modo `--plataforma` para consultar uma instalação Docker existente.
+
 ---
 
 ### 📥 Download do Instalador & Primeira Instalação:
