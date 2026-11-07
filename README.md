@@ -60,7 +60,7 @@ Para recuperar uma instalação padrão existente após a publicação de corre�
 - **100% Docker-Only:** Orquestração completa de 9 contêineres otimizados (PostgreSQL 17, PgBouncer, Redis 7.4, AMANDA Backend Node 20 + Rust Nativo, AMANDA Frontend React, WhatsApp Meta Cloud API Oficial, WuzAPI WhatsMeow, Go Campaign Dispatcher e API de Transcrição).
 - **Modo Sem Domínio (Apenas IP / Localhost):** Suporte nativo para testes locais, WSL ou VPS sem domínio público, com acesso direto pelas portas HTTP (3000, 8080 e 6000) e bypass automático de checagens de DNS e SSL.
 - **Gerenciador de URLs Interativo:** Permite inspecionar e alterar individualmente as URLs de todos os microsserviços, com teste de conectividade (DNS/Ping/HTTP) e reinício automático imediato dos contêineres afetados.
-- **Identidade Visual Roxa AMANDA:** Interface moderna harmonizada na paleta roxa oficial (`#8B5CF6` / `#7C3AED`).
+- **Identidade Visual Roxa AMANDA:** Interface moderna harmonizada na paleta roxa oficial (`#9905D8` no tema claro / `#8A00FA` no tema escuro).
 - **Acesso inicial padrão:** `admin@amanda.com.br` / `adminamanda`. Na instalação é possível escolher outro e-mail e senha; a senha personalizada é digitada e confirmada sem aparecer. A escolha é passada ao seed com `AMANDA_ADMIN_EMAIL` / `AMANDA_ADMIN_PASSWORD`. Contas existentes são preservadas nas atualizações, e a senha do painel é independente da senha do banco/deploy e dos tokens das APIs.
 - **Compatibilidade do acesso inicial:** use a versão atualizada da plataforma AMANDA. O fluxo Docker verifica o suporte ao seed configurável e interrompe versões antigas, em vez de anunciar credenciais que não foram aplicadas.
 - **Banco de Dados Oficial:** `DB_USER=amanda` / `DB_NAME=amanda` / `Acertitech13@`.
