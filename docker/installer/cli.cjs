@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline/promises');
 const { Manager, normalizeConfig, SOURCE } = require('./manager.cjs');
+const { Menus }=require('./menus.cjs');
+const { GROUPS }=require('./options.cjs');
 
 function configInput(file) {
   try { return JSON.parse(fs.readFileSync(file,'utf8')); }
@@ -47,11 +49,20 @@ async function installInput(configFile) {
   }
   const sourceToken = await ask('Token de leitura da plataforma, apenas se o repositório for privado (vazio para público)', undefined, true);
   const buildToken = await ask('Token de leitura do conector privado, usado somente como segredo BuildKit', undefined, true);
-  return normalizeConfig({ sourceUrl, project, frontendUrl, backendUrl, public: publish, edge, adminEmail, adminPassword, sourceToken, buildToken });
+  const options={};
+  options.appName=await ask('Título da aplicação','AMANDA');options.supportPhone=await ask('Telefone de suporte','');
+  const databasePassword=await ask('Senha PostgreSQL (vazio gera senha aleatória; não cria usuário no Linux)',undefined,true);
+  const masterPassword=await ask('Senha MASTER da plataforma (vazio gera chave aleatória)',undefined,true);
+  if(databasePassword)options.databasePassword=databasePassword;if(masterPassword)options.masterPassword=masterPassword;
+  options.officialPort=Number(await ask('Porta da API Oficial','6000'));options.wuzapiPort=Number(await ask('Porta WuzAPI','8090'));
+  if(edge)options.officialUrl=await ask('URL HTTPS pública da API Oficial (opcional)','');
+  options.backendEnv={};
+  for(const[group,label]of[['email','E-mail SMTP'],['facebook','Facebook App ID / App Secret']])if(/^s(im)?$/i.test(await ask('Configurar '+label+' agora','n')))for(const[key,title,fallback,secret]of GROUPS[group])options.backendEnv[key]=await ask(title,fallback,secret);
+  return normalizeConfig({ sourceUrl, project, frontendUrl, backendUrl, public: publish, edge, adminEmail, adminPassword, sourceToken, buildToken,options });
 }
 async function main() {
-  const args = process.argv.slice(2); let action = args.shift() || 'menu', configFile;
-  while (args.length) { if (args.shift() !== '--config' || !args.length) throw Error('Argumentos inválidos.'); configFile = args.shift(); }
+  const args = process.argv.slice(2); let action = args.shift() || 'menu', configFile,initial;
+  while (args.length) { const flag=args.shift();if(!args.length)throw Error('Argumentos inválidos.');if(flag==='--config')configFile=args.shift();else if(flag==='--initial')initial=args.shift();else throw Error('Argumentos inválidos.'); }
   if (action === 'help') {
     console.log(`AMANDA — gerenciador inteiramente em containers
 Uso: sh instalador_single.sh [comando] --dir /pasta/da/instalacao [--config /arquivo.json]
@@ -64,10 +75,8 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
   }
   const manager = new Manager(process.env.AMANDA_INSTALL_DIR || '/opt/amanda');
   if (action === 'menu') {
-    const actions = ['install','update','status','start','stop','restart','logs','backup','resume','adopt','doctor','build-token'];
-    actions.forEach((v,i) => console.log(`${i+1} - ${v}`));
-    const selected = await ask('Escolha uma operação'); action = actions[Number(selected)-1];
-    if (!action) throw Error('Opção inválida.');
+    if(!process.stdin.isTTY)throw Error('O menu requer terminal interativo. Para instalar sem interação use install --config /arquivo.json.');
+    return new Menus(manager,ask,()=>installInput(configFile),{initial,install:(m,input)=>m.lock(async()=>{await m.doctor();await m.prepare(input);await m.build();await m.initialize();})}).run();
   }
   if (action === 'doctor') return manager.doctor();
   if (action === 'unlock') { await manager.doctor(); return manager.unlock(); }

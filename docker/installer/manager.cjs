@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const { validateOptions, writeEnv, digest } = require('./options.cjs');
 
 const SOURCE = 'https://github.com/acerticonsulting/AMANDA.git';
 const CORE = ['postgres', 'redis', 'backend', 'frontend', 'api_transcricao', 'api_oficial', 'wuzapi', 'rabbitmq'];
@@ -17,7 +19,7 @@ function rootPath(value) {
   return root;
 }
 function normalizeConfig(input) {
-  const allowed = ['sourceUrl', 'project', 'frontendUrl', 'backendUrl', 'public', 'edge', 'adminEmail', 'adminPassword', 'sourceToken', 'buildToken'];
+  const allowed = ['sourceUrl', 'project', 'frontendUrl', 'backendUrl', 'public', 'edge', 'adminEmail', 'adminPassword', 'sourceToken', 'buildToken','options'];
   for (const key of Object.keys(input)) if (!allowed.includes(key)) throw Error('Campo de configuração desconhecido: ' + key);
   const c = { project: 'amanda', frontendUrl: 'http://localhost:3000', backendUrl: 'http://localhost:8080', public: false, edge: false, adminEmail: 'admin@amanda.com.br', adminPassword: 'adminamanda', ...input };
   c.sourceUrl = sourceUrl(c.sourceUrl);
@@ -29,12 +31,15 @@ function normalizeConfig(input) {
     c[key] = u.origin;
   }
   const front = new URL(c.frontendUrl), back = new URL(c.backendUrl);
+  c.options=validateOptions(c.options);
+  if(c.options.officialUrl&&(!c.edge||[front.hostname,back.hostname].includes(new URL(c.options.officialUrl).hostname)))throw Error('A API Oficial pública requer Caddy/HTTPS e domínio próprio diferente do frontend/backend.');
   if (c.edge) {
+    if(new Set([80,443,3000,8080,c.options.officialPort||6000,c.options.wuzapiPort||8090]).size!==6)throw Error('Portas da API Oficial/WuzAPI conflitam com o proxy, frontend ou backend.');
     for (const u of [front, back]) if (u.protocol !== 'https:' || u.port || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)) throw Error('HTTPS/Caddy exige dois domínios DNS e porta 443.');
     if (front.hostname === back.hostname) throw Error('Use domínios diferentes para frontend e backend.');
   } else {
     if (front.protocol !== 'http:' || back.protocol !== 'http:') throw Error('Para HTTPS, habilite edge/Caddy.');
-    const ports = [front.port || '80', back.port || '80', '6000', '8090'];
+    const ports = [front.port || '80', back.port || '80', String(c.options.officialPort || 6000), String(c.options.wuzapiPort || 8090)];
     if (new Set(ports).size !== ports.length) throw Error('As portas de frontend, backend, API Oficial (6000) e WuzAPI (8090) devem ser diferentes.');
     if (!c.public && [front, back].some(u => !['localhost', '127.0.0.1', '[::1]'].includes(u.hostname))) throw Error('URLs de rede exigem public=true ou HTTPS/Caddy.');
   }
@@ -79,14 +84,20 @@ class Runner {
     if (this.logFile) { fs.mkdirSync(path.dirname(this.logFile), { recursive: true, mode: 0o700 }); fs.appendFileSync(this.logFile, safe, { mode: 0o600 }); }
   }
   async run(bin, args, options = {}) {
-    const { quiet = false, label = bin, env = {}, cwd, allowFailure = false, outputFile } = options;
+    const { quiet = false, label = bin, env = {}, cwd, allowFailure = false, outputFile, inputFile } = options;
     if (!quiet) this.emit('\n' + label + '\n');
     return new Promise((resolve, reject) => {
-      const child = spawn(bin, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore','pipe','pipe'], shell: false });
+      const child = spawn(bin, args, { cwd, env: { ...process.env, ...env }, stdio: [inputFile ? 'pipe' : 'ignore','pipe','pipe'], shell: false });
       let stdout = '', stderr = '', line = '', ended = false, ioError = false;
       const destination = outputFile ? fs.createWriteStream(outputFile, { flags: 'wx', mode: 0o600 }) : null;
       destination?.on('error', () => { ioError = true; child.kill('SIGTERM'); });
       if (destination) child.stdout.pipe(destination);
+      if (inputFile) {
+        const source=fs.createReadStream(inputFile);
+        source.on('error',()=>{ioError=true;child.kill('SIGTERM');});
+        child.stdin.on('error',()=>{ioError=true;child.kill('SIGTERM');});
+        child.on('close',()=>source.destroy());source.pipe(child.stdin);
+      }
       const timer = setTimeout(() => { child.kill('SIGTERM'); setTimeout(() => { if (!ended) child.kill('SIGKILL'); }, 5000).unref(); }, 45 * 60 * 1000);
       child.stdout.on('data', chunk => {
         if (destination) return;
@@ -113,6 +124,7 @@ class Manager {
     this.root = rootPath(root); this.private = path.join(this.root, '.amanda-installer');
     this.stateFile = path.join(this.private, 'state.json');
     this.runner = runner || new Runner(path.join(this.private, 'install.log'));
+    this.operationScope=new AsyncLocalStorage();
   }
   write(file, value) { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n', { mode: 0o600 }); }
   save(state) { this.write(this.stateFile + '.tmp', state); fs.renameSync(this.stateFile + '.tmp', this.stateFile); this.state = state; }
@@ -134,7 +146,7 @@ class Manager {
     for (const p of [path.join(this.state.platform,'.secrets/github_token'),path.join(this.private,'source-token')]) if (fs.existsSync(p)) this.runner.secret(fs.readFileSync(p,'utf8').trim());
     const account = path.join(this.private,'admin-access.json'); if (fs.existsSync(account)) this.runner.secret(JSON.parse(fs.readFileSync(account,'utf8')).password);
   }
-  docker(args, options) { return this.runner.run('docker', args, options); }
+  docker(args, options={}) { const auth=path.join(this.private,'docker-auth');return this.runner.run('docker', args, {...options,env:{...(fs.existsSync(path.join(auth,'config.json'))?{DOCKER_CONFIG:auth}:{}),...options.env}}); }
   git(args, options = {}) { return this.runner.run('git', ['-c','safe.directory=' + this.state.platform,...args], { cwd: this.state.platform, ...options }); }
   compose(args, options = {}) {
     const s = this.state;
@@ -162,6 +174,16 @@ class Manager {
     for (const name of CORE) if (!config.services[name]) throw Error('Compose não contém o serviço ' + name);
     for (const [key,v] of Object.entries(config.volumes || {})) if (v.external || v.name !== this.state.project + '_' + key) throw Error('Volume externo ou nome inesperado: ' + key);
     for (const service of Object.values(config.services)) for (const [k,v] of Object.entries(service.environment || {})) if (/SECRET|TOKEN|KEY|PASS/.test(k)) { this.runner.secret(v); if (typeof v === 'string') this.runner.secret(v.replace(/\$\$/g,'$')); }
+    config.installerAddons=[];
+    if(fs.existsSync(this.private))for(const name of fs.readdirSync(this.private).filter(n=>/^addon-(voz|hub|goflow)\.json$/.test(n))){
+      const a=JSON.parse(fs.readFileSync(path.join(this.private,name),'utf8')),kind=name.slice(6,-5),dir=path.join(this.root,'addons',kind);
+      if(a.dir!==dir||a.project!==this.state.project+'_'+kind||!/^[A-Za-z0-9_./-]+\.ya?ml$/.test(a.composeFile)||a.composeFile.split('/').includes('..')||path.isAbsolute(a.composeFile))throw Error('Registro de componente inválido.');
+      const base=['compose','--project-directory',dir,'--env-file',path.join(this.private,'addon-'+kind+'.env'),'-p',a.project,'-f',path.join(dir,a.composeFile)];
+      const extra=JSON.parse((await this.docker([...base,'config','--format','json'],{quiet:true})).stdout);
+      for(const [key,v]of Object.entries(extra.volumes||{})){if(v.external||v.name!==a.project+'_'+key)throw Error('Volume externo de componente recusado.');config.volumes[kind+'_'+key]=v;}
+      for(const service of Object.values(extra.services||{}))for(const[k,v]of Object.entries(service.environment||{}))if(/KEY|TOKEN|SECRET|PASS/.test(k))this.runner.secret(v);
+      config.installerAddons.push({...a,base,services:Object.keys(extra.services||{})});
+    }
     return config;
   }
   async assertFreshResources() {
@@ -185,7 +207,17 @@ class Manager {
     const f = new URL(c.frontendUrl), b = new URL(c.backendUrl);
     editEnv(path.join(this.state.platform,'.env'), { COMPOSE_PROJECT_NAME: c.project, COMPOSE_PROFILES: this.state.profiles.join(','), USE_WHATSAPP_OFICIAL: 'true', RABBITMQ_ENABLED_GLOBAL: 'true', WUZAPI_URL: 'http://wuzapi:8080', FRONTEND_URL: c.frontendUrl, BACKEND_URL: c.backendUrl, ALLOWED_ORIGINS: c.frontendUrl, BIND_ADDRESS: c.edge || !c.public ? '127.0.0.1' : '0.0.0.0', PORT_FRONTEND: c.edge ? 3000 : (f.port || 80), PORT_BACKEND: c.edge ? 8080 : (b.port || 80), FRONTEND_HOST: f.hostname, BACKEND_HOST: b.hostname });
     if (c.buildToken) this.write(path.join(this.state.platform,'.secrets/github_token'), c.buildToken);
-    this.write(path.join(this.private,'admin-access.json'), { email: c.adminEmail, password: c.adminPassword });
+    const o=c.options;
+    for(const v of [o.databasePassword,o.masterPassword,...Object.values(o.backendEnv || {})])this.runner.secret(v);
+    const rootOptions={PORT_APIOFICIAL:o.officialPort || 6000,PORT_WUZAPI:o.wuzapiPort || 8090,REACT_APP_NUMBER_SUPPORT:o.supportPhone || ''};
+    rootOptions.OFICIAL_HOST=o.officialUrl?new URL(o.officialUrl).hostname:'';
+    if(o.databasePassword){rootOptions.DB_PASS=o.databasePassword;rootOptions.DB_URI_PASSWORD=encodeURIComponent(o.databasePassword);}
+    if(o.masterPassword)rootOptions.MASTER_KEY=o.masterPassword;
+    const backendOptions={...o.backendEnv};
+    for(const key of ['TRANSCRIBE_URL','URL_API_OFICIAL','WUZAPI_URL','GO_CAMPAIGN_DISPATCHER_URL','USE_GO_CAMPAIGN_DISPATCHER'])if(backendOptions[key]!==undefined){rootOptions[key]=backendOptions[key];delete backendOptions[key];}
+    writeEnv(path.join(this.state.platform,'.env'),rootOptions);
+    if(Object.keys(backendOptions).length)writeEnv(path.join(this.state.platform,'.env.backend'),backendOptions);
+    this.write(path.join(this.private,'admin-access.json'), { email: c.adminEmail, password: c.adminPassword, appName:o.appName });
     this.loadSecrets(); await this.validateSource(true); await this.assertFreshResources();
     this.save({ ...this.state, phase: 'build', freshResourcesVerified: true });
   }
@@ -216,6 +248,7 @@ class Manager {
   }
   async startServices() {
     await this.compose(['up','-d','--no-deps','--wait','--wait-timeout','300',...CORE,...(this.state.profiles.includes('edge') ? ['edge'] : [])], { label: 'Iniciando a plataforma completa e verificando prontidão' });
+    for(const a of(await this.configuration()).installerAddons)await this.docker([...a.base,'up','-d','--wait','--wait-timeout','300'],{label:'Iniciando componente '+a.project});
     await this.verifyHealth();
   }
   async verifyHealth() {
@@ -224,12 +257,18 @@ class Manager {
       const r = rows.find(x => x.Service === name && x.State === 'running' && (name === 'edge' || x.Health === 'healthy'));
       if (!r || r.State !== 'running' || (name !== 'edge' && r.Health !== 'healthy')) throw Error('Serviço não está pronto: ' + name);
     }
+    for(const a of(await this.configuration()).installerAddons){const raw=(await this.docker([...a.base,'ps','--all','--format','json'],{quiet:true})).stdout;const rows=raw.trim().split(/\r?\n/).filter(Boolean).flatMap(l=>{const v=JSON.parse(l);return Array.isArray(v)?v:[v];});for(const name of a.services)if(!rows.some(r=>r.Service===name&&r.State==='running'&&r.Health==='healthy'))throw Error('Componente não saudável: '+a.project+'/'+name);}
     await this.compose(['exec','-T','backend','node','-e',`Promise.all(['http://127.0.0.1:8080/healthz','http://frontend/'].map(async u=>{const r=await fetch(u);if(r.status!==200)throw Error('HTTP '+r.status)})).catch(()=>process.exit(1))`], { label: 'Verificando HTTP interno do backend e frontend' });
+    if(this.state.profiles.includes('edge')){
+      const env=envValues(path.join(this.state.platform,'.env'));
+      const urls=[{url:env.FRONTEND_URL,exact:true},{url:env.BACKEND_URL+'/healthz',exact:true},...(env.OFICIAL_HOST?[{url:'https://'+env.OFICIAL_HOST,exact:false}]:[])];
+      await this.compose(['exec','-T','backend','node','-e',`(async()=>{const urls=${JSON.stringify(urls)};for(let i=0;i<6;i++){try{for(const p of urls){const r=await fetch(p.url,{signal:AbortSignal.timeout(10000),redirect:'error'});if(p.exact?r.status!==200:r.status<200||r.status>=500)throw Error();}console.log('HTTPS público e certificados validados.');return;}catch{if(i===5)throw Error();await new Promise(r=>setTimeout(r,5000));}}})().catch(()=>process.exit(1))`],{label:'Validando HTTPS público, DNS e certificados (sem enviar mensagens)'});
+    }
   }
   async verifyLogin() {
     const account = JSON.parse(fs.readFileSync(path.join(this.private,'admin-access.json'),'utf8'));
-    const script = ` (async()=>{const r=await fetch('http://127.0.0.1:8080/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:process.env.AMANDA_ADMIN_EMAIL,password:process.env.AMANDA_ADMIN_PASSWORD})});if(r.status!==200)throw Error();const a=await r.json();if(a.user?.id!==1||a.user?.profile!=='admin')throw Error();const me=await fetch('http://127.0.0.1:8080/auth/me',{headers:{Authorization:'Bearer '+a.token}});if(me.status!==200)throw Error();console.log('Login inicial e sessão aprovados.')})().catch(()=>process.exit(1))`;
-    await this.compose(['exec','-T','-e','AMANDA_ADMIN_EMAIL','-e','AMANDA_ADMIN_PASSWORD','backend','node','-e',script], { env: { AMANDA_ADMIN_EMAIL: account.email, AMANDA_ADMIN_PASSWORD: account.password }, label: 'Validando o acesso escolhido, sem enviar mensagens' });
+    const script = ` (async()=>{const r=await fetch('http://127.0.0.1:8080/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:process.env.AMANDA_ADMIN_EMAIL,password:process.env.AMANDA_ADMIN_PASSWORD})});if(r.status!==200)throw Error();const a=await r.json();if(a.user?.id!==1||a.user?.profile!=='admin')throw Error();const headers={Authorization:'Bearer '+a.token,'Content-Type':'application/json'};const me=await fetch('http://127.0.0.1:8080/auth/me',{headers});if(me.status!==200)throw Error();if(process.env.AMANDA_APP_NAME){const s=await fetch('http://127.0.0.1:8080/settings/appName',{method:'PUT',headers,body:JSON.stringify({value:process.env.AMANDA_APP_NAME})});if(s.status!==200)throw Error();}console.log('Login inicial, sessão e identidade aprovados.')})().catch(()=>process.exit(1))`;
+    await this.compose(['exec','-T','-e','AMANDA_ADMIN_EMAIL','-e','AMANDA_ADMIN_PASSWORD','-e','AMANDA_APP_NAME','backend','node','-e',script], { env: { AMANDA_ADMIN_EMAIL: account.email, AMANDA_ADMIN_PASSWORD: account.password, AMANDA_APP_NAME:account.appName || '' }, label: 'Validando o acesso escolhido, sem enviar mensagens' });
   }
   async revision() { return (await this.git(['rev-parse','HEAD'], { quiet: true })).stdout.trim(); }
   async adopt(url) {
@@ -241,17 +280,19 @@ class Manager {
     this.state = { schema: 1, sourceUrl: SOURCE, project, platform, profiles: [...PROFILES,...((env.COMPOSE_PROFILES || '').split(',').includes('edge') ? ['edge'] : [])], initialized: true, phase: 'ready', seedAttempted: false, seedSucceeded: false };
     await this.validateSource(true); this.loadSecrets(); await this.configuration(); await this.verifyHealth();
     this.save({ ...this.state, revision: await this.revision() });
-    if (platform === this.root) { const file = path.join(platform,'.git/info/exclude'); fs.appendFileSync(file,'\n/.amanda-installer/\n'); }
+    if (platform === this.root) { const file = path.join(platform,'.git/info/exclude'); fs.appendFileSync(file,'\n/.amanda-installer/\n/addons/\n/instances/\n/imports/\n'); }
     this.runner.emit('Instalação oficial existente adotada; configurações e volumes preservados. Nenhum seed executado.\n');
   }
-  async backup({ restart = true } = {}) {
-    await this.verifyHealth();
+  async backup({ restart = true, allowUnhealthy = false } = {}) {
+    if(allowUnhealthy)await this.compose(['exec','-T','postgres','pg_isready','-U','amanda','-d','amanda'],{quiet:true,label:'Validando PostgreSQL para backup de recuperação'});
+    else await this.verifyHealth();
     const config = await this.configuration();
     const images = await this.imageIds();
     const dir = path.join(this.private,'backups',new Date().toISOString().replace(/[:.]/g,'-'));
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const stopped = [...CORE.filter(x => x !== 'postgres'),...(this.state.profiles.includes('edge') ? ['edge'] : [])];
     try {
+      for(const a of config.installerAddons)await this.docker([...a.base,'stop'],{label:'Pausando componente '+a.project+' para backup'});
       await this.compose(['stop',...stopped], { label: 'Pausando gravadores para backup consistente' });
       for (const name of ['amanda','api_oficial']) await this.compose(['exec','-T','postgres','pg_dump','-U','amanda','-d',name,'-Fc'], { outputFile: path.join(dir,name+'.dump'), label: 'Backup do banco ' + name });
       const mounts = Object.entries(config.volumes).filter(([key]) => key !== 'postgres_data').flatMap(([key,v]) => ['--mount',`type=volume,source=${v.name},target=/data/${key},readonly`]);
@@ -261,7 +302,9 @@ class Manager {
       for (const f of ['amanda.dump','api_oficial.dump','volumes.tgz']) if (!fs.statSync(path.join(dir,f)).size) throw Error('Backup vazio: '+f);
       const accountFile = path.join(this.private,'admin-access.json');
       if (fs.existsSync(accountFile)) { fs.copyFileSync(accountFile,path.join(dir,'admin-access.json')); fs.chmodSync(path.join(dir,'admin-access.json'),0o600); }
-      this.write(path.join(dir,'backup.json'), { complete: true, project: this.state.project, revision: this.state.revision, images });
+      const addons=[];for(const a of config.installerAddons){const kind=a.project.slice(this.state.project.length+1),record=JSON.parse(fs.readFileSync(path.join(this.private,'addon-'+kind+'.json'),'utf8'));addons.push(record);const file='addon-'+kind+'.env';this.write(path.join(dir,file),fs.readFileSync(path.join(this.private,file),'utf8'));}
+      const hashes={};for(const file of ['amanda.dump','api_oficial.dump','volumes.tgz'])hashes[file]=await digest(path.join(dir,file));
+      this.write(path.join(dir,'backup.json'), { complete: true, project: this.state.project, revision: this.state.revision, images, hashes,addons,volumes:config.volumes });
       this.save({ ...this.state, lastBackup: dir }); return dir;
     } finally { if (restart) await this.startServices(); }
   }
@@ -272,9 +315,10 @@ class Manager {
       if (!/^[a-f0-9]{12,64}$/.test(id)) throw Error('Não foi possível preservar a imagem anterior de '+name);
       result[config.services[name].image] = (await this.docker(['inspect','--format','{{.Image}}',id], { quiet: true })).stdout.trim();
     }
+    for(const a of config.installerAddons)for(const name of a.services){const id=(await this.docker([...a.base,'ps','-a','-q',name],{quiet:true})).stdout.trim();if(!/^[a-f0-9]{12,64}$/.test(id))throw Error('Componente sem container preservável: '+name);const tag=(await this.docker(['inspect','--format','{{.Config.Image}}',id],{quiet:true})).stdout.trim();result[tag]=(await this.docker(['inspect','--format','{{.Image}}',id],{quiet:true})).stdout.trim();}
     return result;
   }
-  async restoreTags(images) { for (const [tag,id] of Object.entries(images)) await this.docker(['image','tag',id,tag], { quiet: true }); }
+  async restoreTags(images) { for (const [tag,id] of Object.entries(images)) if(!tag.startsWith('sha256:')&&!tag.includes('@sha256:'))await this.docker(['image','tag',id,tag], { quiet: true }); }
   async update() {
     if (!this.state.initialized || this.state.phase !== 'ready') throw Error('Instalação incompleta; use resume.');
     await this.validateSource(true); await this.configuration(); await this.verifyHealth();
@@ -322,7 +366,7 @@ class Manager {
     }
     if (action === 'status') return this.verifyHealth();
     if (action === 'logs') return this.compose(['logs','--no-color','--tail','200'], { label: 'Logs (credenciais filtradas)' });
-    if (action === 'stop') return this.compose(['stop'], { label: 'Parando containers; volumes preservados' });
+    if (action === 'stop') {for(const a of(await this.configuration()).installerAddons)await this.docker([...a.base,'stop']);return this.compose(['stop'], { label: 'Parando containers; volumes preservados' });}
     if (!this.state.initialized || this.state.phase !== 'ready') throw Error('Operação exige instalação concluída. Use resume; não executar seeds novamente.');
     if (action === 'backup') return this.backup();
     if (action === 'restart') await this.compose(['stop'], { label: 'Reiniciando a plataforma' });
@@ -330,12 +374,13 @@ class Manager {
     throw Error('Comando desconhecido.');
   }
   async lock(fn) {
+    if(this.operationScope.getStore()===this)return fn();
     fs.mkdirSync(this.private, { recursive: true, mode: 0o700 });
     const file = path.join(this.private,'operation.lock');
     let fd;
     try { fd = fs.openSync(file,'wx',0o600); } catch { throw Error('Outra operação está registrada. Verifique o gerenciador anterior e use unlock se já encerrou.'); }
     fs.writeFileSync(fd, JSON.stringify({ container: process.env.HOSTNAME, at: new Date().toISOString() })); fs.closeSync(fd);
-    try { return await fn(); } finally { fs.unlinkSync(file); }
+    try { return await this.operationScope.run(this,fn); } finally { fs.unlinkSync(file); }
   }
   async unlock() {
     const file = path.join(this.private,'operation.lock');

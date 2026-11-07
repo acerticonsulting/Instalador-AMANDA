@@ -180,3 +180,19 @@ A saída fica no terminal, e arquivos temporários são removidos ao terminar. S
 | VPS limpa / HTTPS / outras arquiteturas / contas externas | Pendente de homologação | Não certificado pela suíte local |
 
 O hook de commit repete os testes sobre a árvore preparada, incluindo o novo grupo.
+
+### Regressão de interface e operações dos menus
+
+A versão atual restaura o menu principal histórico, Ferramentas e API Oficial.
+O grupo Node tem agora 42 testes: menus repetidos e numeração, exibição antes de
+Docker, saída sem recursos, configuração avançada e falhas, locks reentrantes,
+push persistente, backup/hashes, importação SQL, restauração/rollback antes do
+startup, confirmação/propriedade de exclusões, agendamento em containers, credenciais
+GHCR via stdin e rejeição de componente sem contrato Docker. Docker/Git/SQL são
+simulados; os testes não modificam a instalação existente.
+
+Na plataforma, tests/docker.test.cjs cobre também suporte em runtime, URI codificada
+com senha contendo dólar/caracteres reservados, parâmetros PostgreSQL, URLs internas
+e geração segura do Caddyfile com domínio opcional da API Oficial. Esses testes não
+emitem certificados. Fonte VOZ/HUB/GoFlow, integrações e recuperação completa em VPS
+continuam pendentes conforme docs/MENUS_E_COMPATIBILIDADE.md.

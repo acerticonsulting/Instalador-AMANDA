@@ -1,5 +1,13 @@
 # Instalador AMANDA em Docker
 
+O menu principal anterior (opções 1 a 11), as ferramentas e a gestão da API Oficial
+foram restaurados. O menu aparece **antes** do download das ferramentas. Após uma
+operação ele retorna ao menu; 0 permite sair. Configurações da plataforma e seleção
+de instâncias estão também nas opções 12 e 13.
+
+Consulte a [matriz de todos os menus](docs/MENUS_E_COMPATIBILIDADE.md), incluindo
+as dependências externas ainda necessárias para VOZ, HUB e GoFlow.
+
 O único requisito adicional no Linux é o Docker Engine com containers Linux,
 BuildKit e acesso ao socket local. O ponto de entrada usa o `sh` do sistema.
 Node, Git, Compose, Buildx, compiladores, migrations, bancos e microserviços
@@ -120,7 +128,7 @@ sh instalador/instalador_single.sh restart --dir "$HOME/amanda"
 Atualize o próprio instalador com Git em container:
 
 ```sh
-docker run --rm -v "$PWD/instalador:/repo" -w /repo alpine/git pull --ff-only
+docker run --rm -v "$PWD/instalador:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only
 ```
 
 `update` exige código sem alterações rastreadas e aplica somente avanço de histórico.
@@ -130,7 +138,7 @@ Copia configurações privadas e registra imagens/revisão. Aplica migrations,
 inicia e verifica os oito serviços. **Não executa seed nem troca configurações.**
 O backup causa interrupção temporária. Guarde cópia protegida fora do servidor.
 
-`stop` preserva volumes. Não existe desinstalação destrutiva neste fluxo.
+`stop` preserva volumes. O menu 9 permite remover containers preservando dados ou remover os volumes com backup obrigatório e confirmação digitada; código, configurações e backups permanecem preservados.
 `logs` mostra os últimos 200 registros, filtrando credenciais conhecidas;
 o log operacional é `.amanda-installer/install.log`. Logs da aplicação podem conter
 dados de atendimento e devem permanecer privados.
@@ -152,8 +160,7 @@ Falha durante migrations mantém a aplicação parada; `resume` tenta concluir a
 migrations da mesma revisão. Não voltar ao código antigo contra esquema parcialmente
 migrado. Para restauração integral, usar backup completo em ambiente isolado,
 revisão/imagens registradas e `pg_restore` no container PostgreSQL; validar bancos,
-arquivos e acesso antes de substituir a instalação. Não há restauração automática
-destrutiva.
+arquivos e acesso antes de substituir a instalação. O menu 7 restaura backups gerenciados com hashes; Ferramentas 4 recupera código/imagens/dados juntos, 9 restaura Redis, 23 restaura WuzAPI e 10/12 importam arquivos SQL ou pg_dump custom. Todas exigem confirmação e backup prévio.
 
 Uma instalação **já baseada no Compose oficial**, completa e saudável, pode ser
 registrada sem seed nem mudança de configurações/volumes:
@@ -177,9 +184,67 @@ Se uma interrupção forçada deixar lock, verifique o gerenciador anterior e us
 bash tests/validar_instalador.sh
 ```
 
-Bash/utilitários são ferramentas da suíte de desenvolvimento, não requisitos do
+Git/Bash/utilitários são ferramentas da suíte de desenvolvimento, não requisitos do
 instalador em produção. Os testes do gerenciador usam Node 22 em container sem rede
 e simulam Docker/Git/migrations. Consulte [o plano](tests/PLANO_DE_TESTES.md) e
 [o registro de continuidade](docs/01-contexto-para-ia.md). Instalação completa em VPS
 limpa, certificados públicos e contas externas exigem homologações separadas;
 testes simulados não certificam esses cenários.
+
+## Formulário completo e uso após a atualização
+
+No menu 1, além de URLs, proxy e credenciais iniciais, configurar título da
+aplicação, número de suporte, senha PostgreSQL, senha MASTER, portas API Oficial /
+WuzAPI, domínio HTTPS opcional da API Oficial, SMTP e Facebook App ID/App Secret.
+Senhas vazias mantêm geração aleatória. A conta Linux Deploy não é criada: todos
+os processos continuam em Docker. Título é salvo pela API administrativa, suporte
+é repassado em runtime e as demais opções chegam aos serviços consumidores reais.
+
+Para instalações existentes, menu 12 configura identidade, suporte, SMTP, Facebook,
+URLs/portas/SSL, integrações, push, tokens e performance PostgreSQL. Mudar senha do
+banco ou MASTER só é oferecido na instalação nova; não se rotacionam senhas/chaves
+existentes silenciosamente. A opção 30 em Ferramentas atualiza credenciais e depois
+executa atualização oficial com backup; o repositório continua restrito à AMANDA.
+
+O menu 10 oferece autenticação GHCR e agendamento em container. Watchtower foi
+substituído pelo atualizador que aplica build, backup e migrations em conjunto;
+um Watchtower que apenas troca containers não sincroniza o esquema da plataforma.
+O agendador roda diariamente na hora UTC escolhida, mantém último sucesso/tentativa
+na pasta privada e usa o lock da instância para não concorrer com outra operação.
+Portainer é opcional, em container, ligado ao socket e publicado somente no loopback;
+para VPS, acesse por túnel SSH ou proxy configurado conscientemente pelo operador.
+
+Se o Docker apresentar permission denied no socket, use a conta autorizada ao
+Docker ou execute o comando com sudo. O instalador não altera permissões/grupos.
+O build das ferramentas usa Buildx **dentro do container**, inclusive se o plugin
+não estiver instalado no host; não é necessário instalar pacotes adicionais.
+
+Para atualizar o clone existente, já dentro da pasta Instalador-AMANDA:
+
+```sh
+docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only
+sudo sh ./instalador_single.sh
+```
+
+O sudo só é necessário quando a conta atual não acessa Docker. Use `--dir` para
+manter o diretório da instalação anterior, inclusive quando trocar a conta usada.
+Adoção não converte automaticamente a antiga instalação no host.
+
+Importações: coloque o arquivo confiável .sql/.dump/.backup em `<dir>/imports/`.
+O nome de banco é restrito a amanda ou api_oficial. SQL de cluster e comandos
+psql de troca de banco/shell são recusados. A importação faz backup, para gravadores,
+recria somente o banco escolhido, aplica migrations e verifica os serviços; não faz
+seed. Falhas mantêm os apps parados e permitem repetir a mesma importação. Para
+restaurações gerenciadas, escolha a mesma restauração interrompida. PostgreSQL
+precisa estar acessível para preservar o estado atual antes da substituição.
+Backups de outra revisão devem usar rollback completo, não restauração parcial do
+banco. Mudanças no conjunto de volumes exigem recuperação isolada com o contrato
+original. Backups antigos sem hashes não são restaurados automaticamente.
+
+VOZ/HUB usam repositórios separados. Os menus foram preservados e permitem fornecer
+fonte autorizada, token separado e Compose mantido pelo fornecedor. Exigem
+healthchecks, volumes isolados e rede externa `${AMANDA_NETWORK}`; não executam
+instaladores PM2/APT. Sem fonte/contrato válido, informam o bloqueio e não declaram
+sucesso. A URL/chave do HUB local e a URL VOZ são sincronizadas pela API no menu 12.
+O código atual não contém consumidor GoFlow: sua URL não é gravada como se tivesse
+efeito; a fonte e o contrato do adaptador ainda precisam ser fornecidos/implementados.

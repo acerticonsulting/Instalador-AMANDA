@@ -83,3 +83,46 @@ arquivo arquivado como código novo; continua reprovando whitespace introduzido,
 com regressão dedicada. Os 42 arquivos históricos foram comparados por hash Git
 e permaneceram idênticos. A prova de projeto novo é repetida após o build, antes
 da primeira criação de recursos/migrations.
+
+## Correção de regressão — restauração dos menus (07/11/2026)
+
+A versão Docker-only reduziu indevidamente a interface anterior. Os menus principal
+1–11, Ferramentas (IDs históricos) e API Oficial 1–9 foram recolocados em português,
+com retorno ao menu e saída. Menu inicial aparece antes de qualquer download;
+build do gerenciador usa Buildx embarcado via docker run e não exige plugin no host.
+Diagnóstico de permissão do socket explica a necessidade de conta autorizada/sudo.
+
+Os novos módulos são menus.cjs, options.cjs, operations.cjs, addons.cjs e scheduler.cjs.
+As opções adicionais chegam aos consumidores reais: appName pela API, telefone em
+runtime no frontend, SMTP/Facebook em env_file, senha nova do PostgreSQL com URI
+codificada, MASTER na instalação inicial, portas e Caddy/HTTPS da API Oficial.
+A matriz docs/MENUS_E_COMPATIBILIDADE.md lista cada entrada e suas dependências.
+
+Restaurações/imports/desinstalação exigem confirmação do projeto e backup. Hashes
+validam backups; SQL é limitado a um banco e recusa comandos psql de troca de
+banco/shell. Falhas deixam apps parados e a mesma operação pode ser retomada.
+Rollback restaura dados e revisão antes de iniciar. Agendadores são containers;
+locks são reentrantes na mesma operação, sem liberar concorrência entre processos.
+Configuração privada tem histórico e volta aos valores anteriores se a aplicação
+falhar. Chaves VAPID existentes não são trocadas silenciosamente.
+
+VOZ/HUB dependem de Compose mantido pelo fornecedor e acesso próprio, ainda não
+fornecidos/homologados. GoFlow não possui consumidor no backend; depende de fonte
+e contrato do adaptador. Esses itens não foram declarados funcionais no runtime.
+Nunca voltar a scripts APT/PM2 para simular compatibilidade. Usar os registros e
+backups privados para recuperação; não remover volumes reais como teste.
+
+Validação desta correção: 42 regressões Node do gerenciador e cinco grupos locais;
+cinco testes da plataforma, incluindo Compose real, passaram. Build frontend em tag
+isolada e HTTP / + /env.js em container sem rede passaram. Build do gerenciador foi
+executado por cliente Docker/Buildx em container, sem usar plugin do host; doctor
+real aprovou o engine. Caddy real adaptou três domínios sem rede. Verificação local
+somente leitura manteve oito serviços obrigatórios saudáveis e endpoints HTTP 200;
+um container histórico adicional de transcrição sem healthcheck foi preservado.
+O hook repete as regressões sobre o índice preparado. Homologação VPS/contas externas
+continua pendente, conforme a matriz.
+
+Após seed concluído e falha de arranque, configurações de URLs/portas permitem
+corrigir o acesso antes de Retomar. O estado continua incompleto até login/sessão
+serem verificados; não há repetição de seed. Portas que conflitam com Caddy ou
+outros serviços são recusadas antes de criar dados.
