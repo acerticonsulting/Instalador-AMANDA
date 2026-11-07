@@ -8,6 +8,15 @@ No Windows local, usar Git Bash somente para a suíte isolada. Não executar o p
 
 ## Entrada principal
 
+Desde o ajuste de 06/11/2026, a entrada exige que o operador informe
+`https://github.com/acerticonsulting/AMANDA` antes das consultas de rede,
+instalação de pacotes ou abertura do menu. Não há valor padrão para entrada
+vazia. `tools/mf_repositorio_amanda.sh` valida o endereço e normaliza o clone
+para HTTPS com `.git`; a validação é repetida no início de `baixa_codigo_base`,
+inclusive quando a configuração é recuperada de uma instalação anterior.
+O questionário usa o endereço confirmado, substituindo a antiga escolha livre.
+O fluxo não muda tokens, volumes ou instalações existentes automaticamente.
+
 O README orienta baixar o repositório, entrar na pasta e executar `sudo ./instalador_single.sh`. A opção 1 chama `verificar_arquivos_existentes`, que decide o tratamento de instalação nova ou existente. O menu não chama diretamente a rotina nativa `instalacao_base`.
 
 | Opção | Função principal | Efeito |

@@ -90,6 +90,11 @@ O executor encontra todos os arquivos regulares `*.sh` da árvore, incluindo nov
 
 ## 5. Casos automatizados
 
+O arquivo `regressao_instalador.sh` também verifica a restrição do repositório:
+URL autorizada com/sem `.git` e barra final; rejeição de vazio/EOF, forks, domínio
+semelhante, HTTP/SSH, credenciais, query e subcaminhos; normalização para clone e
+bloqueio de download quando uma configuração antiga contém outro repositório.
+
 | ID | Caso | Resultado esperado | Implementação |
 |---|---|---|---|
 | EST-01 | Sintaxe de todos os scripts e do hook | Qualquer erro bloqueia as regressões/commit. | `validar_instalador.sh`, `verificar_contratos.sh` |

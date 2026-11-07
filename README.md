@@ -2,6 +2,15 @@
 
 Suite oficial de instalação, atualização e gerenciamento 100% Docker para a plataforma **AMANDA**.
 
+Ao abrir `instalador_single.sh`, é obrigatório informar
+`https://github.com/acerticonsulting/AMANDA`. O instalador encerra antes das
+operações no host quando a entrada é vazia ou aponta para outro repositório.
+O mesmo endereço com `.git` ou barra final também é aceito. URLs com credenciais,
+query string, outros protocolos ou caminhos adicionais são rejeitadas. O download
+valida novamente o endereço, inclusive em instalações retomadas; configurações
+antigas precisam apontar para o repositório autorizado. Essa validação restringe
+a origem do código; o acesso a repositórios privados continua exigindo autenticação.
+
 ### Validação depois de alterações
 
 Execute `bash tests/validar_instalador.sh` antes de cada commit. Para ativar a
@@ -54,4 +63,4 @@ Para recuperar uma instalação padrão existente após a publicação de corre�
 - **Identidade Visual Roxa AMANDA:** Interface moderna harmonizada na paleta roxa oficial (`#8B5CF6` / `#7C3AED`).
 - **Credenciais Oficiais Configuradas:** `admin@amanda.com.br` / `adminamanda`.
 - **Banco de Dados Oficial:** `DB_USER=amanda` / `DB_NAME=amanda` / `Acertitech13@`.
-- **Repositório da Aplicação Conectado:** Baixa e atualiza automaticamente o código de [https://github.com/alansuporteamanda/AMANDA.git](https://github.com/alansuporteamanda/AMANDA.git).
+- **Repositório da Aplicação:** exige o endereço [acerticonsulting/AMANDA](https://github.com/acerticonsulting/AMANDA) na abertura e valida a origem antes do download.

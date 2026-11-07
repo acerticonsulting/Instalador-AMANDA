@@ -1,6 +1,8 @@
 #!/bin/bash
 MF_INSTALADOR_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 readonly MF_INSTALADOR_ROOT
+source "${MF_INSTALADOR_ROOT}/tools/mf_repositorio_amanda.sh" || exit 1
+mf_solicitar_repositorio_amanda || exit 1
 source "${MF_INSTALADOR_ROOT}/tools/mf_operacoes_seguras.sh" || exit 1
 _mf_baileys_tools="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tools/baileys_hineken_package_json.sh"
 [ -f "$_mf_baileys_tools" ] && . "$_mf_baileys_tools"
@@ -5537,51 +5539,9 @@ questoes_variaveis_base() {
     github_token="${GITHUB_TOKEN}"
   fi
   echo
-  # DEFINE LINK REPO GITHUB
-  banner
-  printf "${WHITE} >> Digite a URL do repositório Git [padrão: https://github.com/alansuporteamanda/AMANDA.git]: \n"
-  echo
-  read -p "> " repo_url
-  repo_url=$(printf '%s' "${repo_url}" | tr -d '\r\n ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  repo_url="${repo_url:-https://github.com/alansuporteamanda/AMANDA.git}"
-  repo_url="${repo_url%/}"
-  if [[ "${repo_url}" =~ ^https?:// ]] && [[ "${repo_url}" != *.git ]]; then
-    repo_url="${repo_url}.git"
-  fi
-  echo
-  
-  # Validar que a URL parece ser um repositório Git válido (aceita qualquer repo: GitHub, GitLab, etc.)
-  repo_url_limpo=$(echo "${repo_url}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  if [ -z "${repo_url_limpo}" ]; then
-    printf "${RED}══════════════════════════════════════════════════════════════════${WHITE}\n"
-    printf "${RED}❌ ERRO: URL do repositório não pode estar vazia!${WHITE}\n"
-    printf "${RED}══════════════════════════════════════════════════════════════════${WHITE}\n"
-    echo
-    sleep 5
-    exit 1
-  fi
-  if ! [[ "${repo_url_limpo}" =~ ^https?:// ]] && ! [[ "${repo_url_limpo}" =~ ^git@ ]]; then
-    printf "${RED}══════════════════════════════════════════════════════════════════${WHITE}\n"
-    printf "${RED}❌ ERRO: URL do repositório inválida!${WHITE}\n"
-    echo
-    printf "${YELLOW}   Use uma URL HTTPS (https://...) ou SSH (git@...).${WHITE}\n"
-    printf "${YELLOW}   Exemplos:${WHITE}\n"
-    printf "${BLUE}   https://github.com/usuario/repositorio.git${WHITE}\n"
-    printf "${BLUE}   git@github.com:usuario/repositorio.git${WHITE}\n"
-    echo
-    printf "${RED}   Repositório informado: ${repo_url}${WHITE}\n"
-    printf "${RED}══════════════════════════════════════════════════════════════════${WHITE}\n"
-    echo
-    sleep 5
-    exit 1
-  fi
-  # Normalizar para uso posterior (garantir .git no final para clone, se for HTTPS)
-  if [[ "${repo_url_limpo}" =~ ^https?:// ]] && [[ "${repo_url_limpo}" != *.git ]]; then
-    repo_url="${repo_url_limpo}.git"
-  else
-    repo_url="${repo_url_limpo}"
-  fi
-  
+  # A confirmação inicial é obrigatória; configurações antigas não escolhem outro repo.
+  repo_url="https://github.com/acerticonsulting/AMANDA.git"
+
   # Mostrar seleção de versão/commit apenas para o repositório multiflow-pro
   if echo "${repo_url}" | grep -q "scriptswhitelabel/multiflow-pro"; then
     selecionar_versao_instalacao
@@ -7109,6 +7069,7 @@ selecionar_versao_atualizacao() {
 
 # Clona código de repo privado
 baixa_codigo_base() {
+  mf_validar_repositorio_amanda "${repo_url:-}" || return 1
   banner
   printf "${WHITE} >> Fazendo download do ${nome_titulo}...\n"
   echo

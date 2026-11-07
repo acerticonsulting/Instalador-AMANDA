@@ -28,6 +28,21 @@ done
 RED='' WHITE='' YELLOW=''
 sleep() { :; }
 
+source "$ROOT/tools/mf_repositorio_amanda.sh"
+for url in 'https://github.com/acerticonsulting/AMANDA' 'https://github.com/acerticonsulting/AMANDA.git' ' https://github.com/acerticonsulting/AMANDA/ '; do
+  mf_validar_repositorio_amanda "$url" || falhar 'repositório autorizado rejeitado'
+done
+for url in '' 'https://github.com/alansuporteamanda/AMANDA' 'http://github.com/acerticonsulting/AMANDA' 'https://github.com/acerticonsulting/AMANDA-extra' 'https://github.com/acerticonsulting/AMANDA/tree/main' 'https://github.com/acerticonsulting/AMANDA?x=1' 'https://github.com.evil.test/acerticonsulting/AMANDA' 'https://usuario:segredo@github.com/acerticonsulting/AMANDA' 'git@github.com:acerticonsulting/AMANDA.git'; do
+  if mf_validar_repositorio_amanda "$url" 2>/dev/null; then falhar 'repositório não autorizado aceito'; fi
+done
+if mf_solicitar_repositorio_amanda < /dev/null; then falhar 'EOF aceito'; fi
+if mf_solicitar_repositorio_amanda <<< ''; then falhar 'link vazio aceito'; fi
+mf_solicitar_repositorio_amanda <<< 'https://github.com/acerticonsulting/AMANDA' || falhar 'confirmação válida rejeitada'
+[ "$repo_url" = 'https://github.com/acerticonsulting/AMANDA.git' ] || falhar 'clone sem URL canônica'
+# A função de download contém heredocs; verificar a barreira antes de seu corpo
+# sem extrair/executar o instalador nem operações reais de clone.
+awk '/^baixa_codigo_base\(\) \{/ { getline; if ($0 != "  mf_validar_repositorio_amanda \"${repo_url:-}\" || return 1") exit 1; ok=1; exit } END { if (!ok) exit 1 }' "$ROOT/instalador_single.sh" || falhar 'download sem barreira inicial de repositório'
+
 mf_validar_empresa amanda_filial || falhar 'slug válido'
 for nome in '../etc' '/tmp/alvo' 'amanda.*' '' '-amanda' 'amanda filial'; do
   if mf_validar_empresa "$nome"; then falhar "slug inválido: $nome"; fi
