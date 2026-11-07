@@ -2,8 +2,8 @@
 # Executa apenas funções extraídas e comandos simulados, nunca o instalador.
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-source "$ROOT/tools/mf_operacoes_seguras.sh"
-source "$ROOT/tools/mf_admin_inicial.sh"
+source "$ROOT/legacy/tools/mf_operacoes_seguras.sh"
+source "$ROOT/legacy/tools/mf_admin_inicial.sh"
 WORK=$(mktemp -d)
 trap 'rm -rf -- "$WORK"' EXIT
 cd "$WORK"
@@ -25,8 +25,8 @@ if mf_solicitar_admin_inicial <<< $'s\ninvalid\nx\nx' > /dev/null 2>&1; then fal
 if mf_solicitar_admin_inicial <<< $'s\nowner@example.test\none\ntwo' > /dev/null 2>&1; then falhar 'confirmação diferente aceita'; fi
 if mf_solicitar_admin_inicial <<< $'s\nowner@example.test\n\n' > /dev/null 2>&1; then falhar 'senha vazia aceita'; fi
 [ "$MF_ADMIN_INICIAL_CONFIRMADO" = 0 ] || falhar 'falha deixou credenciais confirmadas'
-grep -Fq 'docker exec -e AMANDA_ADMIN_EMAIL -e AMANDA_ADMIN_PASSWORD "$be_container" npx sequelize db:seed:all' "$ROOT/instalador_single.sh" || falhar 'seed Docker sem credenciais selecionadas'
-if grep -Fq "WHERE id = 1 AND email !=" "$ROOT/instalador_single.sh"; then falhar 'reset forçado de e-mail reapareceu'; fi
+grep -Fq 'docker exec -e AMANDA_ADMIN_EMAIL -e AMANDA_ADMIN_PASSWORD "$be_container" npx sequelize db:seed:all' "$ROOT/legacy/instalador_single.sh" || falhar 'seed Docker sem credenciais selecionadas'
+if grep -Fq "WHERE id = 1 AND email !=" "$ROOT/legacy/instalador_single.sh"; then falhar 'reset forçado de e-mail reapareceu'; fi
 unset AMANDA_ADMIN_EMAIL AMANDA_ADMIN_PASSWORD MF_ADMIN_INICIAL_CONFIRMADO senha_teste entrada_admin
 extrair() {
   awk -v nome="$1" '
@@ -34,7 +34,7 @@ extrair() {
     ativo { print }
     ativo && /^}$/ { completo=1; exit }
     END { if (!encontrado || !completo) exit 1 }
-  ' "${2:-$ROOT/instalador_single.sh}"
+  ' "${2:-$ROOT/legacy/instalador_single.sh}"
 }
 carregar_funcao() {
   local codigo
@@ -47,7 +47,7 @@ done
 RED='' WHITE='' YELLOW=''
 sleep() { :; }
 
-source "$ROOT/tools/mf_repositorio_amanda.sh"
+source "$ROOT/legacy/tools/mf_repositorio_amanda.sh"
 for url in 'https://github.com/acerticonsulting/AMANDA' 'https://github.com/acerticonsulting/AMANDA.git' ' https://github.com/acerticonsulting/AMANDA/ '; do
   mf_validar_repositorio_amanda "$url" || falhar 'repositório autorizado rejeitado'
 done
@@ -60,7 +60,7 @@ mf_solicitar_repositorio_amanda <<< 'https://github.com/acerticonsulting/AMANDA'
 [ "$repo_url" = 'https://github.com/acerticonsulting/AMANDA.git' ] || falhar 'clone sem URL canônica'
 # A função de download contém heredocs; verificar a barreira antes de seu corpo
 # sem extrair/executar o instalador nem operações reais de clone.
-awk '/^baixa_codigo_base\(\) \{/ { getline; if ($0 != "  mf_validar_repositorio_amanda \"${repo_url:-}\" || return 1") exit 1; ok=1; exit } END { if (!ok) exit 1 }' "$ROOT/instalador_single.sh" || falhar 'download sem barreira inicial de repositório'
+awk '/^baixa_codigo_base\(\) \{/ { getline; if ($0 != "  mf_validar_repositorio_amanda \"${repo_url:-}\" || return 1") exit 1; ok=1; exit } END { if (!ok) exit 1 }' "$ROOT/legacy/instalador_single.sh" || falhar 'download sem barreira inicial de repositório'
 
 mf_validar_empresa amanda_filial || falhar 'slug válido'
 for nome in '../etc' '/tmp/alvo' 'amanda.*' '' '-amanda' 'amanda filial'; do
@@ -173,7 +173,7 @@ git() {
   return 0
 }
 export -f git
-awk '/^set -e$/ { if (bloco) print; next } /<<.*CHECKOUTRECENT/ { bloco=1; next } /^CHECKOUTRECENT$/ { exit } bloco { print }' "$ROOT/instalador_single.sh" > "$WORK/checkout.sh"
+awk '/^set -e$/ { if (bloco) print; next } /<<.*CHECKOUTRECENT/ { bloco=1; next } /^CHECKOUTRECENT$/ { exit } bloco { print }' "$ROOT/legacy/instalador_single.sh" > "$WORK/checkout.sh"
 : > "$LOG"
 bash -e "$WORK/checkout.sh" "$WORK" release/teste
 grep -Fxq 'checkout -B release/teste origin/release/teste' "$LOG" || falhar 'branch escolhida ignorada'
@@ -194,7 +194,7 @@ instalar_apioficial() { return 1; }
 reiniciar_apioficial() { falhar 'reinício depois de falha'; }
 atualizar_env_backend() { falhar 'integração depois de falha'; }
 for arquivo in atualizar_apioficial.sh instalador_apioficial.sh; do
-  carregar_funcao main "$ROOT/$arquivo"
+  carregar_funcao main "$ROOT/legacy/$arquivo"
   if main; then falhar "erro não propagado em $arquivo"; fi
 done
 
@@ -210,7 +210,7 @@ done
   dpkg() { falhar 'tentativa de reparar dpkg durante outra operação'; }
   apt-get() { falhar 'APT chamado com lock ocupado'; }
   if garantir_docker_e_compose; then falhar 'lock APT ignorado'; fi
-  carregar_funcao instalar_docker_compartilhado "$ROOT/tools/instalar_docker_compartilhado.sh"
+  carregar_funcao instalar_docker_compartilhado "$ROOT/legacy/tools/instalar_docker_compartilhado.sh"
   if instalar_docker_compartilhado; then falhar 'lock APT ignorado pelo helper compartilhado'; fi
 )
 

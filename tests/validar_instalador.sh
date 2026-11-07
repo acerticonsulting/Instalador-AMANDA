@@ -80,6 +80,7 @@ executar_etapa 'Contratos do instalador' tests/verificar_contratos.sh
 executar_etapa 'Regressões do instalador com comandos simulados' tests/regressao_instalador.sh
 executar_etapa 'Regressões do verificador de plataforma' tests/regressao_plataforma.sh
 executar_etapa 'Regressões do executor de testes' tests/regressao_executor.sh
+executar_etapa 'Gerenciador Docker-only (comandos simulados)' tests/regressao_docker_only.sh
 
 if (( falhas )); then
   printf '\nRESULTADO: REPROVADO (%d de %d etapas falharam).\n' "$falhas" "$etapas" >&2

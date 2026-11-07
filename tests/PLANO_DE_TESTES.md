@@ -24,14 +24,14 @@ Não há monitoramento de cada tecla ou salvamento do editor. A execução depoi
 
 ### Validação local obrigatória
 
-- Bash 4 ou superior e utilitários `awk`, `find`, `grep`, `sort`, `mktemp`, `timeout`, `cmp`, `cp`, `chmod` e `rm`.
+- Git (para a fixture isolada do hook), Bash 4 ou superior e utilitários `awk`, `find`, `grep`, `sort`, `mktemp`, `timeout`, `cmp`, `cp`, `chmod` e `rm`.
 - Linux ou Git Bash no Windows. No PowerShell, usar:
 
 ```powershell
 & 'C:\Program Files\Git\bin\bash.exe' --noprofile --norc tests/validar_instalador.sh
 ```
 
-- Docker, PostgreSQL, acesso à rede, root e pacotes npm não são necessários no modo local.
+- A suíte nova precisa de Docker acessível (Node 22 em container) ou Node 22 em Linux para desenvolvimento. PostgreSQL, root e pacotes npm no host não são necessários. A primeira obtenção da imagem requer rede; a execução dos testes usa --network none. Isso é requisito da suíte de desenvolvimento; o instalador de produção só requer Docker e sh.
 - Os testes usam diretórios temporários e comandos simulados. Não executar o instalador completo como teste local.
 - Cada suíte tem limite de 120 segundos, seguido de até 5 segundos para encerramento forçado. Timeout reprova a etapa.
 
@@ -43,13 +43,14 @@ Executar no servidor que tem acesso ao Docker da instalação:
 bash tests/validar_instalador.sh --plataforma \
   --projeto amanda \
   --frontend-url https://app.exemplo.com/ \
-  --backend-url https://api.exemplo.com/health \
-  --servico pgbouncer \
+  --backend-url https://api.exemplo.com/healthz \
+  --servico api_oficial \
   --servico api_transcricao \
-  --servico goflow_dispatcher
+  --servico wuzapi \
+  --servico rabbitmq
 ```
 
-Trocar os exemplos pelos valores reais. O caminho `/health` é ilustrativo: informar um endpoint de saúde realmente implementado pela aplicação. Acrescentar `--servico api_oficial`, `--servico wuzapi` ou outros nomes **conforme os serviços Compose esperados na instalação**.
+Trocar os exemplos pelos valores reais. O caminho `/healthz` é o endpoint da stack oficial: informar um endpoint de saúde realmente implementado pela aplicação. Acrescentar `--servico api_oficial`, `--servico wuzapi` ou outros nomes **conforme os serviços Compose esperados na instalação**.
 
 O verificador exige `backend`, `frontend`, `postgres` e `redis` e aceita serviços obrigatórios adicionais com `--servico`. Também verifica todos os demais containers encontrados no projeto, exceto tarefas Compose com label `oneoff=True`. Um serviço opcional completamente ausente só será detectado se tiver sido informado como obrigatório.
 
@@ -77,11 +78,14 @@ Um container `running` sem healthcheck gera aviso e não tem sua prontidão inte
 
 ## 4. Inventário e níveis de cobertura
 
+A quinta etapa executa tests/docker_only.test.cjs: 26 regressões do novo gerenciador, com Docker/Git simulados, incluindo instalação nova, colisão de recursos, tokens separados, seed exclusivo, retomada, falhas de build/backup/migration, atualização sem seeds, filtros de log e bootstrap POSIX sem comandos extras no host. Não monta socket Docker no container de testes. Os demais grupos abaixo cobrem scripts históricos agora em legacy/.
+
+
 O executor encontra todos os arquivos regulares `*.sh` da árvore, incluindo novos arquivos ainda não preparados no Git. Exclui `.git`, `node_modules`, `.venv`, `venv`, `dist`, `build`, `logs`, `tmp` e `instalador-oplanov2`; não segue links simbólicos. No hook, a árvore é a versão preparada para commit. O arquivo `tests/hooks/pre-commit`, sem extensão, tem verificação sintática própria.
 
 | Grupo | Cobertura automática local | Complemento necessário |
 |---|---|---|
-| `instalador_single.sh` e `tools/mf_operacoes_seguras.sh` | Sintaxe, funções críticas extraídas, configuração, seleção de instâncias, retornos de erro e contratos. | Instalação, atualização e recuperação completas em VM. |
+| Scripts históricos em `legacy/`, incluindo o antigo instalador e `tools/mf_operacoes_seguras.sh` | Sintaxe, funções críticas extraídas, configuração, seleção de instâncias, retornos de erro e contratos. | Instalação, atualização e recuperação completas em VM. |
 | `instalador_apioficial.sh`, `atualizar_apioficial.sh` | Sintaxe e interrupção dos pontos de entrada quando instalação/atualização falha. | API real, build da imagem, migrações e integração com backend. |
 | Atualizadores remoto, FAST, sistema e PRO | Sintaxe e busca por operações proibidas definidas no contrato. | Atualização real de cada modalidade suportada. |
 | WhatsMeow, HUB, VOZ, RabbitMQ, alta performance e instâncias | Sintaxe e contratos estáticos aplicáveis. | Smoke tests específicos e coexistência entre instâncias. |
@@ -162,3 +166,17 @@ Executar somente em VM descartável ou ambiente de homologação com backup vali
 5. Preparar os arquivos e criar o commit. O hook repete a validação da versão preparada para confirmar que é a mesma versão aprovada.
 
 A saída fica no terminal, e arquivos temporários são removidos ao terminar. Se for necessário guardar evidência, salvar a saída em um diretório local de logs ignorado pelo Git. O executor não gera credenciais, não instala pacotes e não altera a configuração de serviços.
+
+### Matriz observada em 07/11/2026
+
+| Camada | Resultado observado | Limite |
+|---|---|---|
+| Sintaxe Shell e regressões históricas | 47 scripts / cinco grupos aprovados | Comandos históricos simulados |
+| Gerenciador novo | 26 testes aprovados, Node 22 em Docker sem rede | Docker/Git/SQL simulados; sem instalação real |
+| Imagem do gerenciador | Build real aprovado | Arquitetura x86_64 local |
+| Ferramentas embarcadas | Compose 2.33.0 e Buildx 0.20.1 acessam daemon Linux 29.9.2 | Socket local do Docker Desktop |
+| Plataforma existente | Oito serviços obrigatórios saudáveis; três jobs saída 0; frontend e /healthz HTTP 200 | Somente leitura; não valida instalação nova |
+| Container adicional histórico | Transcrição rodando sem healthcheck, aviso do verificador | Preservado; não confundir com serviço oficial saudável |
+| VPS limpa / HTTPS / outras arquiteturas / contas externas | Pendente de homologação | Não certificado pela suíte local |
+
+O hook de commit repete os testes sobre a árvore preparada, incluindo o novo grupo.

@@ -1,4 +1,6 @@
-﻿# Referência de funções
+> Referência histórica: descreve os scripts preservados em legacy/. Para o instalador Docker-only atual, consulte ../README.md e 01-contexto-para-ia.md. Os caminhos antigos de scripts/tools recebem o prefixo legacy/.
+
+# Referência de funções
 
 Extração estática de assinaturas Shell com nome literal. Inclui testes e eventuais funções de código gerado. Linhas correspondem aos hashes do inventário.
 

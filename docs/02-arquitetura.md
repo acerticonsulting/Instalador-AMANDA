@@ -1,3 +1,5 @@
+> Referência histórica: descreve os scripts preservados em legacy/. Para o instalador Docker-only atual, consulte ../README.md e 01-contexto-para-ia.md. Os caminhos antigos de scripts/tools recebem o prefixo legacy/.
+
 # Arquitetura e integração com a plataforma
 
 O menu principal é orientado a Docker Compose, mas o script monolítico também contém instalação nativa por etapas, PM2, ferramentas históricas e caminhos de alta performance. Esses caminhos não são intercambiáveis.

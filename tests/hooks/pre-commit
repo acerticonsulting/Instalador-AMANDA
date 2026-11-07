@@ -1,7 +1,9 @@
 #!/bin/sh
 # Valida o conteúdo do índice, inclusive quando há mudanças não preparadas.
 set -eu
-git diff --cached --check
+# Recognize unchanged historical copies when the original entry is rewritten.
+# New/changed lines still undergo the same whitespace checks.
+git diff --cached --check -B -M
 test_dir=$(mktemp -d "${TMPDIR:-/tmp}/amanda-index.XXXXXX")
 trap 'rm -rf -- "$test_dir"' EXIT HUP INT TERM
 git -c core.autocrlf=false checkout-index --all --prefix="$test_dir/"

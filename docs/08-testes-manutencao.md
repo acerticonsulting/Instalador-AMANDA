@@ -1,3 +1,5 @@
+> Referência histórica: descreve os scripts preservados em legacy/. Para o instalador Docker-only atual, consulte ../README.md e 01-contexto-para-ia.md. Os caminhos antigos de scripts/tools recebem o prefixo legacy/.
+
 # Testes e manutenção do instalador
 
 O contrato obrigatório está em [AGENTS.md](../AGENTS.md) e a matriz detalhada em [PLANO_DE_TESTES.md](../tests/PLANO_DE_TESTES.md). Após cada conjunto de alterações, executar:

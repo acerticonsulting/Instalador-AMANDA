@@ -1,4 +1,6 @@
-﻿# Referência de nomes de configuração
+> Referência histórica: descreve os scripts preservados em legacy/. Para o instalador Docker-only atual, consulte ../README.md e 01-contexto-para-ia.md. Os caminhos antigos de scripts/tools recebem o prefixo legacy/.
+
+# Referência de nomes de configuração
 
 Extração de atribuições e referências Shell em scripts e exemplo env. Inclui globais internas, testes e código gerado. Não representa obrigatoriedade, precedência ou formato completo. Até três fontes por nome; nenhum valor foi copiado.
 
