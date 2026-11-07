@@ -4,6 +4,7 @@ readonly MF_INSTALADOR_ROOT
 source "${MF_INSTALADOR_ROOT}/tools/mf_repositorio_amanda.sh" || exit 1
 mf_solicitar_repositorio_amanda || exit 1
 source "${MF_INSTALADOR_ROOT}/tools/mf_operacoes_seguras.sh" || exit 1
+source "${MF_INSTALADOR_ROOT}/tools/mf_admin_inicial.sh" || exit 1
 _mf_baileys_tools="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tools/baileys_hineken_package_json.sh"
 [ -f "$_mf_baileys_tools" ] && . "$_mf_baileys_tools"
 
@@ -951,6 +952,7 @@ resolver_portas_automaticas() {
 # INSTALAÇÃO COMPLETA AMANDA VIA DOCKER COMPOSE (TODAS AS APIs)
 # ================================================================
 instalar_amanda_docker_stack() {
+  source "${MF_INSTALADOR_ROOT}/tools/mf_admin_inicial.sh" || return 1
   banner
   printf "${WHITE} >> Iniciando Instalação da Stack AMANDA via Docker Compose...\n"
   echo
@@ -968,6 +970,7 @@ instalar_amanda_docker_stack() {
   fi
   export DADOS_COLETADOS_NOVA_INSTANCIA=0
 
+  mf_solicitar_admin_inicial || return 1
   atualiza_vps_base || trata_erro "atualiza_vps_base"
   cria_deploy_base || trata_erro "cria_deploy_base"
   config_timezone_base || trata_erro "config_timezone_base"
@@ -1061,8 +1064,8 @@ REDIS_URI=redis://redis:6379
 PORT=6000
 TOKEN_ADMIN=adminpro
 NAME_ADMIN=SetupAutomatizado
-EMAIL_ADMIN=admin@amanda.com.br
-PASSWORD_ADMIN=${senha_deploy:-Acertitech13@}
+EMAIL_ADMIN=${AMANDA_ADMIN_EMAIL:-admin@amanda.com.br}
+PASSWORD_ADMIN=${AMANDA_ADMIN_PASSWORD:-adminamanda}
 JWT_REFRESH_SECRET=${jwt_refresh_secret}
 URL_API_OFICIAL=${subdominio_oficial}
 RABBITMQ_ENABLED_GLOBAL=false
@@ -1237,13 +1240,14 @@ PYEOF
     banner
     printf "${WHITE} >> Inserindo registros iniciais do sistema Backend (db:seed:all)...\n"
     echo
-    docker exec "$be_container" npx sequelize db:seed:all || return 1
+    if ! docker exec "$be_container" node -e 'const fs=require("fs");const file="dist/database/seeds/20200904070006-create-default-user.js";process.exit(fs.existsSync(file)&&fs.readFileSync(file,"utf8").includes("AMANDA_ADMIN_EMAIL")?0:1)'; then
+      printf '%s\n' 'A versão selecionada da AMANDA não suporta credenciais iniciais configuráveis. Atualize a plataforma antes de continuar.' >&2
+      return 1
+    fi
+    docker exec -e AMANDA_ADMIN_EMAIL -e AMANDA_ADMIN_PASSWORD "$be_container" npx sequelize db:seed:all || return 1
     sleep 2
 
-    # Sincronizar credenciais oficiais AMANDA no banco de dados
-    if [ -n "$pg_container" ]; then
-      docker exec -e PGPASSWORD="${senha_deploy:-Acertitech13@}" "$pg_container" psql -U "${empresa:-amanda}" -d "${empresa:-amanda}" -c "UPDATE \"Users\" SET email = 'admin@amanda.com.br' WHERE id = 1 AND email != 'admin@amanda.com.br';" 2>/dev/null || true
-    fi
+    # O seed cria com a escolha acima e preserva o usuário quando já existente.
 
     # Reiniciar backend para carregar todas as tabelas e seeds aplicadas
     docker restart "$be_container" 2>/dev/null || true
@@ -1298,8 +1302,7 @@ PYEOF
   printf "   ${WHITE}Backend (API REST):      ${PURPLE}${subdominio_backend}${WHITE}\n"
   [ -n "${subdominio_oficial}" ] && printf "   ${WHITE}API Oficial (WhatsApp): ${PURPLE}${subdominio_oficial}${WHITE}\n"
   echo
-  printf "   ${WHITE}Usuário Administrador:   ${PURPLE}admin@amanda.com.br${WHITE}\n"
-  printf "   ${WHITE}Senha Padrão:            ${PURPLE}adminamanda${WHITE}\n\n"
+  mf_mostrar_admin_inicial
   printf "   ${PURPLE}>> Todos os Contêineres e APIs Ativos:${WHITE}\n"
   docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "multiflow|amanda|NAMES" || docker ps
   echo
@@ -7234,6 +7237,8 @@ CHECKOUTCOMMIT
 
 # Instala e configura backend
 instala_backend_base() {
+  source "${MF_INSTALADOR_ROOT}/tools/mf_admin_inicial.sh" || return 1
+  [ "${MF_ADMIN_INICIAL_CONFIRMADO:-0}" = 1 ] || mf_solicitar_admin_inicial || return 1
   banner
   printf "${WHITE} >> Configurando variáveis de ambiente do ${BLUE}backend${WHITE}...\n"
   echo
@@ -7531,7 +7536,7 @@ MIGRATEINSTALL
     banner
     printf "${WHITE} >> Executando db:seed...\n"
     echo
-    sudo su - deploy <<SEEDINSTALL
+    sudo --preserve-env=AMANDA_ADMIN_EMAIL,AMANDA_ADMIN_PASSWORD -u deploy bash <<SEEDINSTALL
   # Configura PATH para Node.js
   if [ -f /root/instalador_single_oficial/tools/path_node_deploy.sh ]; then
     . /root/instalador_single_oficial/tools/path_node_deploy.sh
@@ -8057,8 +8062,7 @@ fim_instalacao_base() {
   printf "   ${WHITE}Backend:  ${BLUE}${subdominio_backend}\n"
   printf "   ${WHITE}Frontend: ${BLUE}${subdominio_frontend}\n"
   echo
-  printf "   ${WHITE}Usuário:  ${BLUE}admin@amanda.com.br\n"
-  printf "   ${WHITE}Senha:    ${BLUE}adminamanda\n"
+  mf_mostrar_admin_inicial
   echo
   if [ "${ALTA_PERFORMANCE}" = "1" ] && (docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx portainer || [ "${portainer_instalado}" = "1" ]); then
     printf "   ${WHITE}Portainer: ${BLUE}https://${ip_atual}:${portainer_porta}${WHITE}\n"
@@ -10492,8 +10496,8 @@ DATABASE_NAME=api_oficial
 PORT=6000
 TOKEN_ADMIN=adminpro
 NAME_ADMIN=SetupAutomatizado
-EMAIL_ADMIN=admin@amanda.com.br
-PASSWORD_ADMIN=${db_pass_real}
+EMAIL_ADMIN=${AMANDA_ADMIN_EMAIL:-admin@amanda.com.br}
+PASSWORD_ADMIN=${AMANDA_ADMIN_PASSWORD:-adminamanda}
 JWT_SECRET=${jwt_secret:-kZaOTd+YZpjRUyyuQUpigJaEMk4vcW4YOymKPZX0Ts8=}
 JWT_REFRESH_SECRET=${jwt_refresh_secret:-kZaOTd+YZpjRUyyuQUpigJaEMk4vcW4YOymKPZX0Ts8=}
 URL_BACKEND_MULT100=http://backend:8080
@@ -10554,8 +10558,8 @@ api_block = f"""
       DATABASE_PASSWORD: {db_pass}
       DATABASE_NAME: api_oficial
       NAME_ADMIN: SetupAutomatizado
-      EMAIL_ADMIN: admin@amanda.com.br
-      PASSWORD_ADMIN: {db_pass}
+      EMAIL_ADMIN: ${{AMANDA_ADMIN_EMAIL:-admin@amanda.com.br}}
+      PASSWORD_ADMIN: ${{AMANDA_ADMIN_PASSWORD:-adminamanda}}
       JWT_SECRET: ${{JWT_SECRET:-kZaOTd+YZpjRUyyuQUpigJaEMk4vcW4YOymKPZX0Ts8=}}
       URL_BACKEND_MULT100: http://backend:8080
       REDIS_URI: redis://redis:6379

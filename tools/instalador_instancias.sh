@@ -1740,7 +1740,7 @@ MIGRATEINSTALL
     banner
     printf "${WHITE} >> Executando db:seed...\n"
     echo
-    sudo su - deploy <<SEEDINSTALL
+    sudo --preserve-env=AMANDA_ADMIN_EMAIL,AMANDA_ADMIN_PASSWORD -u deploy bash <<SEEDINSTALL
   if [ -d /usr/local/n/versions/node/20.19.4/bin ]; then
     export PATH=/usr/local/n/versions/node/20.19.4/bin:/usr/bin:/usr/local/bin:\$PATH
   else
@@ -2116,8 +2116,7 @@ fim_instalacao_instancia() {
   printf "   ${WHITE}Backend: ${BLUE}${nova_subdominio_backend}${WHITE}\n"
   printf "   ${WHITE}Frontend: ${BLUE}${nova_subdominio_frontend}${WHITE}\n"
   echo
-  printf "   ${WHITE}Usuário ${BLUE}admin@multi100.com.br${WHITE}\n"
-  printf "   ${WHITE}Senha   ${BLUE}adminpro${WHITE}\n"
+  mf_mostrar_admin_inicial
   echo
   printf "   ${WHITE}Empresa: ${BLUE}${nova_empresa}${WHITE}\n"
   printf "   ${WHITE}Porta Backend: ${BLUE}${nova_backend_port}${WHITE}\n"
@@ -2131,6 +2130,8 @@ fim_instalacao_instancia() {
 
 # Função principal
 main() {
+  source "${SCRIPT_DIR}/mf_admin_inicial.sh" || return 1
+  mf_solicitar_admin_inicial || return 1
   solicitar_dados_instancia
   solicitar_dados_adicionais
   

@@ -44,20 +44,31 @@ if [ -z "$ids" ]; then
   exit 1
 fi
 
-formato='{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.State.OOMKilled}}'
+formato='{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.State.OOMKilled}}|{{.State.ExitCode}}|{{.HostConfig.RestartPolicy.Name}}'
 while IFS= read -r id; do
   [ -n "$id" ] || continue
   if ! dados=$(timeout --kill-after=5s 20s docker inspect --format "$formato" "$id" 2>/dev/null); then
     printf '%s\n' 'FALHA: não foi possível inspecionar um container.' >&2
     falhas=$((falhas+1)); continue
   fi
-  IFS='|' read -r dono servico oneoff estado saude oom <<< "$dados"
+  IFS='|' read -r dono servico oneoff estado saude oom codigo_saida reinicio <<< "$dados"
   if [ "$dono" != "$projeto" ] || ! [[ "$servico" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
     printf '%s\n' 'FALHA: identidade de container divergente ou incompleta.' >&2
     falhas=$((falhas+1)); continue
   fi
   [[ "$oneoff" = True || "$oneoff" = true ]] && continue
   encontrados["$servico"]=1
+  case "$servico" in
+    migrate|seed|official-db-init|official-migrate)
+      if [ "$estado" = exited ] && [ "$codigo_saida" = 0 ] && [ "$oom" = false ] && { [ "$reinicio" = no ] || [ -z "$reinicio" ]; }; then
+        printf 'OK: job %s concluído com saída 0.\n' "$servico"
+      else
+        printf 'FALHA: job %s não foi concluído com sucesso.\n' "$servico" >&2
+        falhas=$((falhas+1))
+      fi
+      continue
+      ;;
+  esac
   if [ "$estado" != running ] || [ "$oom" != false ] || { [ "$saude" != none ] && [ "$saude" != healthy ]; }; then
     printf 'FALHA: serviço %s não está saudável.\n' "$servico" >&2
     falhas=$((falhas+1))

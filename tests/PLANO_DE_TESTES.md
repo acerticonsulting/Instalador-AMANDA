@@ -53,6 +53,11 @@ Trocar os exemplos pelos valores reais. O caminho `/health` é ilustrativo: info
 
 O verificador exige `backend`, `frontend`, `postgres` e `redis` e aceita serviços obrigatórios adicionais com `--servico`. Também verifica todos os demais containers encontrados no projeto, exceto tarefas Compose com label `oneoff=True`. Um serviço opcional completamente ausente só será detectado se tiver sido informado como obrigatório.
 
+Os jobs `migrate`, `seed`, `official-db-init` e `official-migrate` são aceitos
+somente quando encerrados com código 0, sem OOM e sem reinício automático.
+Jobs ainda em execução, pendentes ou falhos reprovam. Serviços contínuos parados
+continuam reprovando, inclusive com saída 0. Há regressões para essas distinções.
+
 O modo consulta apenas `docker ps`, `docker inspect` e endpoints HTTP via GET. Não inicia, reinicia ou remove containers, não usa `docker exec`, não faz migrações e não autentica com credenciais administrativas. As requisições podem produzir os logs normais de acesso do servidor.
 
 Cada consulta Docker tem limite de 20 segundos; cada consulta HTTP usa timeout de conexão de 5 segundos e total de 20 segundos. Há um limite externo adicional para encerrar processos travados. A verificação TLS permanece ativa. O resultado exige HTTP 2xx: 3xx, 4xx, 5xx e falha de conexão reprovam. Informar a URL final, pois redirecionamentos não são seguidos. URLs com credenciais, query string ou fragmento são rejeitadas.
@@ -89,6 +94,12 @@ O executor encontra todos os arquivos regulares `*.sh` da árvore, incluindo nov
 **Cobertura de sintaxe em todos os scripts não significa cobertura de todos os ramos.** Nenhum resultado local certifica ausência de bugs ou vulnerabilidades na plataforma. Os valores da chave Git e os endereços dos repositórios não são modificados pelos testes.
 
 ## 5. Casos automatizados
+
+Credenciais iniciais: `regressao_instalador.sh` valida o padrão AMANDA,
+personalização com caracteres literais, exportação para o seed, confirmação,
+rejeição de e-mail inválido/EOF/senha vazia e ausência da senha personalizada
+na saída. Também impede a volta do UPDATE forçado do e-mail do usuário 1.
+Criação, hash e preservação de conta existente são verificados na suíte da plataforma.
 
 O arquivo `regressao_instalador.sh` também verifica a restrição do repositório:
 URL autorizada com/sem `.git` e barra final; rejeição de vazio/EOF, forks, domínio

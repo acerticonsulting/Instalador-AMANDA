@@ -3,12 +3,31 @@
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 source "$ROOT/tools/mf_operacoes_seguras.sh"
+source "$ROOT/tools/mf_admin_inicial.sh"
 WORK=$(mktemp -d)
 trap 'rm -rf -- "$WORK"' EXIT
 cd "$WORK"
 LOG="$WORK/docker.log"
 export LOG
 falhar() { printf 'FALHOU: %s\n' "$*" >&2; exit 1; }
+
+mf_solicitar_admin_inicial <<< n > "$WORK/admin-output" 2>&1 || falhar 'padrão admin rejeitado'
+[ "$AMANDA_ADMIN_EMAIL" = 'admin@amanda.com.br' ] && [ "$AMANDA_ADMIN_PASSWORD" = 'adminamanda' ] || falhar 'padrão admin incorreto'
+senha_teste='custom$#[]\password'
+printf -v entrada_admin '%s\n' s Owner@example.test "$senha_teste" "$senha_teste"
+mf_solicitar_admin_inicial <<< "$entrada_admin" > "$WORK/admin-output" 2>&1 || falhar 'personalização rejeitada'
+[ "$AMANDA_ADMIN_EMAIL" = 'owner@example.test' ] && [ "$AMANDA_ADMIN_PASSWORD" = "$senha_teste" ] || falhar 'credencial personalizada alterada'
+mf_mostrar_admin_inicial >> "$WORK/admin-output"
+if grep -Fq -- "$senha_teste" "$WORK/admin-output"; then falhar 'senha personalizada exposta'; fi
+bash -c '[[ "$AMANDA_ADMIN_EMAIL" = owner@example.test && -n "$AMANDA_ADMIN_PASSWORD" ]]' || falhar 'credenciais não exportadas'
+if mf_solicitar_admin_inicial < /dev/null > /dev/null 2>&1; then falhar 'EOF nas credenciais aceito'; fi
+if mf_solicitar_admin_inicial <<< $'s\ninvalid\nx\nx' > /dev/null 2>&1; then falhar 'e-mail inválido aceito'; fi
+if mf_solicitar_admin_inicial <<< $'s\nowner@example.test\none\ntwo' > /dev/null 2>&1; then falhar 'confirmação diferente aceita'; fi
+if mf_solicitar_admin_inicial <<< $'s\nowner@example.test\n\n' > /dev/null 2>&1; then falhar 'senha vazia aceita'; fi
+[ "$MF_ADMIN_INICIAL_CONFIRMADO" = 0 ] || falhar 'falha deixou credenciais confirmadas'
+grep -Fq 'docker exec -e AMANDA_ADMIN_EMAIL -e AMANDA_ADMIN_PASSWORD "$be_container" npx sequelize db:seed:all' "$ROOT/instalador_single.sh" || falhar 'seed Docker sem credenciais selecionadas'
+if grep -Fq "WHERE id = 1 AND email !=" "$ROOT/instalador_single.sh"; then falhar 'reset forçado de e-mail reapareceu'; fi
+unset AMANDA_ADMIN_EMAIL AMANDA_ADMIN_PASSWORD MF_ADMIN_INICIAL_CONFIRMADO senha_teste entrada_admin
 extrair() {
   awk -v nome="$1" '
     $0 == nome "() {" { ativo=1; encontrado=1 }

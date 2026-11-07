@@ -564,8 +564,8 @@ URL_BACKEND_MULT100=${backend_url}
 REDIS_URI=${REDIS_URI_APIOFICIAL}
 PORT=${default_apioficial_port}
 NAME_ADMIN=SetupAutomatizado
-EMAIL_ADMIN=admin@multi100.com.br
-PASSWORD_ADMIN=adminpro
+EMAIL_ADMIN=${AMANDA_ADMIN_EMAIL:-admin@amanda.com.br}
+PASSWORD_ADMIN=${AMANDA_ADMIN_PASSWORD:-adminamanda}
 JWT_REFRESH_SECRET=${jwt_refresh_secret_backend}
 URL_API_OFICIAL=https://${subdominio_oficial}
 EOF
