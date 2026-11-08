@@ -2,7 +2,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const { CORE,normalizeConfig,envValues,Manager }=require('./manager.cjs');
-const { writeEnv,validateOptions,digest }=require('./options.cjs');
+const { writeEnv,validateOptions,digest,vapidPrivateKey }=require('./options.cjs');
 
 class Operations {
   constructor(manager){this.m=manager;}
@@ -26,7 +26,7 @@ class Operations {
     if(pg){if(![100,200,300].includes(pg.maxConnections)||!['128MB','256MB','512MB','1GB'].includes(pg.sharedBuffers))throw Error('Perfil PostgreSQL inválido.');Object.assign(root,{PG_MAX_CONNECTIONS:pg.maxConnections,PG_SHARED_BUFFERS:pg.sharedBuffers});}
     if(pushEmail){if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pushEmail))throw Error('E-mail VAPID inválido.');const old=fs.existsSync(path.join(m.state.platform,'.env.backend'))?envValues(path.join(m.state.platform,'.env.backend')):{};
       if(old.VAPID_PUBLIC_KEY&&old.VAPID_PRIVATE_KEY){m.runner.emit('Chaves push existentes preservadas.\n');}
-      else{const ecdh=crypto.createECDH('prime256v1');ecdh.generateKeys();backend.VAPID_PUBLIC_KEY=ecdh.getPublicKey().toString('base64url');backend.VAPID_PRIVATE_KEY=ecdh.getPrivateKey().toString('base64url');}
+      else{const ecdh=crypto.createECDH('prime256v1');ecdh.generateKeys();backend.VAPID_PUBLIC_KEY=ecdh.getPublicKey().toString('base64url');backend.VAPID_PRIVATE_KEY=vapidPrivateKey(ecdh.getPrivateKey());}
       backend.VAPID_SUBJECT='mailto:'+pushEmail;
     }
     for(const [k,v]of Object.entries({...root,...backend}))if(/PASS|SECRET|KEY|TOKEN/.test(k))m.runner.secret(v);

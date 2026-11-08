@@ -43,4 +43,8 @@ function validateOptions(options = {}) {
 async function digest(file) {
   const hash=crypto.createHash('sha256');for await(const chunk of fs.createReadStream(file))hash.update(chunk);return hash.digest('hex');
 }
-module.exports = { GROUPS, literal, writeEnv, validateOptions, digest };
+function vapidPrivateKey(bytes){
+  if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>32)throw Error('Escalar P-256 inválido.');
+  return Buffer.concat([Buffer.alloc(32-bytes.length),bytes]).toString('base64url');
+}
+module.exports = { GROUPS, literal, writeEnv, validateOptions, digest,vapidPrivateKey };

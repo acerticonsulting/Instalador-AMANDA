@@ -126,3 +126,15 @@ Após seed concluído e falha de arranque, configurações de URLs/portas permit
 corrigir o acesso antes de Retomar. O estado continua incompleto até login/sessão
 serem verificados; não há repetição de seed. Portas que conflitam com Caddy ou
 outros serviços são recusadas antes de criar dados.
+
+A revisão final adicionou a 43ª regressão: um componente externo com contrato Docker
+válido é incluído no backup consistente (parada antes do dump e volume no snapshot),
+e uma atualização que perde o healthcheck é recusada, recuperando código/configuração
+anteriores antes de qualquer recriação. Isso valida o mecanismo com mocks; não
+homologa os repositórios reais de VOZ/HUB ainda não fornecidos.
+
+O hook identificou ainda um caso raro de VAPID: ECDH pode retornar o escalar privado
+com menos de 32 bytes ao omitir zeros iniciais. A geração agora preserva o escalar e
+preenche zeros à esquerda até 32 bytes. A mesma regressão usa escalar curto fixo,
+além da geração real e preservação das chaves existentes. 43 testes passaram após
+a correção; nenhuma chave ou assinatura real foi modificada.

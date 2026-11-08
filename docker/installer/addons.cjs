@@ -21,11 +21,13 @@ class Addons{
     const pending=previous?.phase==='starting',images={};
     if(pending&&old!==previous.revision)throw Error('Retome a revisão registrada do componente antes de atualizar.');
     if(previous&&!pending){await m.backup();Object.assign(images,await m.imageIds());}
+    const project=m.state.project+'_'+kind,envFile=path.join(m.private,'addon-'+kind+'.env'),oldEnv=fs.existsSync(envFile)?fs.readFileSync(envFile):null;
+    let base;
+    try{
     if(!pending&&(update||!previous)){await git(['-c','credential.helper=','fetch','origin','main'],{env});await git(['merge-base','--is-ancestor','HEAD','origin/main']);await git(['merge','--ff-only','origin/main']);}
     const file=path.join(dir,composeFile);if(!fs.existsSync(file))throw Error('Fonte obtida sem '+composeFile+'. É necessário o Compose mantido pelo fornecedor; nenhuma instalação foi declarada concluída.');
-    const project=m.state.project+'_'+kind,envFile=path.join(m.private,'addon-'+kind+'.env');
     if(!update){for(const v of Object.values(environment))m.runner.secret(v);writeEnv(envFile,{...environment,AMANDA_NETWORK:m.state.project+'_default'});}
-    const base=['compose','--project-directory',dir,'--env-file',envFile,'-p',project,'-f',file];
+    base=['compose','--project-directory',dir,'--env-file',envFile,'-p',project,'-f',file];
     const config=JSON.parse((await m.docker([...base,'config','--format','json'],{quiet:true})).stdout);
     for(const service of Object.values(config.services||{})){
       for(const[k,v]of Object.entries(service.environment||{}))if(/KEY|TOKEN|SECRET|PASS/.test(k))m.runner.secret(v);
@@ -39,8 +41,8 @@ class Addons{
     if(!Object.values(config.networks||{}).some(n=>n.external&&n.name===m.state.project+'_default'))throw Error('Compose do componente deve usar rede externa ${AMANDA_NETWORK} da AMANDA.');
     for(const n of Object.values(config.networks||{}))if(n.external?n.name!==m.state.project+'_default':!n.name?.startsWith(project+'_'))throw Error('Rede de componente fora da instância.');
     if(!previous)await m.backup();
-    try{await m.docker([...base,'build'],{cwd:dir,label:'Build em Docker: '+kind});}
-    catch(error){await m.restoreTags(images);await git(['checkout','--detach',old]);throw error;}
+    await m.docker([...base,'build'],{cwd:dir,label:'Build em Docker: '+kind});
+    }catch(error){if(oldEnv)fs.writeFileSync(envFile,oldEnv,{mode:0o600});else if(fs.existsSync(envFile))fs.unlinkSync(envFile);await m.restoreTags(images);await git(['checkout','--detach',old]);throw error;}
     // A failed startup may have applied the supplier's migrations: keep its revision,
     // rather than pretending a source checkout alone rolls the database back.
     const candidate={sourceUrl,composeFile,project,dir,revision:(await git(['rev-parse','HEAD'])).stdout.trim(),phase:'starting',preDeploymentBackup:m.state.lastBackup};m.write(record,candidate);

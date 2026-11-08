@@ -8,7 +8,7 @@ const { SOURCE, CORE, sourceUrl, rootPath, normalizeConfig, envValues, Runner, M
 const { installInput } = require('../docker/installer/cli.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
-const {validateOptions,writeEnv}=require('../docker/installer/options.cjs');
+const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');
 const {Addons}=require('../docker/installer/addons.cjs');
 const input = extra => ({ sourceUrl: SOURCE, ...extra });
 function temporary() {
@@ -33,6 +33,10 @@ class FakeRunner {
       if(args.includes('get-url'))stdout=options.cwd?.includes('/addons/')?(this.addonRemote||this.remote):this.remote;
       if(args.includes('status'))stdout=this.dirty?' M docker-compose.yml\n':'';
       if(args.includes('rev-parse'))stdout='a'.repeat(40);
+      if(options.cwd?.includes('/addons/')&&args[0]!=='clone'){
+        if(args.includes('merge')&&this.invalidateAddonOnMerge)this.addonValid=false;
+        if(args.includes('checkout')&&this.invalidateAddonOnMerge)this.addonValid=true;
+      }
     } else if(bin===process.execPath && args[0].endsWith('configure.cjs')) fs.writeFileSync(path.join(options.cwd,'.env'),defaultEnv);
     else if(bin==='docker') {
       if(args[0]==='info')stdout=JSON.stringify({OSType:'linux',ServerVersion:'27.5.1',Architecture:'x86_64'});
@@ -43,10 +47,10 @@ class FakeRunner {
       else if(args[0]==='compose') {
         if(args.includes('config')) {
           const project=args[args.indexOf('-p')+1];
-          stdout=JSON.stringify({services:Object.fromEntries(CORE.map(n=>[n,{image:project+'-'+n+':local',environment:{}}])),volumes:Object.fromEntries(['postgres_data','redis_data','backend_database','backend_private','backend_public','oficial_public','wuzapi_data','rabbitmq_data','caddy_data','caddy_config'].map(n=>[n,{name:project+'_'+n}]))});
+          stdout=JSON.stringify(project.endsWith('_voz')&&this.addonValid?{services:{voice:{image:project+'-voice:local',environment:{},healthcheck:{test:['CMD','true']}}},volumes:{voice_data:{name:project+'_voice_data'}},networks:{amanda:{name:'amanda_default',external:true}}}:{services:Object.fromEntries(CORE.map(n=>[n,{image:project+'-'+n+':local',environment:{}}])),volumes:Object.fromEntries(['postgres_data','redis_data','backend_database','backend_private','backend_public','oficial_public','wuzapi_data','rabbitmq_data','caddy_data','caddy_config'].map(n=>[n,{name:project+'_'+n}]))});
         } else if(args.includes('ps')) {
           if(args.includes('-q'))stdout='b'.repeat(64);
-          else stdout=[...CORE,'edge'].map(Service=>JSON.stringify({Service,State:Service===this.badService?'exited':'running',Health:'healthy'})).join('\n');
+          else stdout=(args[args.indexOf('-p')+1].endsWith('_voz')&&this.addonValid?['voice']:[...CORE,'edge']).map(Service=>JSON.stringify({Service,State:Service===this.badService?'exited':'running',Health:'healthy'})).join('\n');
         } else if(args.includes('psql'))stdout=this.users;
       }
       if(args[0]==='run' && args.includes('-czf')) {
@@ -98,6 +102,7 @@ test('configuration failure restores old env and state rather than leaving a hal
 });
 
 test('push setup generates a matching P-256 key pair once and preserves subscriptions on reconfiguration',async()=>{
+  const short=Buffer.from(vapidPrivateKey(Buffer.from([1])),'base64url');assert.equal(short.length,32);assert.equal(short.at(-1),1);assert.ok(short.subarray(0,31).every(x=>x===0));
   const t=await fixture();try{await t.m.initialize();const ops=new Operations(t.m);await ops.configure({pushEmail:'owner@example.test'});const file=path.join(t.m.state.platform,'.env.backend'),first=envValues(file);assert.equal(Buffer.from(first.VAPID_PUBLIC_KEY,'base64url').length,65);assert.equal(Buffer.from(first.VAPID_PRIVATE_KEY,'base64url').length,32);await ops.configure({pushEmail:'new@example.test'});assert.equal(envValues(file).VAPID_PRIVATE_KEY,first.VAPID_PRIVATE_KEY);}finally{t.cleanup();}
 });
 
@@ -144,6 +149,13 @@ test('GHCR credential uses stdin, private storage and no token in CLI arguments'
 test('external components reject missing Docker contracts and never borrow the connector token',async()=>{
   const t=await fixture();try{await t.m.initialize();t.runner.calls=[];const addon=new Addons(t.m);await assert.rejects(addon.deploy('voz',{sourceUrl:'https://token@github.com/owner/voice'}));assert.ok(!t.runner.calls.some(c=>c.args.includes('clone')));
     t.runner.addonRemote='https://github.com/owner/voice';await assert.rejects(addon.deploy('voz',{sourceUrl:t.runner.addonRemote,token:'synthetic-addon-token'}),/healthcheck/);assert.ok(!fs.existsSync(path.join(t.m.private,'addon-voz.json')));assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.secrets/github_token'),'utf8'),'');assert.ok(!t.runner.calls.some(c=>c.args.includes('up')));
+  }finally{t.cleanup();}
+});
+
+test('valid external component participates in consistent backups; invalid update restores the old source',async()=>{
+  const t=await fixture();try{await t.m.initialize();t.runner.addonValid=true;t.runner.addonRemote='https://github.com/owner/voice';const addon=new Addons(t.m);await addon.deploy('voz',{sourceUrl:t.runner.addonRemote,environment:{VOICE_TOKEN:'synthetic-voice-token'}});assert.equal(JSON.parse(fs.readFileSync(path.join(t.m.private,'addon-voz.json'))).phase,'ready');assert.ok((await t.m.configuration()).volumes.voz_voice_data);
+    t.runner.calls=[];await t.m.backup();const pause=t.runner.calls.findIndex(c=>c.args.includes('amanda_voz')&&c.args.includes('stop')),dump=t.runner.calls.findIndex(c=>c.args.includes('pg_dump'));assert.ok(pause>=0&&pause<dump);assert.ok(t.runner.calls.some(c=>c.args.some(v=>v.includes('source=amanda_voz_voice_data,target=/data/voz_voice_data,readonly'))));
+    t.runner.calls=[];t.runner.invalidateAddonOnMerge=true;await assert.rejects(addon.deploy('voz',{},true),/healthcheck/);assert.ok(t.runner.calls.some(c=>c.bin==='git'&&c.options.cwd?.includes('/addons/')&&c.args.includes('--detach')));assert.equal(t.runner.addonValid,true);const changed=t.runner.calls.findIndex(c=>c.bin==='git'&&c.args.includes('merge'));assert.ok(changed>=0);assert.ok(!t.runner.calls.slice(changed+1).some(c=>c.args.includes('amanda_voz')&&c.args.includes('up')));
   }finally{t.cleanup();}
 });
 
