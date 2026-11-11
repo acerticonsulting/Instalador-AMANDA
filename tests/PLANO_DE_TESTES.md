@@ -1,5 +1,67 @@
 # Plano de testes do instalador AMANDA
 
+## Assistente completo — 11/11/2026
+
+O grupo `docker_only.test.cjs` passa a 75 testes. O executor examina agora
+48 scripts Shell, incluindo a integração opt-in (somente sintaxe nessa etapa).
+Continuam sendo cinco grupos locais, com comandos de plataforma simulados.
+
+| ID | Cenário | Cobertura |
+|---|---|---|
+| ASS-01 | Padrão localhost e apresentação | 11 etapas, padrões, diretório no resumo, NO_COLOR e banner. |
+| ASS-02 | IP personalizado | IPv4/IPv6, publicação e portas de frontend/backend diferentes. |
+| ASS-03 | Domínios HTTPS | URLs distintas, domínio da Oficial, conta personalizada e segredos fora do resumo. |
+| ASS-04 | Retorno, revisão, cancelamento | `:voltar`, edição por etapa, respostas mantidas e cancelamento antes de recursos. |
+| ASS-05 | Entrada inválida | Modo, domínio, confirmação da senha, URL com credenciais/caminho, portas e allowlists. |
+| ASS-06 | Banco e segredos | Perfil inválido/grande antes de clone; senhas com `$VAR`, aspas e caracteres reservados; chaves geradas e pares VAPID. |
+| ASS-07 | SMTP com/sem configuração | MAIL_SECURE, senha oculta, nome remetente, verificação sem envio e falha opcional sem invalidar o core. |
+| ASS-08 | Serviços opcionais | Base mínima sem API Oficial/WuzAPI/RabbitMQ; build/migrations/backup/restore/update respeitam seleção. |
+| ASS-09 | Habilitação posterior | Backup antes de migration, sem seed; falha mantém estado retomável, sem alegar rollback de schema. |
+| ASS-10 | Configuração posterior | SMTP recria só backend; suporte/URLs preservam contratos, rollback de arquivos e perfis existentes. |
+| ASS-11 | Portas ocupadas | Reprovação antes de migration/seed; checagem ignora bindings inalterados e usa helper Docker. |
+| ASS-12 | Diagnóstico HTTPS | Erros DNS, TLS, conexão e HTTP distinguidos; nenhum segredo no diagnóstico. |
+| ASS-13 | Identidade | Nome comercial só na empresa inicial; chamada parametrizada e estado novo obrigatórios. |
+| ASS-14 | Consulta segura | Allowlist pública e formulário de identidade; nada de dump completo do ambiente. |
+| ASS-15 | Dados preservados | Testes existentes de build/migration/seed interrompidos, configuração em update, backup/hashes e propriedade de exclusões. |
+
+### Integração real do parser e build do gerenciador
+
+Disponibilize uma cópia da fonte oficial da AMANDA para **leitura**, sem executar
+seu instalador. Na raiz deste repositório:
+
+```sh
+bash tests/integracao_compose.sh /caminho/da/fonte/AMANDA
+```
+
+Essa etapa constrói `amanda-installer:wizard-validation` e executa quatro testes
+em container `--network none`, sem montar socket Docker. Somente o CLI Compose
+embarcado analisa os arquivos; não há daemon acessível de dentro do container.
+A fonte é montada para leitura, e apenas Compose, `.env.example`, gerador e
+arquivos do Caddy são copiados para temporários. `.env` e segredos reais não são
+copiados. Os temporários e containers são descartados; a imagem permanece como
+cache/tag de desenvolvimento. A construção pode obter imagens base pela rede.
+
+Os testes comprovam resolução de URLs/portas/CORS, endpoints internos, precedência
+de env_file, SMTP/Google, senha literal e URI codificada, perfis mínimos, nomes
+explícitos, domínio da Oficial no Caddyfile e geração distinta/privada de chaves.
+A representação escapada `$$` emitida por `compose config` é normalizada somente
+na comparação, seguindo o contrato testado pela própria plataforma.
+
+### Classificação dos resultados desta entrega
+
+| Camada | Resultado | Limite |
+|---|---|---|
+| Estática | Sintaxe Shell e contratos aprovados | Scanner conservador não é parser completo nem prova contra ofuscação. |
+| Unitária/regressão | 75 testes Docker-only aprovados, além dos grupos históricos | Docker/Git/SQL simulados; fixtures fictícias. |
+| Integração | Quatro testes com Compose/gerador/Caddyfile reais aprovados | Sem emitir certificado ou iniciar plataforma. |
+| Build Docker | Imagem do gerenciador construída | Backend/frontend e microserviços não foram alterados nem reconstruídos. |
+| Runtime da plataforma | Não executado | Não foi fornecida VPS/alvo de instalação. |
+| Contas e recuperação reais | Pendentes | Meta, WuzAPI, SMTP do provedor, Google, push, pagamentos, login real e restauração em Linux descartável. |
+
+HOM-01/02/04/05/10/11 continuam necessários para aceitar homologação ponta a ponta.
+Uma opção de menu, parser aprovado ou build do gerenciador não substitui essas
+evidências. Não executar instalações, migrations ou restaurações reais na suíte local.
+
 ## Docker e nomenclatura por empresa — 2026-11-11
 
 A suíte Docker-only tem 59 casos. As novas regressões cobrem:

@@ -3,7 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { AsyncLocalStorage } = require('node:async_hooks');
-const { validateOptions, writeEnv, digest } = require('./options.cjs');
+const { validateOptions, validatePg, writeEnv, digest } = require('./options.cjs');
 
 const SOURCE = 'https://github.com/acerticonsulting/AMANDA.git';
 const CORE = ['postgres', 'redis', 'backend', 'frontend', 'api_transcricao', 'api_oficial', 'wuzapi', 'rabbitmq'];
@@ -19,29 +19,34 @@ function rootPath(value) {
   return root;
 }
 function normalizeConfig(input) {
-  const allowed = ['sourceUrl', 'project', 'frontendUrl', 'backendUrl', 'public', 'edge', 'adminEmail', 'adminPassword', 'sourceToken', 'buildToken','options'];
+  const allowed = ['sourceUrl', 'project', 'companyName', 'frontendUrl', 'backendUrl', 'public', 'edge', 'adminEmail', 'adminPassword', 'sourceToken', 'buildToken','options'];
   for (const key of Object.keys(input)) if (!allowed.includes(key)) throw Error('Campo de configuração desconhecido: ' + key);
   const c = { project: 'amanda', frontendUrl: 'http://localhost:3000', backendUrl: 'http://localhost:8080', public: false, edge: false, adminEmail: 'admin@amanda.com.br', adminPassword: 'adminamanda', ...input };
   c.sourceUrl = sourceUrl(c.sourceUrl);
   if(typeof c.project!=='string')throw Error('Nome do projeto inválido.');
   c.project=c.project.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[ -]+/g,'_');
   if (!/^[a-z0-9][a-z0-9_]{0,39}$/.test(c.project)) throw Error('Nome do projeto inválido.');
+  if(c.companyName!==undefined&&(typeof c.companyName!=='string'||!c.companyName.trim()||c.companyName.length>120||/[\x00-\x1f\x7f]/.test(c.companyName)))throw Error('Nome comercial da empresa inválido.');
   if (typeof c.public !== 'boolean' || typeof c.edge !== 'boolean') throw Error('public e edge devem ser booleanos.');
   for (const key of ['frontendUrl', 'backendUrl']) {
+    if(typeof c[key]!=='string'||/[\x00-\x20\x7f]/.test(c[key]))throw Error('URL inválida: '+key);
     const u = new URL(c[key]);
     if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || u.search || u.hash || u.pathname !== '/') throw Error('URL inválida: ' + key);
     c[key] = u.origin;
   }
   const front = new URL(c.frontendUrl), back = new URL(c.backendUrl);
   c.options=validateOptions(c.options);
+  const flags={official:true,wuzapi:true,rabbit:true,...c.options.services};
+  if(c.options.officialUrl&&!flags.official)throw Error('Domínio da API Oficial exige o serviço habilitado.');
   if(c.options.officialUrl&&(!c.edge||[front.hostname,back.hostname].includes(new URL(c.options.officialUrl).hostname)))throw Error('A API Oficial pública requer Caddy/HTTPS e domínio próprio diferente do frontend/backend.');
   if (c.edge) {
-    if(new Set([80,443,3000,8080,c.options.officialPort||6000,c.options.wuzapiPort||8090]).size!==6)throw Error('Portas da API Oficial/WuzAPI conflitam com o proxy, frontend ou backend.');
-    for (const u of [front, back]) if (u.protocol !== 'https:' || u.port || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)) throw Error('HTTPS/Caddy exige dois domínios DNS e porta 443.');
+    const ports=[80,443,3000,8080,...(flags.official?[c.options.officialPort||6000]:[]),...(flags.wuzapi?[c.options.wuzapiPort||8090]:[])];
+    if(new Set(ports).size!==ports.length)throw Error('Portas da API Oficial/WuzAPI conflitam com o proxy, frontend ou backend.');
+    for (const u of [front, back]) if (u.protocol !== 'https:' || u.port || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)||u.hostname.length>253||u.hostname.split('.').some(label=>! /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))) throw Error('HTTPS/Caddy exige dois domínios DNS válidos e porta 443.');
     if (front.hostname === back.hostname) throw Error('Use domínios diferentes para frontend e backend.');
   } else {
     if (front.protocol !== 'http:' || back.protocol !== 'http:') throw Error('Para HTTPS, habilite edge/Caddy.');
-    const ports = [front.port || '80', back.port || '80', String(c.options.officialPort || 6000), String(c.options.wuzapiPort || 8090)];
+    const ports = [front.port || '80', back.port || '80', ...(flags.official?[String(c.options.officialPort || 6000)]:[]), ...(flags.wuzapi?[String(c.options.wuzapiPort || 8090)]:[])];
     if (new Set(ports).size !== ports.length) throw Error('As portas de frontend, backend, API Oficial (6000) e WuzAPI (8090) devem ser diferentes.');
     if (!c.public && [front, back].some(u => !['localhost', '127.0.0.1', '[::1]'].includes(u.hostname))) throw Error('URLs de rede exigem public=true ou HTTPS/Caddy.');
   }
@@ -59,6 +64,7 @@ function envValues(file) {
     let v = m[2];
     if (v.startsWith('"') && v.endsWith('"')) { try { v = JSON.parse(v); } catch {} }
     else if (v.startsWith("'") && v.endsWith("'")) v = v.slice(1, -1).replace(/\\'/g, "'");
+    if(!m[2].startsWith("'"))v=v.replace(/\$\$/g,'$');
     env[m[1]] = v;
   }
   return env;
@@ -130,9 +136,12 @@ class Manager {
   }
   write(file, value) { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n', { mode: 0o600 }); }
   save(state) { this.write(this.stateFile + '.tmp', state); fs.renameSync(this.stateFile + '.tmp', this.stateFile); this.state = state; }
+  services(){return ['postgres','redis','backend','frontend','api_transcricao',...(this.state.profiles.includes('official')?['api_oficial']:[]),...(this.state.profiles.includes('whatsmeow')?['wuzapi']:[]),...(this.state.profiles.includes('rabbit')?['rabbitmq']:[])];}
+  databases(){return ['amanda',...(this.state.profiles.includes('official')?['api_oficial']:[])];}
+  async resources(){const info=JSON.parse((await this.docker(['info','--format','{{json .}}'],{quiet:true})).stdout);return {memory:info.MemTotal,cpus:info.NCPU};}
   load() {
     const s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-    if (s.schema !== 1 || sourceUrl(s.sourceUrl) !== SOURCE || !/^[a-z0-9][a-z0-9_-]{0,39}$/.test(s.project)) throw Error('Estado do instalador inválido.');
+    if (s.schema !== 1 || sourceUrl(s.sourceUrl) !== SOURCE || !/^[a-z0-9][a-z0-9_-]{0,39}$/.test(s.project)||!Array.isArray(s.profiles)||s.profiles.some(p=>!['official','whatsmeow','rabbit','edge'].includes(p))) throw Error('Estado do instalador inválido.');
     const relative = path.relative(this.root, s.platform);
     if (relative.startsWith('..') || path.isAbsolute(relative)) throw Error('Plataforma fora do diretório selecionado.');
     const physicalRoot = fs.realpathSync(this.root), physical = fs.realpathSync(s.platform);
@@ -146,7 +155,7 @@ class Manager {
       if (fs.existsSync(p)) for (const [k,v] of Object.entries(envValues(p))) if (/SECRET|TOKEN|KEY|PASS/.test(k)) this.runner.secret(v);
     }
     for (const p of [path.join(this.state.platform,'.secrets/github_token'),path.join(this.private,'source-token')]) if (fs.existsSync(p)) this.runner.secret(fs.readFileSync(p,'utf8').trim());
-    const account = path.join(this.private,'admin-access.json'); if (fs.existsSync(account)) this.runner.secret(JSON.parse(fs.readFileSync(account,'utf8')).password);
+    const account = path.join(this.private,'admin-access.json'); if (fs.existsSync(account)){const a=JSON.parse(fs.readFileSync(account,'utf8'));this.runner.secret(a.password);for(const[k,v]of Object.entries(a.initialSettings||{}))if(/key|token|pass|secret/i.test(k))this.runner.secret(v);}
   }
   temporaryName(task) { return (this.state?.project || 'amanda')+'_'+task.replace(/[^a-z0-9_]/g,'_')+'_'+crypto.randomUUID().replace(/-/g,''); }
   docker(args, options={}) {
@@ -195,10 +204,13 @@ class Manager {
     const env = envValues(path.join(this.state.platform,'.env'));
     if ((env.COMPOSE_PROJECT_NAME || 'amanda') !== this.state.project) throw Error('Nome do projeto difere do estado salvo; não trocar volumes automaticamente.');
     const config = JSON.parse((await this.compose(['config','--format','json'], { quiet: true, label: 'Validando Compose oficial' })).stdout);
-    for (const name of CORE) if (!config.services[name]) throw Error('Compose não contém o serviço ' + name);
+    for (const name of this.services()) if (!config.services[name]) throw Error('Compose não contém o serviço ' + name);
+    config.declaredVolumes={...config.volumes};
+    if(this.state.selectiveServices){for(const[key,service]of Object.entries({oficial_public:'api_oficial',wuzapi_data:'wuzapi',rabbitmq_data:'rabbitmq'}))if(!this.services().includes(service))delete config.volumes[key];}
+    if(this.state.selectiveServices&&!this.state.retainedEdgeVolumes&&!this.state.profiles.includes('edge'))for(const key of ['caddy_data','caddy_config'])delete config.volumes[key];
     if(this.state.naming==='company-v1')for(const [key,v]of Object.entries(config.services))if(v.container_name!==this.state.project+'_'+(key==='edge'?'caddy':key.replace(/-/g,'_')))throw Error('Nome de container inesperado: '+key);
     for(const [key,n]of Object.entries(config.networks||{}))if(n.external||n.name!==this.state.project+'_'+key)throw Error('Rede externa ou nome inesperado: '+key);
-    for (const [key,v] of Object.entries(config.volumes || {})) if (v.external || v.name !== this.state.project + '_' + key) throw Error('Volume externo ou nome inesperado: ' + key);
+    for (const [key,v] of Object.entries(config.declaredVolumes || {})) if (v.external || v.name !== this.state.project + '_' + key) throw Error('Volume externo ou nome inesperado: ' + key);
     for (const service of Object.values(config.services)) for (const [k,v] of Object.entries(service.environment || {})) if (/SECRET|TOKEN|KEY|PASS/.test(k)) { this.runner.secret(v); if (typeof v === 'string') this.runner.secret(v.replace(/\$\$/g,'$')); }
     config.installerAddons=[];
     if(fs.existsSync(this.private))for(const name of fs.readdirSync(this.private).filter(n=>/^addon-(voz|hub|goflow)\.json$/.test(n))){
@@ -219,46 +231,60 @@ class Manager {
     const volumes = new Set((await this.docker(['volume','ls','--format','{{.Name}}'], { quiet: true })).stdout.trim().split(/\s+/));
     const networks = new Set((await this.docker(['network','ls','--format','{{.Name}}'], { quiet: true })).stdout.trim().split(/\s+/));
     const names=new Set((await this.docker(['ps','-a','--format','{{.Names}}'],{quiet:true})).stdout.trim().split(/\s+/));
-    if (ids || Object.values(config.services).some(s=>s.container_name&&names.has(s.container_name)) || Object.values(config.volumes).some(v => volumes.has(v.name)) || Object.values(config.networks||{}).some(n=>networks.has(n.name)) || networks.has(this.state.project + '_default')) throw Error('Projeto ou volumes já existem. Use adopt para a instalação oficial existente; nenhum seed foi executado.');
+    if (ids || Object.values(config.services).some(s=>s.container_name&&names.has(s.container_name)) || Object.values(config.declaredVolumes).some(v => volumes.has(v.name)) || Object.values(config.networks||{}).some(n=>networks.has(n.name)) || networks.has(this.state.project + '_default')) throw Error('Projeto ou volumes já existem. Use adopt para a instalação oficial existente; nenhum seed foi executado.');
   }
   async prepare(input) {
     const c = normalizeConfig(input);
+    if(c.options.pg){const resources=await this.resources();if(!resources.memory)throw Error('Docker não informou memória para validar PostgreSQL.');validatePg(c.options.pg,resources.memory);}
     if (fs.existsSync(this.stateFile)) throw Error('Instalação já registrada; use update ou resume.');
     fs.mkdirSync(this.root, { recursive: true });
     if (fs.readdirSync(this.root).some(p => p !== '.amanda-installer')) throw Error('Diretório não vazio. Escolha uma pasta nova ou use adopt.');
     this.runner.secret(c.adminPassword); this.runner.secret(c.sourceToken); this.runner.secret(c.buildToken);
-    this.save({ schema: 1, sourceUrl: SOURCE, project: c.project, frontendUrl: c.frontendUrl, backendUrl: c.backendUrl, platform: path.join(this.root,'platform'), profiles: [...PROFILES, ...(c.edge ? ['edge'] : [])], phase: 'preparing', initialized: false, seedAttempted: false, seedSucceeded: false });
+    const flags={official:true,wuzapi:true,rabbit:true,...c.options.services};
+    const profiles=[...(flags.official?['official']:[]),...(flags.wuzapi?['whatsmeow']:[]),...(flags.rabbit?['rabbit']:[]),...(c.edge?['edge']:[])];
+    this.save({ schema: 1, sourceUrl: SOURCE, project: c.project, companyName:c.companyName, frontendUrl: c.frontendUrl, backendUrl: c.backendUrl, platform: path.join(this.root,'platform'), profiles, selectiveServices:true, retainedEdgeVolumes:c.edge, phase: 'preparing', initialized: false, seedAttempted: false, seedSucceeded: false });
     if (c.sourceToken) this.write(path.join(this.private,'source-token'), c.sourceToken);
     const gitEnv = { GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: path.join(__dirname,'source-askpass.cjs'), AMANDA_SOURCE_TOKEN_FILE: path.join(this.private,'source-token') };
     await this.runner.run('git',['-c','credential.helper=','clone','--branch','main','--single-branch',SOURCE,this.state.platform], { env: gitEnv, label: 'Obtendo a plataforma autorizada' });
     await this.runner.run(process.execPath,[path.join(this.state.platform,'docker/configure.cjs')], { cwd: this.state.platform, label: 'Gerando configuração privada no container' });
     const f = new URL(c.frontendUrl), b = new URL(c.backendUrl);
-    editEnv(path.join(this.state.platform,'.env'), { COMPOSE_PROJECT_NAME: c.project, COMPOSE_PROFILES: this.state.profiles.join(','), USE_WHATSAPP_OFICIAL: 'true', RABBITMQ_ENABLED_GLOBAL: 'true', WUZAPI_URL: 'http://wuzapi:8080', FRONTEND_URL: c.frontendUrl, BACKEND_URL: c.backendUrl, ALLOWED_ORIGINS: c.frontendUrl, BIND_ADDRESS: c.edge || !c.public ? '127.0.0.1' : '0.0.0.0', PORT_FRONTEND: c.edge ? 3000 : (f.port || 80), PORT_BACKEND: c.edge ? 8080 : (b.port || 80), FRONTEND_HOST: f.hostname, BACKEND_HOST: b.hostname });
+    editEnv(path.join(this.state.platform,'.env'), { COMPOSE_PROJECT_NAME: c.project, COMPOSE_PROFILES: this.state.profiles.join(','), USE_WHATSAPP_OFICIAL: String(flags.official), RABBITMQ_ENABLED_GLOBAL: String(flags.rabbit), WUZAPI_URL: flags.wuzapi?'http://wuzapi:8080':'', FRONTEND_URL: c.frontendUrl, BACKEND_URL: c.backendUrl, ALLOWED_ORIGINS: c.frontendUrl, BIND_ADDRESS: c.edge || !c.public ? '127.0.0.1' : '0.0.0.0', PORT_FRONTEND: c.edge ? 3000 : (f.port || 80), PORT_BACKEND: c.edge ? 8080 : (b.port || 80), FRONTEND_HOST: f.hostname, BACKEND_HOST: b.hostname });
     if (c.buildToken) this.write(path.join(this.state.platform,'.secrets/github_token'), c.buildToken);
     const o=c.options;
-    for(const v of [o.databasePassword,o.masterPassword,...Object.values(o.backendEnv || {})])this.runner.secret(v);
+    for(const v of [o.databasePassword,o.masterPassword,o.officialToken,o.wuzapiToken,...Object.values(o.backendEnv || {})])this.runner.secret(v);
+    for(const[k,v]of Object.entries(o.initialSettings||{}))if(/key|token|pass|secret/i.test(k))this.runner.secret(v);
     const rootOptions={PORT_APIOFICIAL:o.officialPort || 6000,PORT_WUZAPI:o.wuzapiPort || 8090,REACT_APP_NUMBER_SUPPORT:o.supportPhone || ''};
     rootOptions.OFICIAL_HOST=o.officialUrl?new URL(o.officialUrl).hostname:'';
     if(o.databasePassword){rootOptions.DB_PASS=o.databasePassword;rootOptions.DB_URI_PASSWORD=encodeURIComponent(o.databasePassword);}
     if(o.masterPassword)rootOptions.MASTER_KEY=o.masterPassword;
+    if(o.officialToken)rootOptions.TOKEN_API_OFICIAL=o.officialToken;
+    if(o.wuzapiToken)rootOptions.WUZAPI_ADMIN_TOKEN=o.wuzapiToken;
+    if(o.pg){rootOptions.PG_MAX_CONNECTIONS=o.pg.maxConnections;rootOptions.PG_SHARED_BUFFERS=o.pg.sharedBuffers;}
     const backendOptions={...o.backendEnv};
     for(const key of ['TRANSCRIBE_URL','URL_API_OFICIAL','WUZAPI_URL','GO_CAMPAIGN_DISPATCHER_URL','USE_GO_CAMPAIGN_DISPATCHER'])if(backendOptions[key]!==undefined){rootOptions[key]=backendOptions[key];delete backendOptions[key];}
     writeEnv(path.join(this.state.platform,'.env'),rootOptions);
     if(Object.keys(backendOptions).length)writeEnv(path.join(this.state.platform,'.env.backend'),backendOptions);
-    this.write(path.join(this.private,'admin-access.json'), { email: c.adminEmail, password: c.adminPassword, appName:o.appName });
+    if(o.pushEmail){const ecdh=crypto.createECDH('prime256v1');ecdh.generateKeys();const{vapidPrivateKey}=require('./options.cjs');backendOptions.VAPID_PUBLIC_KEY=ecdh.getPublicKey().toString('base64url');backendOptions.VAPID_PRIVATE_KEY=vapidPrivateKey(ecdh.getPrivateKey());backendOptions.VAPID_SUBJECT='mailto:'+o.pushEmail;writeEnv(path.join(this.state.platform,'.env.backend'),backendOptions);}
+    this.write(path.join(this.private,'admin-access.json'), { email: c.adminEmail, password: c.adminPassword, appName:o.appName,companyName:c.companyName,initialSettings:o.initialSettings });
+    this.state.testSmtp=Boolean(o.testSmtp);
     this.state.naming='company-v1';await this.configureNames();await this.identifyManager();
     this.loadSecrets(); await this.validateSource(true); await this.assertFreshResources();
+    await require('./preflight.cjs').assertPorts(this,await this.configuration());
+    if(c.edge){const hosts=[f.hostname,b.hostname,...(o.officialUrl?[new URL(o.officialUrl).hostname]:[])];await this.runner.run(process.execPath,['-e',`const d=require('node:dns').promises;Promise.all(${JSON.stringify(hosts)}.map(h=>d.lookup(h))).catch(()=>{console.error('DNS: domínio sem resolução; revise os registros antes de instalar.');process.exit(1)})`],{label:'Verificando resolução DNS antes de criar bancos'});}
     this.save({ ...this.state, phase: 'build', freshResourcesVerified: true });
   }
-  async build() { await this.compose(['build'], { label: 'Compilando todos os componentes dentro do Docker' }); }
+  async build() { await this.compose(['build',...this.services().filter(s=>['backend','frontend','api_transcricao','api_oficial'].includes(s))], { label: 'Compilando os componentes selecionados dentro do Docker' }); }
   async migrations() {
     await this.compose(['up','-d','--wait','--wait-timeout','180','postgres','redis'], { label: 'Aguardando PostgreSQL e Redis' });
     await this.compose(['run','--rm','--no-deps','migrate'], { label: 'Migrations Sequelize no container' });
-    await this.compose(['run','--rm','official-db-init'], { label: 'Inicialização não destrutiva do banco da API Oficial' });
-    await this.compose(['run','--rm','--no-deps','official-migrate'], { label: 'Migrations Prisma no container' });
+    if(this.state.profiles.includes('official')){
+      await this.compose(['run','--rm','official-db-init'], { label: 'Inicialização não destrutiva do banco da API Oficial' });
+      await this.compose(['run','--rm','--no-deps','official-migrate'], { label: 'Migrations Prisma no container' });
+    }
   }
   async initialize() {
     if (this.state.initialized || !this.state.freshResourcesVerified) throw Error('Inicialização sem prova de projeto novo recusada.');
+    await require('./preflight.cjs').assertPorts(this,await this.configuration());
     if (this.state.seedAttempted && !this.state.seedSucceeded) throw Error('Seed anterior incompleto. Preserve os volumes e recupere a inicialização; não repetir seeds automaticamente.');
     if (!this.state.seedSucceeded) {
       if (!this.state.resourcesClaimed) await this.assertFreshResources();
@@ -272,37 +298,52 @@ class Manager {
     }
     await this.startServices(); await this.verifyLogin();
     this.save({ ...this.state, initialized: true, phase: 'ready', revision: await this.revision() });
-    this.runner.emit('Instalação completa: oito serviços, login e sessão validados. Integrações externas aguardam suas contas.\n');
+    if(this.state.testSmtp)await this.testSmtp();
+    this.runner.emit('Instalação completa: '+this.services().length+' serviços, login e sessão validados. Integrações externas aguardam suas contas.\n');
     this.runner.emit(`Frontend: ${this.state.frontendUrl}\nBackend: ${this.state.backendUrl}\nAcesso inicial escolhido: ${path.join(this.private,'admin-access.json')} (arquivo privado).\n`);
   }
   async startServices() {
-    await this.compose(['up','-d','--no-deps','--wait','--wait-timeout','300',...CORE,...(this.state.profiles.includes('edge') ? ['edge'] : [])], { label: 'Iniciando a plataforma completa e verificando prontidão' });
+    await this.compose(['up','-d','--no-deps','--wait','--wait-timeout','300',...this.services(),...(this.state.profiles.includes('edge') ? ['edge'] : [])], { label: 'Iniciando a plataforma completa e verificando prontidão' });
     for(const a of(await this.configuration()).installerAddons)await this.docker([...a.base,'up','-d','--wait','--wait-timeout','300'],{label:'Iniciando componente '+a.project});
     await this.verifyHealth();
   }
   async verifyHealth() {
     const rows = (await this.compose(['ps','--all','--format','json'], { quiet: true })).stdout.trim().split(/\r?\n/).filter(Boolean).flatMap(l => { const r = JSON.parse(l); return Array.isArray(r) ? r : [r]; });
-    for (const name of [...CORE,...(this.state.profiles.includes('edge') ? ['edge'] : [])]) {
+    for (const name of [...this.services(),...(this.state.profiles.includes('edge') ? ['edge'] : [])]) {
       const r = rows.find(x => x.Service === name && x.State === 'running' && (name === 'edge' || x.Health === 'healthy'));
       if (!r || r.State !== 'running' || (name !== 'edge' && r.Health !== 'healthy')) throw Error('Serviço não está pronto: ' + name);
       if(this.state.naming==='company-v1'&&r.Name!==this.state.project+'_'+(name==='edge'?'caddy':name))throw Error('Nome efetivo de container divergente: '+name);
     }
     if(this.state.naming==='company-v1'){
       const names=new Set((await this.docker(['ps','--filter','label=com.docker.compose.project='+this.state.project,'--format','{{.Names}}'],{quiet:true})).stdout.trim().split(/\s+/));
-      for(const name of [...CORE,...(this.state.profiles.includes('edge')?['edge']:[])])if(!names.has(this.state.project+'_'+(name==='edge'?'caddy':name)))throw Error('docker ps não confirmou o nome: '+name);
+      for(const name of [...this.services(),...(this.state.profiles.includes('edge')?['edge']:[])])if(!names.has(this.state.project+'_'+(name==='edge'?'caddy':name)))throw Error('docker ps não confirmou o nome: '+name);
     }
     for(const a of(await this.configuration()).installerAddons){const raw=(await this.docker([...a.base,'ps','--all','--format','json'],{quiet:true})).stdout;const rows=raw.trim().split(/\r?\n/).filter(Boolean).flatMap(l=>{const v=JSON.parse(l);return Array.isArray(v)?v:[v];});for(const name of a.services)if(!rows.some(r=>r.Service===name&&r.State==='running'&&r.Health==='healthy'&&(this.state.naming!=='company-v1'||r.Name===a.project+'_'+name.replace(/-/g,'_'))))throw Error('Componente não saudável ou nome divergente: '+a.project+'/'+name);}
     await this.compose(['exec','-T','backend','node','-e',`Promise.all(['http://127.0.0.1:8080/healthz','http://frontend/'].map(async u=>{const r=await fetch(u);if(r.status!==200)throw Error('HTTP '+r.status)})).catch(()=>process.exit(1))`], { label: 'Verificando HTTP interno do backend e frontend' });
     if(this.state.profiles.includes('edge')){
       const env=envValues(path.join(this.state.platform,'.env'));
       const urls=[{url:env.FRONTEND_URL,exact:true},{url:env.BACKEND_URL+'/healthz',exact:true},...(env.OFICIAL_HOST?[{url:'https://'+env.OFICIAL_HOST,exact:false}]:[])];
-      await this.compose(['exec','-T','backend','node','-e',`(async()=>{const urls=${JSON.stringify(urls)};for(let i=0;i<6;i++){try{for(const p of urls){const r=await fetch(p.url,{signal:AbortSignal.timeout(10000),redirect:'error'});if(p.exact?r.status!==200:r.status<200||r.status>=500)throw Error();}console.log('HTTPS público e certificados validados.');return;}catch{if(i===5)throw Error();await new Promise(r=>setTimeout(r,5000));}}})().catch(()=>process.exit(1))`],{label:'Validando HTTPS público, DNS e certificados (sem enviar mensagens)'});
+      await this.compose(['exec','-T','backend','node','-e',`(${require('./diagnostics.cjs').probeHttp.toString()})(${JSON.stringify(urls)}).catch(e=>{console.error(e.message);process.exit(1)})`],{label:'Validando HTTPS público, DNS e certificados (sem enviar mensagens)'});
     }
   }
   async verifyLogin() {
+    if(this.state.initialized||!this.state.seedSucceeded)throw Error('Personalização inicial só é permitida após seed novo confirmado.');
     const account = JSON.parse(fs.readFileSync(path.join(this.private,'admin-access.json'),'utf8'));
     const script = ` (async()=>{const r=await fetch('http://127.0.0.1:8080/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:process.env.AMANDA_ADMIN_EMAIL,password:process.env.AMANDA_ADMIN_PASSWORD})});if(r.status!==200)throw Error();const a=await r.json();if(a.user?.id!==1||a.user?.profile!=='admin')throw Error();const headers={Authorization:'Bearer '+a.token,'Content-Type':'application/json'};const me=await fetch('http://127.0.0.1:8080/auth/me',{headers});if(me.status!==200)throw Error();if(process.env.AMANDA_APP_NAME){const s=await fetch('http://127.0.0.1:8080/settings/appName',{method:'PUT',headers,body:JSON.stringify({value:process.env.AMANDA_APP_NAME})});if(s.status!==200)throw Error();}console.log('Login inicial, sessão e identidade aprovados.')})().catch(()=>process.exit(1))`;
     await this.compose(['exec','-T','-e','AMANDA_ADMIN_EMAIL','-e','AMANDA_ADMIN_PASSWORD','-e','AMANDA_APP_NAME','backend','node','-e',script], { env: { AMANDA_ADMIN_EMAIL: account.email, AMANDA_ADMIN_PASSWORD: account.password, AMANDA_APP_NAME:account.appName || '' }, label: 'Validando o acesso escolhido, sem enviar mensagens' });
+    if(account.companyName){
+      const company=`const{Client}=require('pg');(async()=>{const c=new Client({host:process.env.DB_HOST,port:Number(process.env.DB_PORT),user:process.env.DB_USER,password:process.env.DB_PASS,database:process.env.DB_NAME});await c.connect();try{await c.query('BEGIN');const r=await c.query('UPDATE "Companies" SET name=$1 WHERE id=1 RETURNING id',[process.env.A_COMPANY]);if(r.rowCount!==1)throw Error();await c.query('COMMIT');}catch(e){await c.query('ROLLBACK');throw e;}finally{await c.end();}})().catch(()=>process.exit(1))`;
+      await this.compose(['exec','-T','-e','A_COMPANY','backend','node','-e',company],{env:{A_COMPANY:account.companyName},label:'Aplicando nome comercial somente à empresa inicial recém-criada'});
+    }
+    if(Object.keys(account.initialSettings||{}).length){
+      const settings=`(async()=>{const r=await fetch('http://127.0.0.1:8080/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:process.env.A_EMAIL,password:process.env.A_PASSWORD})});if(r.status!==200)throw Error();const a=await r.json();for(const[key,value]of Object.entries(JSON.parse(process.env.A_SETTINGS)).sort((a,b)=>Number(a[0]==='activePaymentGateway')-Number(b[0]==='activePaymentGateway'))){const s=await fetch('http://127.0.0.1:8080/settings/'+key,{method:'PUT',headers:{Authorization:'Bearer '+a.token,'Content-Type':'application/json'},body:JSON.stringify({value})});if(s.status!==200)throw Error();}})().catch(()=>process.exit(1))`;
+      await this.compose(['exec','-T','-e','A_EMAIL','-e','A_PASSWORD','-e','A_SETTINGS','backend','node','-e',settings],{env:{A_EMAIL:account.email,A_PASSWORD:account.password,A_SETTINGS:JSON.stringify(account.initialSettings)},label:'Aplicando configurações iniciais pela API autenticada'});
+    }
+  }
+  async testSmtp(){
+    const script=`const n=require('nodemailer');const e=process.env;if(!e.MAIL_HOST){console.error('SMTP não configurado.');process.exit(1);}const t=n.createTransport({host:e.MAIL_HOST,port:Number(e.MAIL_PORT||587),secure:e.MAIL_SECURE==='true'||Number(e.MAIL_PORT)===465,...(e.MAIL_USER?{auth:{user:e.MAIL_USER,pass:e.MAIL_PASS}}:{}),connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});t.verify().then(()=>{t.close();console.log('Conexão SMTP do ambiente validada; nenhum e-mail enviado.');}).catch(()=>{t.close();console.error('SMTP: falha de conexão, TLS ou autenticação. Revise o provedor.');process.exitCode=1;});`;
+    try{await this.compose(['exec','-T','backend','node','-e',script],{label:'Testando conexão SMTP sem envio'});this.runner.emit('SMTP: conexão aprovada; entrega de e-mail ainda não homologada.\n');return true;}
+    catch{this.runner.emit('AVISO: SMTP não validado. Plataforma preservada; revise SMTP no menu 12.\n');return false;}
   }
   async revision() { return (await this.git(['rev-parse','HEAD'], { quiet: true })).stdout.trim(); }
   async adopt(url) {
@@ -311,7 +352,9 @@ class Manager {
     const env = envValues(path.join(platform,'.env'));
     const project = env.COMPOSE_PROJECT_NAME || 'amanda';
     if (!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(project)) throw Error('Projeto existente inválido.');
-    this.state = { schema: 1, sourceUrl: SOURCE, project, platform, profiles: [...PROFILES,...((env.COMPOSE_PROFILES || '').split(',').includes('edge') ? ['edge'] : [])], initialized: true, phase: 'ready', seedAttempted: false, seedSucceeded: false };
+    const profiles=env.COMPOSE_PROFILES===undefined?PROFILES:env.COMPOSE_PROFILES.split(',').filter(Boolean);
+    if(profiles.some(p=>!['official','whatsmeow','rabbit','edge'].includes(p)))throw Error('Perfis Compose existentes não suportados.');
+    this.state = { schema: 1, sourceUrl: SOURCE, project, platform, profiles, initialized: true, phase: 'ready', seedAttempted: false, seedSucceeded: false };
     await this.validateSource(true); this.loadSecrets(); await this.configuration(); await this.verifyHealth();
     await this.identifyManager();
     this.save({ ...this.state, revision: await this.revision() });
@@ -325,27 +368,27 @@ class Manager {
     const images = await this.imageIds();
     const dir = path.join(this.private,'backups',new Date().toISOString().replace(/[:.]/g,'-'));
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const stopped = [...CORE.filter(x => x !== 'postgres'),...(this.state.profiles.includes('edge') ? ['edge'] : [])];
+    const stopped = [...this.services().filter(x => x !== 'postgres'),...(this.state.profiles.includes('edge') ? ['edge'] : [])];
     try {
       for(const a of config.installerAddons)await this.docker([...a.base,'stop'],{label:'Pausando componente '+a.project+' para backup'});
       await this.compose(['stop',...stopped], { label: 'Pausando gravadores para backup consistente' });
-      for (const name of ['amanda','api_oficial']) await this.compose(['exec','-T','postgres','pg_dump','-U','amanda','-d',name,'-Fc'], { outputFile: path.join(dir,name+'.dump'), label: 'Backup do banco ' + name });
+      for (const name of this.databases()) await this.compose(['exec','-T','postgres','pg_dump','-U','amanda','-d',name,'-Fc'], { outputFile: path.join(dir,name+'.dump'), label: 'Backup do banco ' + name });
       const mounts = Object.entries(config.volumes).filter(([key]) => key !== 'postgres_data').flatMap(([key,v]) => ['--mount',`type=volume,source=${v.name},target=/data/${key},readonly`]);
       await this.docker(['run','--rm','--network','none',...mounts,'--mount',`type=bind,source=${dir},target=/backup`,'alpine:3.21','tar','-czf','/backup/volumes.tgz','-C','/data','.'], { label: 'Arquivando volumes de mídia, sessões, filas e certificados' });
       await this.docker(['run','--rm','--network','none','--mount',`type=bind,source=${dir},target=/backup,readonly`,'alpine:3.21','sh','-c','tar -tzf /backup/volumes.tgz >/dev/null'], { label: 'Verificando integridade do arquivo de volumes' });
       for (const file of ['.env','.env.backend','.env.oficial']) { const p = path.join(this.state.platform,file); if (fs.existsSync(p)) { fs.copyFileSync(p,path.join(dir,file)); fs.chmodSync(path.join(dir,file),0o600); } }
-      for (const f of ['amanda.dump','api_oficial.dump','volumes.tgz']) if (!fs.statSync(path.join(dir,f)).size) throw Error('Backup vazio: '+f);
+      for (const f of [...this.databases().map(n=>n+'.dump'),'volumes.tgz']) if (!fs.statSync(path.join(dir,f)).size) throw Error('Backup vazio: '+f);
       const accountFile = path.join(this.private,'admin-access.json');
       if (fs.existsSync(accountFile)) { fs.copyFileSync(accountFile,path.join(dir,'admin-access.json')); fs.chmodSync(path.join(dir,'admin-access.json'),0o600); }
       const addons=[];for(const a of config.installerAddons){const kind=a.project.slice(this.state.project.length+1),record=JSON.parse(fs.readFileSync(path.join(this.private,'addon-'+kind+'.json'),'utf8'));addons.push(record);const file='addon-'+kind+'.env';this.write(path.join(dir,file),fs.readFileSync(path.join(this.private,file),'utf8'));}
-      const hashes={};for(const file of ['amanda.dump','api_oficial.dump','volumes.tgz'])hashes[file]=await digest(path.join(dir,file));
-      this.write(path.join(dir,'backup.json'), { complete: true, project: this.state.project, revision: this.state.revision, images, hashes,addons,volumes:config.volumes });
+      const hashes={};for(const file of [...this.databases().map(n=>n+'.dump'),'volumes.tgz'])hashes[file]=await digest(path.join(dir,file));
+      this.write(path.join(dir,'backup.json'), { complete: true, project: this.state.project, revision: this.state.revision, images, hashes,addons,databases:this.databases(),volumes:config.volumes });
       this.save({ ...this.state, lastBackup: dir }); return dir;
     } finally { if (restart) await this.startServices(); }
   }
   async imageIds() {
     const config = await this.configuration(), result = {};
-    for (const name of ['backend','frontend','api_transcricao','api_oficial']) {
+    for (const name of this.services().filter(s=>['backend','frontend','api_transcricao','api_oficial'].includes(s))) {
       const id = (await this.compose(['ps','-a','-q',name], { quiet: true })).stdout.trim();
       if (!/^[a-f0-9]{12,64}$/.test(id)) throw Error('Não foi possível preservar a imagem anterior de '+name);
       result[config.services[name].image] = (await this.docker(['inspect','--format','{{.Image}}',id], { quiet: true })).stdout.trim();
@@ -370,7 +413,7 @@ class Manager {
       if (fs.existsSync(ensure)) await this.runner.run(process.execPath,[ensure], { cwd: this.state.platform, label: 'Preservando configuração da transcrição' });
       if(this.state.naming==='company-v1')await this.configureNames();
       const nextConfig=await this.configuration();
-      for(const type of ['volumes','networks'])for(const[key,value]of Object.entries(previousConfig[type]||{}))if(nextConfig[type]?.[key]?.name!==value.name)throw Error('Atualização alteraria recurso persistente: '+key);
+      for(const type of ['declaredVolumes','networks'])for(const[key,value]of Object.entries(previousConfig[type]||{}))if(nextConfig[type]?.[key]?.name!==value.name)throw Error('Atualização alteraria recurso persistente: '+key);
       for(const[key,value]of Object.entries(previousConfig.services))if(nextConfig.services[key]?.container_name!==value.container_name)throw Error('Atualização alteraria nome existente: '+key);
       this.loadSecrets(); await this.build();
       mayBeStopped = true; await this.backup({ restart: false });

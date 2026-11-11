@@ -9,7 +9,7 @@ não muda grupos/permissões do servidor. O menu volta após as operações e te
 
 | Número | Operação | Implementação atual |
 |---|---|---|
-| 1 | Instalar | Formulário completo, gerador oficial, build, migrations, seed exclusivo de banco novo, login/sessão/identidade |
+| 1 | Instalar | Assistente de 11 etapas com revisão/retorno, gerador oficial, serviços selecionados, build/migrations e seed exclusivo de banco novo |
 | 2 | Atualizar | Código oficial + build + backup + migrations; preserva contas/configurações |
 | 3 | URLs | Frontend, backend, Oficial, transcrição, WuzAPI, todas as URLs e SSL |
 | 4 | Status/reiniciar | Todos ou backend/frontend/Oficial/WuzAPI/transcrição; iniciar/parar |
@@ -58,7 +58,7 @@ não muda grupos/permissões do servidor. O menu volta após as operações e te
 4. reiniciar; 5. parar; 6. logs; 7. sincronizar URL interna com backend;
 8. domínios/SSL em Docker (inclui domínio HTTPS próprio da Oficial);
 9. remover somente o container, preservando banco e mídia. Iniciar a stack completa
-recria esse container, porque a Oficial faz parte da stack completa atual.
+recria esse container, quando a Oficial pertence aos perfis habilitados. Se estiver desabilitada na instalação, a opção 1 oferece habilitação com backup, migrations e confirmação, sem seed.
 
 ## Dependências externas e limites observados
 
@@ -85,3 +85,26 @@ inicial IP/domínio recuperados de 3e6b5cf (outubro/2026). Implementação atual
 ui.cjs e bootstrap POSIX, ambos sem dependências adicionais no host. Menus
 operacionais preservam os números históricos compatíveis. O item 7 de ferramentas
 (modo nativo duplicado) foi retirado; backup Docker permanece no item 6.
+
+## Configurações após a reestruturação de 11/11/2026
+
+A numeração 1–9 do submenu foi preservada. Itens adicionais:
+
+| Número | Operação real |
+|---|---|
+| 10 | Consulta por allowlist pública do ambiente; não revela senhas/tokens nem presume identidade atualizada no banco. |
+| 11 / 12 | Alterar URL frontend / backend. |
+| 13 | Alterar portas/publicação/HTTPS. |
+| 14 / 15 | API Oficial / porta WuzAPI; credenciais de sessões são geridas na plataforma. |
+| 16 | Google OAuth por variáveis de fallback consumidas pelo backend. |
+| 17 | Chave OpenAI para fallback do IVR, sem confundir com configuração dos demais agentes. |
+| 18 | Nodemailer verify no backend, sem envio de e-mail. |
+| 19 | Stripe/Asaas/Mercado Pago via Settings da API administrativa; contas/cobranças exigem homologação. |
+| 20 | Habilitar Oficial, WuzAPI ou RabbitMQ após a instalação, com confirmação, backup e retomada de migrations. |
+
+O formulário inicial agora distingue nome comercial, título e projeto; IP, local e
+HTTPS são modos próprios. Permite rever qualquer etapa e cancelar sem provisionar
+a plataforma. Perfis PostgreSQL consideram memória do daemon Docker. SMTP opcional
+não bloqueia a instalação principal quando seu teste falha. Detalhes dos contratos,
+consumidores e classificação da referência original estão em
+[Configuração e compatibilidade](CONFIGURACAO_E_COMPATIBILIDADE.md).

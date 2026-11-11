@@ -1,318 +1,264 @@
-# Instalador AMANDA em Docker
+# Instalador AMANDA — assistente Docker
 
-Instalações novas usam `{empresa}_{servico}`: `amanda_backend`,
-`amanda_frontend`, `amanda_postgres`, `amanda_redis`, `amanda_api_oficial`,
-`amanda_api_transcricao`, `amanda_wuzapi`, `amanda_rabbitmq` e, com HTTPS,
-`amanda_caddy`. O nome técnico informado é normalizado para letras minúsculas,
-números e underscore (até 40 caracteres, começando por letra/número).
-Por exemplo, `ÁCERTI Filial-2` vira `acerti_filial_2`. O título comercial
-é um campo independente e mantém espaços, acentos e maiúsculas.
+O instalador oficial está em https://github.com/acerticonsulting/Instalador-AMANDA.
+A plataforma vem exclusivamente de https://github.com/acerticonsulting/AMANDA,
+branch `main`. O endereço histórico do remote deste clone e a chave Git foram
+preservados; não é necessário alterar remotes para usar o assistente.
 
-O gerenciador gera `.amanda-installer/compose-names.json` com `container_name`
-explícito para todos os serviços/perfis do Compose oficial, incluindo jobs.
-Use o ponto de entrada para operar a instalação: chamadas manuais ao Compose
-também precisam incluir esse segundo arquivo com `-f`. O código Git da plataforma
-permanece intacto. O estado registra a política `company-v1`.
-O gerenciador assume `{empresa}_installer` após identificar a instalação;
-antes da configuração, as ferramentas usam `amanda_bootstrap_<pid>` e
-`amanda_bootstrap_<pid>_build`, removidos ao sair. Jobs e manutenção usam
-`{empresa}_job_<uuid>` / `{empresa}_maintenance_<uuid>`, com `--rm`.
-Agendadores novos usam `{empresa}_scheduler_backup` e `_scheduler_update`.
-Colisões são recusadas; containers de terceiros nunca são removidos para liberar nomes.
+O host Linux precisa de Docker Engine/CLI e acesso ao daemon por socket Unix local.
+Git, Node, Python, Compose v2, Buildx, bancos, filas, migrations e proxy executam em
+containers. O gerenciador embarca Compose/Buildx; não exige esses plugins no host.
+Não instala pacotes APT, PM2, Nginx ou dependências da aplicação na VPS.
+Se Docker estiver ausente, o bootstrap interrompe com orientação para disponibilizar
+Docker oficial. Sockets rootless são aceitos; contextos TCP/SSH não são suportados.
 
-Volumes e redes permanecem no namespace Compose da empresa, como
-`amanda_postgres_data` e `amanda_default`. Cada empresa precisa de um diretório,
-identificador e portas publicados próprios. Configure `frontendUrl`, `backendUrl`,
-`options.officialPort` e `options.wuzapiPort` com portas diferentes da outra
-instalação. Dois Caddys não podem publicar simultaneamente 80/443 no mesmo IP;
-para coexistência nesse IP use publicação HTTP em portas distintas ou planeje
-um proxy Docker compartilhado explicitamente. O instalador atual não gerencia esse proxy.
-
-Instalações já gerenciadas sem `company-v1` e adoções conservam a convenção
-anterior. Atualizar não converte nomes nem muda projetos/volumes. Mudanças de nomes
-e recursos existentes no Compose atualizado são recusadas antes de parar a plataforma.
-Para converter uma instalação antiga, planeje recuperação isolada com backup
-validado; não basta editar o projeto ou a política no estado.
-Containers com `container_name` não suportam `--scale` para múltiplas réplicas;
-escalabilidade futura requer convenção explícita de réplicas e revisão da arquitetura.
-
-O status exige nomes efetivos corretos em `docker compose ps` e `docker ps`, além
-da saúde dos serviços. Para consulta externa somente de leitura, use
-`tests/validar_instalador.sh --plataforma --nomes-padronizados` com projeto,
-URLs e serviços esperados conforme o plano de testes. Omita essa flag para a
-política histórica. Isso não migra nem renomeia containers.
-
-As receitas executáveis históricas em `legacy/` estão bloqueadas antes do código
-antigo. Não há fallback para instalar dependências da aplicação no host.
-Se Docker estiver ausente, disponibilize Docker Engine/CLI e seus componentes
-oficiais seguindo as instruções do fornecedor; o instalador interrompe sem instalar pacotes.
-
-O menu principal anterior (opções 1 a 11), as ferramentas e a gestão da API Oficial
-foram restaurados. O menu aparece **antes** do download das ferramentas. Após uma
-operação ele retorna ao menu; 0 permite sair. Configurações da plataforma e seleção
-de instâncias estão também nas opções 12 e 13.
-
-Consulte a [matriz de todos os menus](docs/MENUS_E_COMPATIBILIDADE.md), incluindo
-as opções compatíveis com a plataforma atual.
-
-O único requisito adicional no Linux é o Docker Engine com containers Linux,
-BuildKit e acesso ao socket local. O ponto de entrada usa o `sh` do sistema.
-Node, Git, Compose, Buildx, compiladores, migrations, bancos e microserviços
-executam em containers. Não instalar Node, Python, PM2, PostgreSQL, Redis ou
-Nginx no host para usar este instalador. Compose e Buildx já vêm no gerenciador.
-
-Use Docker Engine atual, conexão a GitHub/registros e espaço/memória compatíveis
-com a plataforma. O usuário precisa ter acesso ao Docker; root e sudo não são
-requisitos. Sockets Unix locais, inclusive rootless, são aceitos; contextos TCP/SSH
-remotos não são aceitos. O fluxo não depende de APT, systemd ou distribuição
-específica. Isso não certifica kernels antigos ou todas as arquiteturas: as imagens
-utilizadas precisam suportar a arquitetura do servidor.
-
-## Baixar e instalar sem Git no host
+## Obter e executar
 
 Na pasta onde deseja guardar o instalador:
 
 ```sh
-docker run --rm -v "$PWD:/workspace" -w /workspace alpine/git clone https://github.com/alansuporteamanda/Instalador-AMANDA.git instalador
-sh instalador/instalador_single.sh install --dir "$HOME/amanda"
+docker run --rm --name "amanda_download_$$" -v "$PWD:/workspace" -w /workspace alpine/git clone https://github.com/acerticonsulting/Instalador-AMANDA.git Instalador-AMANDA
+sh Instalador-AMANDA/instalador_single.sh install --dir "$HOME/amanda"
 ```
 
-O endereço histórico do instalador foi preservado. Na pergunta **Link da
-plataforma**, informe obrigatoriamente:
+Ou execute `sh ./instalador_single.sh` dentro do clone para abrir o menu principal.
+O menu aparece antes de preparar as ferramentas. Use `sudo` somente se a sua conta
+precisar dele para acessar Docker. O instalador não altera grupos/permissões do socket.
+A preparação da imagem pode baixar ferramentas; instalar a plataforma exige a
+confirmação final. Use sempre o mesmo diretório absoluto nas operações seguintes.
 
-```text
-https://github.com/acerticonsulting/AMANDA
-```
+## Assistente em 11 etapas
 
-Também são aceitas terminações `.git` e `/`. Outros repositórios, links com
-credenciais e entrada vazia são recusados. O código vem da branch `main`.
-Os Dockerfiles e o Compose da raiz da plataforma são usados diretamente.
-
-O menu permite escolher URLs, publicação de portas, HTTPS e acesso administrativo.
-O acesso inicial padrão é **admin@amanda.com.br / adminamanda**; pode ser
-personalizado antes de criar o banco. Atualizações preservam as contas.
-Logo AMANDA e cores `#9905D8` / `#8A00FA` vêm do código oficial;
-personalizações salvas pela plataforma continuam tendo prioridade.
-
-No modo local, mantenha `http://localhost:3000` e `http://localhost:8080`.
-Para acesso pela rede, informe URLs com o endereço do servidor e confirme a
-publicação de portas. Para HTTPS, habilite Caddy e informe dois domínios DNS
-diferentes já apontados para o servidor, com portas 80/443 disponíveis.
-Caddy permanece desabilitado no modo local.
-
-## O que é instalado
-
-| Serviço | Execução/configuração |
+| Etapa | O que configurar |
 |---|---|
-| Frontend | Imagem construída do código oficial; porta local 3000 |
-| Backend / Baileys | Node na imagem oficial; porta local 8080 |
-| PostgreSQL | Banco persistente; sem porta publicada |
-| Redis | Persistência AOF; sem porta publicada |
-| Transcrição | Python e dependências dentro da imagem |
-| API Oficial | Imagem própria, banco api_oficial; porta local 6000 |
-| WuzAPI / WhatsMeow | Imagem indicada pelo Compose; porta local 8090 |
-| RabbitMQ | Broker interno persistente |
-| Caddy (opcional) | HTTPS em container, portas 80/443 |
+| 1 | Domínios/HTTPS, IP do servidor ou ambiente local. |
+| 2 | URLs e portas. No modo IP, IPv4/IPv6 e publicação na rede; no local, loopback. |
+| 3 | Nome comercial, título da plataforma, projeto Docker e telefone de suporte. |
+| 4 | Acesso padrão ou e-mail/senha personalizados, com senha oculta e confirmação. |
+| 5 | Senha PostgreSQL automática/personalizada e perfil econômico/intermediário/alto/personalizado. |
+| 6 | MASTER_KEY opcional, tokens Git separados e link obrigatório da plataforma. |
+| 7 | API Oficial, WuzAPI e RabbitMQ opcionais; portas/tokens e Facebook/Meta. |
+| 8 | SMTP opcional, TLS, remetente e teste de conexão sem enviar e-mail. |
+| 9 | Google OAuth, chave de IA para IVR e push; outras integrações podem ser configuradas depois. |
+| 10 | Revisão dos requisitos DNS, firewall e Caddy para HTTPS. |
+| 11 | Resumo sem segredos: confirmar, revisar uma etapa ou cancelar. |
 
-Os perfis `official,whatsmeow,rabbit` ficam habilitados. Pareamento WhatsApp,
-contas Meta, SMTP, Google e integrações externas exigem suas respectivas contas.
-GoFlow/HUB/VOZ externos não têm implementação neste Compose e não são instalados
-por imagens inventadas. Transcrição e conectores locais usam a rede interna Docker.
+Digite `:voltar` em uma pergunta para retornar à etapa anterior ou `:cancelar` para
+sair. A revisão mantém respostas já informadas; senhas não aparecem como padrões. Em um campo secreto já preenchido, ENTER preserva e `:limpar` remove o valor (quando o campo permite geração automática ou ausência).
+Entradas inválidas são solicitadas novamente. `NO_COLOR`, `TERM=dumb` e terminais
+sem cor recebem texto simples. Sem TTY, use JSON privado.
 
-## Configuração sem interação
+Local: `http://localhost:3000` e `http://localhost:8080`, sem Caddy.
+IP: informe o endereço do servidor e portas diferentes; HTTP público não protege
+credenciais em trânsito. Use HTTPS antes de atender usuários pela internet.
+HTTPS: informe dois domínios diferentes, como `app.empresa.com.br` e
+`api.empresa.com.br`. A API Oficial pode ter um terceiro domínio próprio.
+DNS deve resolver antes de preparar bancos. Caddy publica 80/TCP e 443/TCP/UDP;
+as portas HTTP diretas ficam em loopback. Certificados só são considerados
+validados após resposta HTTPS com verificação TLS ativa. Erros distinguem DNS,
+TLS, acesso de rede e respostas HTTP do proxy/aplicação. Não há correção automática
+de firewall ou DNS do host.
 
-Crie um JSON privado **fora** da pasta nova de instalação, por exemplo
-`$HOME/amanda-setup.json`:
+O padrão administrativo é **admin@amanda.com.br / adminamanda**. Em produção, o
+assistente recomenda personalização e exige 12 caracteres na senha personalizada.
+Se optar explicitamente pelo padrão, altere-o antes de liberar acesso aos usuários.
+Atualizações nunca redefinem contas; seed é exclusivo de projeto novo com tabela
+Users vazia. Não use seed para reparar login.
+
+Perfis PostgreSQL: 100 conexões/128MB, 200/256MB, 300/512MB ou personalizado
+(20–500 conexões, 32MB–4GB de shared_buffers). O gerenciador consulta memória/CPUs
+do daemon Docker e rejeita buffers acima de 25% da memória ou orçamento estimado
+acima de 75%. É uma barreira conservadora, não um dimensionamento de carga;
+considere as demais empresas/serviços da VPS. Nenhum perfil muda a senha de banco
+existente por simples edição do ambiente.
+
+## Serviços e isolamento
+
+PostgreSQL, Redis, backend/Baileys, frontend e transcrição formam a base.
+API Oficial, WuzAPI/WhatsMeow e RabbitMQ podem ser desabilitados na instalação;
+RabbitMQ só tem consumidor neste contrato quando a Oficial está habilitada.
+Sem seleção explícita em um JSON antigo, os três permanecem habilitados.
+Pareamento, webhooks Meta, filas e contas externas precisam de configuração e
+homologação próprias; container saudável não significa WhatsApp conectado.
+
+Instalações novas usam `{empresa}_{servico}`: `amanda_backend`, `amanda_frontend`,
+`amanda_postgres`, `amanda_redis`, `amanda_api_transcricao` e os opcionais
+`amanda_api_oficial`, `amanda_wuzapi`, `amanda_rabbitmq`, `amanda_caddy`.
+O projeto é normalizado para letras minúsculas/números/underscore, até 40 caracteres,
+começando por letra/número. `ÁCERTI Filial-2` vira `acerti_filial_2`.
+O nome comercial e o título preservam maiúsculas, espaços e acentos; identificadores
+históricos de banco não mudam. O nome comercial é aplicado somente à empresa 1
+recém-criada; o título usa a API autenticada de Settings.
+
+`.amanda-installer/compose-names.json` complementa o Compose oficial com nomes
+explícitos para todos os perfis. Chamadas manuais ao Compose também precisam
+incluir esse segundo `-f`. O código Git da plataforma não é reescrito.
+O gerenciador assume `{empresa}_installer` depois de identificar a instalação.
+Antes disso, ferramentas usam `amanda_bootstrap_<pid>` e `_build`, removidos ao sair.
+Jobs/manutenção usam prefixo da empresa e UUID, com `--rm`; agendadores usam
+`{empresa}_scheduler_backup` e `_scheduler_update`.
+`container_name` impede `--scale` para múltiplas réplicas: uma arquitetura de
+réplicas exige convenção e planejamento explícitos.
+
+Redes e volumes são próprios, por exemplo `acerti_default` e `acerti_postgres_data`.
+Cada empresa precisa de diretório/projeto/portas diferentes. Não há compartilhamento
+automático de bancos, credenciais, sessões, mídias ou backups. Portas são conferidas
+contra containers existentes e por um helper Docker no namespace de rede do host.
+Essa checagem requer Linux local; em Docker Desktop depende do suporte a host
+networking e não certifica as regras de publicação do Windows. Há uma janela normal
+entre checagem e bind; o erro final do Docker também impede declarar sucesso.
+Dois Caddys não podem publicar 80/443 no mesmo IP. Use IPs/portas distintos ou
+planeje um proxy Docker comum, que este instalador não gerencia automaticamente.
+
+Estados antigos sem `company-v1` e adoções mantêm sua convenção de nomes.
+Atualizar não troca projeto/volumes; alterações em nomes ou recursos declarados
+são recusadas antes de parar a plataforma. Não edite a política no estado para
+converter uma instalação: faça migração planejada, com backup e ambiente isolado.
+
+## Instalação por JSON
+
+Crie `$HOME/amanda-setup.json`, fora do diretório novo, com permissão 600:
 
 ```json
 {
   "sourceUrl": "https://github.com/acerticonsulting/AMANDA",
-  "project": "amanda",
-  "frontendUrl": "http://localhost:3000",
-  "backendUrl": "http://localhost:8080",
+  "companyName": "ACERTI",
+  "project": "acerti",
+  "frontendUrl": "http://localhost:3300",
+  "backendUrl": "http://localhost:8800",
   "public": false,
   "edge": false,
-  "adminEmail": "admin@amanda.com.br",
-  "adminPassword": "adminamanda"
+  "adminEmail": "owner@example.com",
+  "adminPassword": "SUBSTITUA-POR-SENHA-EXCLUSIVA",
+  "options": {
+    "appName": "AMANDA ACERTI",
+    "supportPhone": "5511999999999",
+    "pg": { "maxConnections": 100, "sharedBuffers": "128MB" },
+    "services": { "official": true, "wuzapi": false, "rabbit": false },
+    "officialPort": 6100,
+    "testSmtp": true,
+    "backendEnv": {
+      "MAIL_HOST": "smtp.example.com",
+      "MAIL_PORT": "465",
+      "MAIL_SECURE": "true",
+      "MAIL_USER": "sender@example.com",
+      "MAIL_PASS": "SUBSTITUA-PELA-SENHA-SMTP",
+      "MAIL_FROM": "sender@example.com"
+    },
+    "initialSettings": { "signupSmtpFromName": "ACERTI" }
+  }
 }
 ```
 
 ```sh
-sh instalador/instalador_single.sh install --dir "$HOME/amanda" --config "$HOME/amanda-setup.json"
+sh Instalador-AMANDA/instalador_single.sh install --dir "$HOME/acerti" --config "$HOME/amanda-setup.json"
 ```
 
-Omitir e-mail/senha mantém o padrão. Campos opcionais `sourceToken` e `buildToken`
-são distintos: o primeiro autentica a leitura da plataforma privada; o segundo
-dá acesso ao conector privado e é entregue somente pelo segredo BuildKit oficial.
-Não colocar tokens em links Git. Sem acesso válido ao conector, o build falha
-e a instalação não é declarada concluída. Proteja o JSON (modo 600), retire sua
-cópia após configurar e não o versione.
+Executar `install --config` é a confirmação automatizada; não há pergunta final.
+Para IP, use URLs HTTP com o IP e `public: true`. Para HTTPS, use URLs HTTPS,
+`edge: true` e, opcionalmente, `options.officialUrl` com o domínio da Oficial.
+Não altere portas internas Docker. `options.databasePassword`, `masterPassword`,
+`officialToken` e `wuzapiToken` são opcionais e exclusivos de instalação nova;
+omiti-los usa geração criptográfica. Cifrões, aspas e caracteres reservados são
+serializados com segurança; a senha Prisma recebe codificação URI separada.
 
-O gerador oficial cria chaves aleatórias dentro do gerenciador. Configurações
-ficam em `amanda/platform/.env` e nos opcionais `.env.backend` / `.env.oficial`;
-o segredo de build fica em `platform/.secrets/github_token`. Estado, logs filtrados,
-credenciais escolhidas e backups ficam em `amanda/.amanda-installer/`, com arquivos
-privados em modo 600. A senha inicial escolhida fica em `admin-access.json` nessa
-pasta. Não compartilhar essa pasta nem os backups.
+`sourceToken` autentica a leitura da plataforma; `buildToken` é o segredo BuildKit
+do conector privado. Não coloque tokens em URLs Git. Build sem acesso ao conector
+falha sem declarar instalação concluída. Proteja/remova o JSON após configurar;
+não publique segredos nem a pasta privada.
 
-## Operar e atualizar
+## Configurar depois de instalar
 
-Use sempre o mesmo `--dir` e projeto. O diretório é montado no gerenciador no
-**mesmo caminho absoluto do host**, necessário aos bind mounts do Compose.
-Não mover a instalação nem trocar nomes de volumes/projeto como atualização.
+Menu principal **12 — Configurações da plataforma** preserva os itens históricos
+1–9 e acrescenta consulta segura (10), URL frontend/backend (11/12), portas/HTTPS
+(13), Oficial (14), WuzAPI (15), Google OAuth (16), IA de IVR (17), teste SMTP (18),
+pagamentos (19) e habilitação de serviços opcionais (20).
+A Oficial também pode ser habilitada no menu principal 11; WuzAPI em Ferramentas 3.
+Habilitação exige `HABILITAR <projeto> <serviço>`, faz backup e migrations, sem seed.
+Se uma migration falhar, mantém o estado para **Retomar operação**.
+Não se oferece desabilitação com exclusão automática de dados.
+
+SMTP/integrações são arquivos de runtime. Mudanças de SMTP recriam apenas backend;
+suporte recria frontend; rede/portas recriam os consumidores e proxy envolvidos.
+O gerenciador valida Compose, guarda histórico privado, confere saúde e restaura
+arquivos anteriores se a aplicação da configuração falhar. PostgreSQL exige backup
+e reinício próprio. Não há rollback automático de schema após migrations.
+Senhas existentes são preservadas ao deixar campos secretos em branco.
+A consulta segura mostra o ambiente do instalador; títulos, empresa e configurações
+alterados diretamente no banco/interface devem ser consultados no painel.
+
+SMTP usa `MAIL_SECURE=true` para TLS implícito, normalmente 465; `false` usa SMTP
+com negociação STARTTLS quando oferecida, normalmente 587. Não há opção fictícia
+para obrigar STARTTLS no consumidor atual. `testSmtp`/menu 18 verificam conexão e
+autenticação sem enviar e-mail; falha opcional gera aviso e preserva a plataforma.
+Settings SMTP salvos na interface têm prioridade sobre variáveis de ambiente.
+Google OAuth usa callback `${BACKEND_URL}/auth/google/callback`; registre a URL no
+provedor. A chave de IA aqui cobre o fallback OpenAI do IVR, não todos os agentes.
+VOZ/HUB exigem serviços externos; há configuração de URL/chave, sem provisionamento
+inventado. GoFlow/Portainer não integram este Compose. Pagamentos usam Settings pela
+API administrativa; verifique contas, sandbox, callbacks e cobrança no provedor.
+
+## Atualização, backup e recuperação
 
 ```sh
-sh instalador/instalador_single.sh doctor
-sh instalador/instalador_single.sh status --dir "$HOME/amanda"
-sh instalador/instalador_single.sh logs --dir "$HOME/amanda"
-sh instalador/instalador_single.sh backup --dir "$HOME/amanda"
-sh instalador/instalador_single.sh update --dir "$HOME/amanda"
-sh instalador/instalador_single.sh stop --dir "$HOME/amanda"
-sh instalador/instalador_single.sh start --dir "$HOME/amanda"
-sh instalador/instalador_single.sh restart --dir "$HOME/amanda"
+sh Instalador-AMANDA/instalador_single.sh status --dir "$HOME/acerti"
+sh Instalador-AMANDA/instalador_single.sh logs --dir "$HOME/acerti"
+sh Instalador-AMANDA/instalador_single.sh backup --dir "$HOME/acerti"
+sh Instalador-AMANDA/instalador_single.sh update --dir "$HOME/acerti"
+sh Instalador-AMANDA/instalador_single.sh resume --dir "$HOME/acerti"
 ```
 
-Atualize o próprio instalador com Git em container:
+`doctor` verifica ferramentas/daemon; `stop`, `start` e `restart` operam a instância.
+`adopt` registra somente uma instalação oficial já saudável e completa; não converte
+PM2 ou bancos nativos. `unlock` recusa liberar lock de gerenciador ainda ativo.
+
+Atualização exige Git sem alterações rastreadas e avanço de histórico. Constrói
+imagens antes de parar gravadores; faz backup antes das migrations. Preserva URLs,
+perfis, contas, chaves, dados, sessões e mídia. Não executa seed.
+Backup inclui bancos habilitados, volumes utilizados, configuração privada,
+revisão/imagens e SHA-256. Volumes de Caddy que já foram habilitados permanecem
+preservados e incluídos mesmo quando HTTPS for desabilitado depois.
+Guarde cópia protegida fora do servidor. Backup envolve interrupção temporária.
+
+Menu 7 restaura backups gerenciados compatíveis; Ferramentas 4 restaura código,
+imagens e dados juntos. Imports confiáveis `.sql`/`.dump`/`.backup` ficam em
+`<dir>/imports/`; exigem confirmação, backup prévio e banco pertencente à instalação.
+Não há restauração de bancos opcionais desabilitados. Backups com seleção de bancos,
+volumes ou revisão incompatíveis exigem recuperação isolada com o contrato original.
+Falhas de migration mantêm estado para retomada; voltar imagem não reverte schema.
+Falha durante seed não permite repetição automática: preserve os dados e investigue.
+Falha na preparação antes de registrar recursos não autoriza apagar estado/volumes
+para forçar seed; revise o erro e utilize um diretório novo quando necessário.
+
+Configurações ficam em `platform/.env`, `.env.backend`, `.env.oficial` quando usado,
+e `.secrets/github_token`. Estado, histórico, logs filtrados, acesso inicial e
+backups ficam em `.amanda-installer/`, com arquivos privados em modo 600.
+Não mova o diretório nem altere nomes de volumes para atualizar.
+Receitas de `legacy/` estão bloqueadas antes do código histórico.
+
+Para atualizar o código deste instalador, dentro do clone:
 
 ```sh
-docker run --rm -v "$PWD/instalador:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only
+docker run --rm --name "amanda_source_update_$$" -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only
+sh ./instalador_single.sh
 ```
 
-`update` exige código sem alterações rastreadas e aplica somente avanço de histórico.
-Constrói imagens antes da interrupção, pausa gravadores e faz dump dos dois bancos
-mais arquivo dos volumes de mídia, sessões, Redis, RabbitMQ e certificados.
-Copia configurações privadas e registra imagens/revisão. Aplica migrations,
-inicia e verifica os oito serviços. **Não executa seed nem troca configurações.**
-O backup causa interrupção temporária. Guarde cópia protegida fora do servidor.
-
-`stop` preserva volumes. O menu 9 permite remover containers preservando dados ou remover os volumes com backup obrigatório e confirmação digitada; código, configurações e backups permanecem preservados.
-`logs` mostra os últimos 200 registros, filtrando credenciais conhecidas;
-o log operacional é `.amanda-installer/install.log`. Logs da aplicação podem conter
-dados de atendimento e devem permanecer privados.
-
-## Retomada, adoção e recuperação
-
-```sh
-sh instalador/instalador_single.sh resume --dir "$HOME/amanda"
-sh instalador/instalador_single.sh build-token --dir "$HOME/amanda"
-```
-
-`resume` repete build/migrations interrompidos e não repete seed concluído.
-Se o próprio seed falhar, a retomada automática é recusada: preservar volumes e
-revisar os registros do Sequelize antes da correção manual. Nunca usar seed sobre
-uma instalação existente para corrigir login.
-
-Falha de build/backup em atualização restaura referências de imagens/código anteriores.
-Falha durante migrations mantém a aplicação parada; `resume` tenta concluir as
-migrations da mesma revisão. Não voltar ao código antigo contra esquema parcialmente
-migrado. Para restauração integral, usar backup completo em ambiente isolado,
-revisão/imagens registradas e `pg_restore` no container PostgreSQL; validar bancos,
-arquivos e acesso antes de substituir a instalação. O menu 7 restaura backups gerenciados com hashes; Ferramentas 4 recupera código/imagens/dados juntos, 9 restaura Redis, 23 restaura WuzAPI e 10/12 importam arquivos SQL ou pg_dump custom. Todas exigem confirmação e backup prévio.
-
-Uma instalação **já baseada no Compose oficial**, completa e saudável, pode ser
-registrada sem seed nem mudança de configurações/volumes:
-
-```sh
-sh instalador/instalador_single.sh adopt --dir /caminho/da/AMANDA
-```
-
-A adoção pede o link autorizado e verifica Git, configuração, serviços e HTTP.
-Não migra automaticamente instalações antigas com PM2, banco no host, Compose gerado
-ou componentes independentes. Essas exigem planejamento de migração com backup.
-Scripts antigos foram preservados em `legacy/` para referência e regressão;
-não são chamados pelo ponto de entrada oficial.
-
-Se uma interrupção forçada deixar lock, verifique o gerenciador anterior e use
-`unlock --dir ...`; a operação recusa remover lock de gerenciador ainda ativo.
-
-## Validação de desenvolvimento
+## Testes e limites
 
 ```sh
 bash tests/validar_instalador.sh
 ```
 
-Git/Bash/utilitários são ferramentas da suíte de desenvolvimento, não requisitos do
-instalador em produção. Os testes do gerenciador usam Node 22 em container sem rede
-e simulam Docker/Git/migrations. Consulte [o plano](tests/PLANO_DE_TESTES.md) e
-[o registro de continuidade](docs/01-contexto-para-ia.md). Instalação completa em VPS
-limpa, certificados públicos e contas externas exigem homologações separadas;
-testes simulados não certificam esses cenários.
+A suíte local usa comandos simulados, sem instalar/migrar/restaurar plataformas.
+O hook verifica o índice antes de cada commit. Há testes de integração adicionais
+com o Compose real e o gerador oficial, em container sem rede e sem socket Docker.
+Consulte [o plano](tests/PLANO_DE_TESTES.md) para executar e interpretar resultados.
+Consulta de uma instalação existente é feita por `--plataforma`, com alvo explícito;
+`--nomes-padronizados` confere nomes efetivos da convenção nova.
 
-## Formulário completo e uso após a atualização
-
-No menu 1, além de URLs, proxy e credenciais iniciais, configurar título da
-aplicação, número de suporte, senha PostgreSQL, senha MASTER, portas API Oficial /
-WuzAPI, domínio HTTPS opcional da API Oficial, SMTP e Facebook App ID/App Secret.
-Senhas vazias mantêm geração aleatória. A conta Linux Deploy não é criada: todos
-os processos continuam em Docker. Título é salvo pela API administrativa, suporte
-é repassado em runtime e as demais opções chegam aos serviços consumidores reais.
-
-Para instalações existentes, menu 12 configura identidade, suporte, SMTP, Facebook,
-URLs/portas/SSL, integrações, push, tokens e performance PostgreSQL. Mudar senha do
-banco ou MASTER só é oferecido na instalação nova; não se rotacionam senhas/chaves
-existentes silenciosamente. A opção 30 em Ferramentas atualiza credenciais e depois
-executa atualização oficial com backup; o repositório continua restrito à AMANDA.
-
-O menu 10 oferece autenticação GHCR e agendamento em container. Watchtower foi
-substituído pelo atualizador que aplica build, backup e migrations em conjunto;
-um Watchtower que apenas troca containers não sincroniza o esquema da plataforma.
-O agendador roda diariamente na hora UTC escolhida, mantém último sucesso/tentativa
-na pasta privada e usa o lock da instância para não concorrer com outra operação.
-Portainer e instaladores externos VOZ/HUB não são oferecidos: não fazem parte do Compose da plataforma.
-
-Se o Docker apresentar permission denied no socket, use a conta autorizada ao
-Docker ou execute o comando com sudo. O instalador não altera permissões/grupos.
-O build das ferramentas usa Buildx **dentro do container**, inclusive se o plugin
-não estiver instalado no host; não é necessário instalar pacotes adicionais.
-
-Para atualizar o clone existente, já dentro da pasta Instalador-AMANDA:
-
-```sh
-docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only
-sudo sh ./instalador_single.sh
-```
-
-O sudo só é necessário quando a conta atual não acessa Docker. Use `--dir` para
-manter o diretório da instalação anterior, inclusive quando trocar a conta usada.
-Adoção não converte automaticamente a antiga instalação no host.
-
-Importações: coloque o arquivo confiável .sql/.dump/.backup em `<dir>/imports/`.
-O nome de banco é restrito a amanda ou api_oficial. SQL de cluster e comandos
-psql de troca de banco/shell são recusados. A importação faz backup, para gravadores,
-recria somente o banco escolhido, aplica migrations e verifica os serviços; não faz
-seed. Falhas mantêm os apps parados e permitem repetir a mesma importação. Para
-restaurações gerenciadas, escolha a mesma restauração interrompida. PostgreSQL
-precisa estar acessível para preservar o estado atual antes da substituição.
-Backups de outra revisão devem usar rollback completo, não restauração parcial do
-banco. Mudanças no conjunto de volumes exigem recuperação isolada com o contrato
-original. Backups antigos sem hashes não são restaurados automaticamente.
-
-VOZ/HUB não são instalados pelo gerenciador. Apenas as integrações de URL/chave
-que existem na plataforma permanecem no menu 12. GoFlow foi retirado dos menus.
-
-## Visual e sequência de instalação
-
-O banner em blocos AMANDA, o roxo #8B5CF6, os destaques e a apresentação das
-perguntas foram recuperados do histórico de outubro/2026 (3e6b5cf). O visual
-aparece no menu inicial, nos submenus e em cada pergunta da instalação.
-Terminais sem cor, TERM=dumb e NO_COLOR recebem texto simples.
-
-1. Escolha IP/local ou domínios HTTPS (Caddy em container).
-2. Informe host e portas, ou os domínios backend e frontend.
-3. Mantenha ou personalize o acesso administrativo padrão.
-4. Informe empresa/projeto, senhas PostgreSQL e MASTER, título e suporte.
-5. Informe Facebook, tokens separados, link obrigatório AMANDA, portas APIs e SMTP.
-6. Revise URLs, projeto e administrador; confirme para iniciar. Senhas não aparecem na revisão.
-
-Contas Linux Deploy, PM2, Nginx no host e escolha de serviços nativos não são
-reintroduzidos. A numeração histórica é mantida nos itens compatíveis; os números
-dos componentes removidos não são reutilizados. ENTER permite ler o resultado
-antes de voltar ao menu principal. Para atualizar este instalador usando apenas Docker:
-
-```sh
-cd ~/Instalador-AMANDA
-sudo docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only
-sudo sh ./instalador_single.sh
-```
-
-Use sudo somente se sua conta precisar dele para acessar o Docker.
+Build da imagem do gerenciador e parser Compose não certificam uma VPS.
+Instalação completa, certificados públicos, login real, restauração representativa,
+Meta/WhatsApp, SMTP do provedor, OAuth, push e pagamentos continuam sujeitos a
+homologação em ambiente descartável e contas de teste.
+A [matriz de configuração](docs/CONFIGURACAO_E_COMPATIBILIDADE.md) identifica cada
+consumidor e compara a experiência com o instalador original.

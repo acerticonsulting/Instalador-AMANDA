@@ -35,6 +35,7 @@ class FakeRunner {
   mask(s) { return s; }
   async run(bin,args,options={}) {
     this.calls.push({bin,args:[...args],options});
+    if(args.includes('-e')&&args.lastIndexOf('-e')===args.length-2&&(bin===process.execPath||bin==='docker'&&args.includes('node')))new (require('node:vm').Script)(args.at(-1));
     if(this.fail?.({bin,args,options}))throw Error('Simulated failure');
     let stdout='';
     if(bin==='git') {
@@ -51,8 +52,8 @@ class FakeRunner {
       }
     } else if(bin===process.execPath && args[0].endsWith('configure.cjs')) fs.writeFileSync(path.join(options.cwd,'.env'),defaultEnv);
     else if(bin==='docker') {
-      if(args[0]==='info')stdout=JSON.stringify({OSType:'linux',ServerVersion:'27.5.1',Architecture:'x86_64'});
-      else if(args[0]==='volume')stdout=this.existing.join('\n');
+      if(args[0]==='info')stdout=JSON.stringify({OSType:'linux',ServerVersion:'27.5.1',Architecture:'x86_64',MemTotal:8*1024**3,NCPU:4});
+      else if(args[0]==='volume'){if(args[1]==='inspect'&&this.volumeAbsent)return {stdout:'',stderr:'',code:1};stdout=this.existing.join('\n');}
       else if(args[0]==='network')stdout=(this.existingNetworks||[]).join('\n');
       else if(args[0]==='ps')stdout=args.includes('--format')?(this.containerNames||(args.includes('-a')?[]:CORE.map(n=>(this.project||'amanda')+'_'+n))).join('\n'):(this.existingContainers?'b'.repeat(64):'');
       else if(args[0]==='inspect'){if(args.some(a=>a.includes('.Config.Labels')))return{stdout:'',stderr:'',code:1};stdout='sha256:'+'c'.repeat(64);}
@@ -69,9 +70,10 @@ class FakeRunner {
         } else if(args.includes('psql'))stdout=this.users;
       }
       if(args[0]==='run' && args.includes('-czf')) {
+        this.archiveKeys=args.filter(a=>a.startsWith('type=volume,')).map(a=>a.match(/target=\/data\/([^,]+)/)?.[1]).filter(Boolean);
         const bind=args.find(a=>a.startsWith('type=bind,source=')); const dir=bind.slice('type=bind,source='.length).split(',')[0];fs.writeFileSync(path.join(dir,'volumes.tgz'),'fixture archive');
       }
-      if(args[0]==='run'&&args.includes('-tzf'))stdout='./\n'+['redis_data','backend_database','backend_private','backend_public','oficial_public','wuzapi_data','rabbitmq_data','caddy_data','caddy_config'].map(k=>'./'+k+'/').join('\n');
+      if(args[0]==='run'&&args.includes('-tzf'))stdout='./\n'+(this.archiveKeys||[]).map(k=>'./'+k+'/').join('\n');
     }
     if(options.outputFile)fs.writeFileSync(options.outputFile,'fixture dump');
     return {stdout,stderr:'',code:0};
@@ -139,6 +141,46 @@ test('external networks are rejected and company installer gets a stable name',a
   finally{if(old===undefined)delete process.env.AMANDA_MANAGER_CONTAINER;else process.env.AMANDA_MANAGER_CONTAINER=old;if(root===undefined)delete process.env.AMANDA_INSTALL_DIR;else process.env.AMANDA_INSTALL_DIR=root;t.cleanup();}
 });
 function isSeed(call) { return call.bin==='docker'&&call.args.includes('run')&&call.args.includes('seed'); }
+test('literal environment preserves dollar variable names and removes duplicate assignments',()=>{
+  const t=temporary();try{const file=path.join(t.root,'config.env'),value="pass$UNSET_VAR#'\\\"value";fs.writeFileSync(file,'MAIL_PASS=old\nMAIL_PASS=stale\nKEEP=value\n');writeEnv(file,{MAIL_PASS:value});const first=fs.readFileSync(file,'utf8');assert.ok(first.includes('$$UNSET_VAR'));assert.equal(first.match(/^MAIL_PASS=/gm).length,1);assert.equal(envValues(file).MAIL_PASS,value);writeEnv(file,{MAIL_PASS:value});assert.equal(fs.readFileSync(file,'utf8'),first);}finally{t.cleanup();}
+});
+test('minimal installation builds, migrates, backs up, restores and updates only selected services',async()=>{
+  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{await m.prepare(input({companyName:'Empresa Teste',options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.build();await m.initialize();assert.equal(m.services().length,5);assert.deepEqual(m.databases(),['amanda']);assert.ok(!r.calls.some(c=>c.args.includes('official-migrate')));const dir=await m.backup(),data=JSON.parse(fs.readFileSync(path.join(dir,'backup.json')));assert.deepEqual(data.databases,['amanda']);assert.equal(data.hashes['api_oficial.dump'],undefined);await new Operations(m).restore(dir,'all','RESTAURAR amanda');await m.update();const env=envValues(path.join(m.state.platform,'.env'));assert.equal(env.USE_WHATSAPP_OFICIAL,'false');assert.equal(env.WUZAPI_URL,'');assert.deepEqual(m.state.profiles,[]);assert.equal(r.calls.filter(isSeed).length,1);}finally{t.cleanup();}
+});
+test('optional service can be enabled later with backup and migrations but no new seed',async()=>{
+  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.volumeAbsent=true;try{await m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.initialize();r.calls=[];await new Operations(m).enableService('api_oficial','HABILITAR amanda api_oficial');assert.ok(m.services().includes('api_oficial'));assert.equal(envValues(path.join(m.state.platform,'.env')).USE_WHATSAPP_OFICIAL,'true');assert.equal(r.calls.filter(isSeed).length,0);assert.ok(r.calls.findIndex(c=>c.args.includes('pg_dump'))<r.calls.findIndex(c=>c.args.includes('official-migrate')));assert.equal(m.state.phase,'ready');}finally{t.cleanup();}
+});
+test('failed optional-service migration remains resumable without automatic schema rollback',async()=>{
+  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.volumeAbsent=true;try{await m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.initialize();r.fail=c=>c.args.includes('official-migrate');await assert.rejects(new Operations(m).enableService('api_oficial','HABILITAR amanda api_oficial'));assert.equal(m.state.phase,'migration-update');r.fail=null;await m.execute('resume');assert.equal(m.state.phase,'ready');assert.equal(r.calls.filter(isSeed).length,1);}finally{t.cleanup();}
+});
+test('resource limits reject oversized PostgreSQL profiles before cloning or modifying runtime config',async()=>{
+  const {validatePg}=require('../docker/installer/options.cjs');assert.throws(()=>validatePg({maxConnections:500,sharedBuffers:'1GB'},1024**3),/memória/);for(const pg of [{maxConnections:0,sharedBuffers:'128MB'},{maxConnections:100,sharedBuffers:'8GB'},{maxConnections:100,sharedBuffers:'128MB;id'}])assert.throws(()=>validatePg(pg));
+  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{await assert.rejects(m.prepare(input({options:{pg:{maxConnections:500,sharedBuffers:'4GB'}}})),/memória/);assert.ok(!r.calls.some(c=>c.args.includes('clone')));}finally{t.cleanup();}
+});
+test('disabled-component volumes still block fresh resource claims and remain subject to ownership checks',async()=>{
+  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.existing=['amanda_wuzapi_data'];try{await assert.rejects(m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}})),/já existem/);}finally{t.cleanup();}
+});
+test('configuration view is a public allowlist and initial identity form accepts display fields',async()=>{
+  const t=await fixture();try{await t.m.initialize();writeEnv(path.join(t.m.state.platform,'.env.backend'),{MAIL_PASS:'never-print-this',MAIL_HOST:'smtp.example.test'});const output=[],menus=new Menus(t.m,async(label,fallback)=>fallback||'',null,{out:s=>output.push(s)});const values=await menus.form('identity');assert.equal(values.appName,'AMANDA');await menus.dispatch('view-config');assert.ok(!output.join('').includes('never-print-this'));assert.ok(output.join('').includes('amanda'));}finally{t.cleanup();}
+});
+test('SMTP failure warns after installation without corrupting core readiness',async()=>{
+  const t=await fixture();try{t.m.state.testSmtp=true;t.runner.fail=c=>c.options.label==='Testando conexão SMTP sem envio';await t.m.initialize();assert.equal(t.m.state.phase,'ready');assert.ok(t.runner.messages.includes('SMTP não validado'));assert.ok(t.runner.calls.some(c=>c.args.some(a=>typeof a==='string'&&a.includes('t.verify()'))));}finally{t.cleanup();}
+});
+test('runtime SMTP changes recreate only backend and preserve literal passwords and historical service selection',async()=>{
+  const t=await fixture();try{await t.m.initialize();t.runner.calls=[];await new Operations(t.m).configure({backendEnv:{MAIL_HOST:'smtp.example.test',MAIL_PASS:'password$VAR',MAIL_SECURE:'true'}});const up=t.runner.calls.filter(c=>c.args.includes('up'));assert.equal(up.length,1);assert.equal(up[0].args.at(-1),'backend');assert.ok(!up[0].args.includes('postgres'));assert.equal(envValues(path.join(t.m.state.platform,'.env.backend')).MAIL_PASS,'password$VAR');}finally{t.cleanup();}
+});
+test('port conflicts are rejected before migrations and initial data; unchanged bindings are skipped',async()=>{
+  const {assertPorts}=require('../docker/installer/preflight.cjs'),t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.configTransform=c=>{c.services.backend.ports=[{published:'8080',host_ip:'127.0.0.1',protocol:'tcp'}];return c;};r.fail=c=>c.options.label?.startsWith('Verificando portas TCP');try{await assert.rejects(m.prepare(input()),/falhou|failure/);assert.ok(!r.calls.some(c=>c.args.includes('migrate')||isSeed(c)));r.fail=null;const c=await m.configuration();r.calls=[];await assertPorts(m,c,c);assert.ok(!r.calls.some(c=>c.args.includes('run')));}finally{t.cleanup();}
+  const {probeBindings}=require('../docker/installer/preflight.cjs'),server=require('node:net').createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;
+  try{await assert.rejects(probeBindings([{port,host:'127.0.0.1',protocol:'tcp'}]),/indisponível/);}finally{await new Promise(resolve=>server.close(resolve));}
+  await probeBindings([{port,host:'127.0.0.1',protocol:'tcp'}]);
+});
+test('HTTPS diagnoses DNS, TLS, network and HTTP separately without credentials',async()=>{
+  const {probeHttp}=require('../docker/installer/diagnostics.cjs'),original=global.fetch;try{for(const[code,message]of [['ENOTFOUND','DNS'],['CERT_HAS_EXPIRED','TLS'],['ECONNREFUSED','REDE']]){global.fetch=async()=>{const error=Error('fetch failed');error.cause={code};throw error;};await assert.rejects(probeHttp([{url:'https://example.test',exact:true}],1),new RegExp(message));}global.fetch=async()=>({status:502});await assert.rejects(probeHttp([{url:'https://example.test',exact:true}],1),/HTTP 502/);}finally{global.fetch=original;}
+});
+test('commercial company identity and initial settings are gated to a new seeded installation',async()=>{
+  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{await m.prepare(input({companyName:'ACERTI Ltda',options:{initialSettings:{signupSmtpFromName:'ACERTI'}}}));await m.initialize();const call=r.calls.find(c=>c.options.label?.startsWith('Aplicando nome comercial'));assert.equal(call.options.env.A_COMPANY,'ACERTI Ltda');assert.ok(call.args.at(-1).includes('WHERE id=1 RETURNING'));assert.ok(!call.args.at(-1).includes('ACERTI Ltda'));await assert.rejects(m.verifyLogin(),/só é permitida/);}finally{t.cleanup();}
+});
 
 test('authorized repository is mandatory, canonical and cannot carry credentials or a fork',()=>{
   for(const s of [SOURCE,SOURCE.slice(0,-4),SOURCE+'/'])assert.equal(sourceUrl(s),SOURCE);
@@ -382,55 +424,43 @@ test('historical purple banner, menu highlights and optional plain output match 
   assert.ok(!TOOLS.some(x=>/addon-|portainer/.test(x[2])));
 });
 
-test('historical installation questions configure local ports, defaults and explicit confirmation',async()=>{
-  const prompts=[],output=[];
-  const c=await installInput(undefined,{out:s=>output.push(s),question:async(label,fallback,secret)=>{
-    prompts.push({label,secret});
+function wizardQuestion(overrides={}){
+  let count=0;return async(label,fallback,secret)=>{
+    if(++count>200)throw Error('Instalação cancelada: perguntas em excesso no teste.');
+    for(const [prefix,value]of Object.entries(overrides))if(label.startsWith(prefix))return typeof value==='function'?value(label,fallback,secret):value;
     if(label.startsWith('Link da plataforma'))return SOURCE;
-    if(label.startsWith('Confirma a instalação'))return 's';
-    return fallback||'';
-  }});
-  assert.equal(c.edge,false);assert.equal(c.adminEmail,'admin@amanda.com.br');assert.equal(c.adminPassword,'adminamanda');
-  assert.equal(c.frontendUrl,'http://localhost:3000');assert.equal(c.options.appName,'AMANDA');
-  assert.ok(prompts.find(p=>p.label.startsWith('Senha MASTER')).secret);
-  assert.ok(prompts.findIndex(p=>p.label.includes('nome da sua empresa'))<prompts.findIndex(p=>p.label.includes('Título da Aplicação')));
-  assert.ok(output.some(s=>s.includes('REVISÃO DA INSTALAÇÃO')));
-  assert.ok(!output.join('').includes('adminamanda'));
-});
-
-test('domain flow retains backend-first questions and custom admin; cancellation creates no resources',async()=>{
-  const prompts=[];const question=async(label,fallback)=>{
-    prompts.push(label);
-    if(label==='Selecione a opção [1 ou 2]')return '2';
-    if(label.includes('domínio/URL do Backend'))return 'api.example.com';
-    if(label.includes('domínio/URL do Frontend'))return 'app.example.com';
-    if(label.startsWith('Personalizar o acesso'))return 's';
-    if(label.startsWith('Digite o seu melhor'))return 'owner@example.com';
-    if(label==='Senha do administrador'||label==='Confirme a senha')return 'synthetic-admin-password';
-    if(label.startsWith('Link da plataforma'))return SOURCE;
-    if(label.startsWith('Confirma a instalação'))return 's';
+    if(label==='Como deseja continuar')return '1';
     return fallback||'';
   };
-  const c=await installInput(undefined,{out:()=>{},question});assert.equal(c.edge,true);assert.equal(c.backendUrl,'https://api.example.com');assert.equal(c.adminEmail,'owner@example.com');
-  assert.ok(prompts.findIndex(p=>p.includes('domínio/URL do Backend'))<prompts.findIndex(p=>p.includes('domínio/URL do Frontend')));
-  await assert.rejects(installInput(undefined,{out:()=>{},question:(label,fallback)=>label.startsWith('Confirma a instalação')?'n':question(label,fallback)}),/cancelada antes de criar recursos/);
-  await assert.rejects(installInput(undefined,{out:()=>{},question:()=> '3'}),/Modo de acesso inválido/);
+}
+test('eleven-stage wizard configures localhost and reviews all public choices',async()=>{
+  const output=[],prompts=[];const q=wizardQuestion();const c=await installInput(undefined,{directory:'/srv/local',out:s=>output.push(s),question:(...args)=>{prompts.push(args);return q(...args);}});
+  assert.equal(c.frontendUrl,'http://localhost:3000');assert.equal(c.backendUrl,'http://localhost:8080');assert.equal(c.adminEmail,'admin@amanda.com.br');assert.equal(c.companyName,'AMANDA');assert.equal(c.options.pg.sharedBuffers,'128MB');
+  for(let i=1;i<=11;i++)assert.ok(output.some(s=>s.includes('[ETAPA '+String(i).padStart(2,'0')+'/11]')));
+  assert.ok(output.join('').includes('/srv/local'));assert.ok(prompts.find(a=>a[0].startsWith('MASTER_KEY'))[2]);
 });
-
-
-test('local installation maps custom ports and rejects malformed host input',async()=>{
-  const question=async(label,fallback)=>{
-    if(label.startsWith('Personalizar as portas'))return 's';
-    if(label.startsWith('Porta do Frontend'))return '3300';
-    if(label.startsWith('Porta do Backend'))return '8800';
-    if(label.startsWith('Link da plataforma'))return SOURCE;
-    if(label.startsWith('Confirma a instalação'))return 's';
-    return fallback||'';
-  };
-  const c=await installInput(undefined,{out:()=>{},question});assert.equal(c.frontendUrl,'http://localhost:3300');assert.equal(c.backendUrl,'http://localhost:8800');
-  await assert.rejects(installInput(undefined,{out:()=>{},question:(label,fallback)=>label.startsWith('Insira o IP')?'localhost/path':question(label,fallback)}),/servidor inválido/);
+test('HTTPS wizard accepts distinct domains and custom administrator without leaking secrets in review',async()=>{
+  const output=[],password='custom$#strongPassword',c=await installInput(undefined,{out:s=>output.push(s),question:wizardQuestion({'Tipo de instalação':'1','URL do frontend HTTPS':'app.example.com','URL do backend HTTPS':'https://api.example.com','E-mail do administrador':'owner@example.com','Senha do administrador':password,'Confirmação da senha':password,'URL pública HTTPS da API Oficial':'official.example.com'})});
+  assert.equal(c.edge,true);assert.equal(c.frontendUrl,'https://app.example.com');assert.equal(c.backendUrl,'https://api.example.com');assert.equal(c.options.officialUrl,'https://official.example.com');assert.equal(c.adminPassword,password);assert.ok(!output.join('').includes(password));
 });
-
+test('IP wizard maps IPv4/IPv6 and custom ports into configuration',async()=>{
+  for(const ip of ['192.0.2.20','2001:db8::1']){const c=await installInput(undefined,{out:()=>{},question:wizardQuestion({'Tipo de instalação':'2','IP do servidor':ip,'Deseja utilizar portas personalizadas':'s','Porta externa do frontend':'3300','Porta externa do backend':'8800','E-mail do administrador':'owner@example.test','Senha do administrador':'safe$Pass12345','Confirmação da senha':'safe$Pass12345'})});assert.equal(c.public,true);assert.equal(new URL(c.backendUrl).port,'8800');assert.ok(c.frontendUrl.includes(ip));}
+});
+test('wizard retries invalid mode, domain and password confirmation; cancel creates no resources',async()=>{
+  let modes=0,domains=0,confirmation=0;const c=await installInput(undefined,{out:()=>{},question:wizardQuestion({'Tipo de instalação':()=>++modes===1?'9':'1','URL do frontend HTTPS':()=>++domains===1?'app.invalid/path':'app.example.test','URL do backend HTTPS':'api.example.test','Senha do administrador':'safe$Pass12345','Confirmação da senha':()=>++confirmation===1?'wrong':'safe$Pass12345'})});assert.equal(c.edge,true);assert.equal(modes,2);assert.equal(domains,2);assert.equal(confirmation,2);
+  await assert.rejects(installInput(undefined,{out:()=>{},question:wizardQuestion({'Como deseja continuar':'3'})}),/cancelada antes de criar recursos/);
+  await assert.rejects(installInput(undefined,{out:()=>{},question:wizardQuestion({'Tipo de instalação':':cancelar'})}),/cancelada/);
+});
+test('wizard supports back navigation and editing a section from the final review',async()=>{
+  let admin=0,project=0,review=0;const c=await installInput(undefined,{out:()=>{},question:wizardQuestion({'Personalizar o acesso administrativo':()=>++admin===1?':voltar':'n','Nome técnico do projeto Docker':()=>++project>=3?'acerti':'amanda','Como deseja continuar':()=>++review===1?'2':'1','Qual etapa deseja revisar':'3'})});assert.equal(c.project,'acerti');assert.equal(review,2);assert.equal(project,3);
+});
+test('review preserves custom ports, admin, database password, profile and disabled services',async()=>{
+  let review=0,admin=0,confirm=0;const c=await installInput(undefined,{out:()=>{},question:wizardQuestion({'Deseja utilizar portas personalizadas':'s','Porta externa do frontend':'3310','Porta externa do backend':'8810','Personalizar o acesso administrativo':'s','Senha do administrador':()=>++admin===1?'my$privatePass':'','Confirmação da senha':()=>++confirm===1?'my$privatePass':'','Gerar senha PostgreSQL segura automaticamente':'n','Senha PostgreSQL personalizada':(label,fallback)=>admin===1?'db$PRIVATE':'','Perfil PostgreSQL':'2','Habilitar API Oficial':'n','Habilitar WuzAPI':'n','Como deseja continuar':()=>++review===1?'2':'1','Qual etapa deseja revisar':'2'})});assert.equal(c.frontendUrl,'http://localhost:3310');assert.equal(c.adminPassword,'my$privatePass');assert.equal(c.options.databasePassword,'db$PRIVATE');assert.equal(c.options.pg.maxConnections,200);assert.deepEqual(c.options.services,{official:false,wuzapi:false,rabbit:false});
+});
+test('SMTP wizard collects real TLS settings, private password and optional connection test',async()=>{
+  const c=await installInput(undefined,{out:()=>{},question:wizardQuestion({'Deseja configurar o envio de e-mails':'s','Servidor SMTP':'smtp.example.test','Porta SMTP':'465','TLS implícito':'true','Usuário SMTP':'owner@example.test','Senha SMTP':'smtp$#password','E-mail do remetente SMTP':'sender@example.test','Nome do remetente SMTP':'ACERTI'})});
+  assert.equal(c.options.backendEnv.MAIL_SECURE,'true');assert.equal(c.options.backendEnv.MAIL_PASS,'smtp$#password');assert.equal(c.options.initialSettings.signupSmtpFromName,'ACERTI');assert.equal(c.options.testSmtp,true);
+});
 test('status is displayed after the banner and remains visible until the next selection',async()=>{
   const t=await fixture();try{await t.m.initialize();const output=[],answers=['0','0'];t.runner.emit=s=>output.push(s);const menus=new Menus(t.m,async()=>answers.shift(),null,{out:s=>output.push(s)});await menus.services();
     assert.ok(output[0].includes('STATUS E REINÍCIO'));assert.ok(t.runner.calls.some(c=>c.args.includes('ps')));assert.equal(answers.length,1);
