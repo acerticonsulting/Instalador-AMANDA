@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 MF_INSTALADOR_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 readonly MF_INSTALADOR_ROOT
 source "${MF_INSTALADOR_ROOT}/tools/mf_repositorio_amanda.sh" || exit 1

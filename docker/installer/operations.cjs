@@ -6,7 +6,7 @@ const { writeEnv,validateOptions,digest,vapidPrivateKey }=require('./options.cjs
 
 class Operations {
   constructor(manager){this.m=manager;}
-  async ready(restoring=false,configuring=false){const m=this.m;await m.doctor();m.load();await m.validateSource();await m.configuration();if(configuring&&!m.state.initialized&&m.state.seedSucceeded&&m.state.phase==='starting')return;if(!m.state.initialized||(m.state.phase!=='ready'&&!(restoring&&m.state.phase==='restoring')))throw Error('Instalação incompleta. Use Retomar operação ou repita a restauração registrada.');}
+  async ready(restoring=false,configuring=false){const m=this.m;await m.doctor();m.load();await m.identifyManager();await m.validateSource();await m.configuration();if(configuring&&!m.state.initialized&&m.state.seedSucceeded&&m.state.phase==='starting')return;if(!m.state.initialized||(m.state.phase!=='ready'&&!(restoring&&m.state.phase==='restoring')))throw Error('Instalação incompleta. Use Retomar operação ou repita a restauração registrada.');}
   service(name){if(![...CORE,'edge'].includes(name))throw Error('Serviço inválido.');return name;}
   async services(action,name){await this.ready();if(name)this.service(name);if(!['ps','restart','stop','start','logs','rm'].includes(action))throw Error('Operação inválida.');
     const args=action==='ps'?['ps','--all']:action==='logs'?['logs','--no-color','--tail','200']:action==='start'?['up','-d','--no-deps','--wait']:action==='rm'?['rm','-s','-f']:[action];
@@ -96,6 +96,7 @@ class Operations {
     for(const a of b.data.addons||[]){const kind=a.project.slice(m.state.project.length+1),expected=path.join(m.root,'addons',kind);if(!['voz','hub','goflow'].includes(kind)||a.dir!==expected||!/^[a-f0-9]{40}$/.test(a.revision))throw Error('Registro de componente inválido no backup.');await m.runner.run('git',['-c','safe.directory='+expected,'checkout','--detach',a.revision],{cwd:expected,label:'Recuperando componente '+kind});m.write(path.join(m.private,'addon-'+kind+'.json'),a);m.write(path.join(m.private,'addon-'+kind+'.env'),fs.readFileSync(path.join(b.dir,'addon-'+kind+'.env'),'utf8'));}
     for(const file of['.env','.env.backend','.env.oficial'])if(fs.existsSync(path.join(b.dir,file)))m.write(path.join(m.state.platform,file),fs.readFileSync(path.join(b.dir,file),'utf8'));
     const restored=envValues(path.join(m.state.platform,'.env'));m.state={...m.state,profiles:['official','whatsmeow','rabbit',...((restored.COMPOSE_PROFILES||'').split(',').includes('edge')?['edge']:[])],frontendUrl:restored.FRONTEND_URL,backendUrl:restored.BACKEND_URL};
+    if(m.state.naming==='company-v1')await m.configureNames();
     await m.startServices();m.save({...m.state,phase:'ready',revision:b.data.revision});
   }
   async importDatabase(file,db,confirmation){
@@ -123,19 +124,19 @@ class Operations {
     await m.validateSource(true);
     if(erase){await m.backup();for(const v of Object.values(config.volumes)){const r=await m.docker(['volume','inspect','--format','{{json .Labels}}',v.name],{quiet:true,allowFailure:true});const owner=r.code===0?JSON.parse(r.stdout||'{}')?.['com.docker.compose.project']:null;if(r.code===0&&(![m.state.project,...config.installerAddons.map(a=>a.project)].includes(owner)||!v.name.startsWith(owner+'_')))throw Error('Volume sem propriedade comprovada: '+v.name);}}
     for(const a of config.installerAddons)await m.docker([...a.base,'down',...(erase?['--volumes']:[])]);
-    for(const action of['backup','update']){const name=m.state.project+'-agendador-'+action,r=await m.docker(['inspect','--format','{{index .Config.Labels "amanda.installer.project"}}',name],{quiet:true,allowFailure:true});if(r.code===0&&r.stdout.trim()===m.state.project)await m.docker(['rm','-f',name]);}
+    for(const action of['backup','update']){const name=m.state.project+(m.state.naming==='company-v1'?'_scheduler_':'-agendador-')+action,r=await m.docker(['inspect','--format','{{index .Config.Labels "amanda.installer.project"}}',name],{quiet:true,allowFailure:true});if(r.code===0&&r.stdout.trim()===m.state.project)await m.docker(['rm','-f',name]);}
     await m.compose(['down',...(erase?['--volumes']:[])],{label:erase?'Removendo containers e volumes da instância confirmada':'Removendo containers; volumes preservados'});
     if(erase)m.save({...m.state,phase:'removed',initialized:false});m.runner.emit('Arquivos de configuração, código e backups foram preservados.\n');
   }
   async schedule(action,hour){
     await this.ready();const m=this.m;if(!['backup','update'].includes(action)||!Number.isInteger(hour)||hour<0||hour>23)throw Error('Agendamento inválido.');
-    const file=path.join(m.private,'schedule-'+action+'.json');m.write(file,{action,hour,timezone:'UTC'});const name=m.state.project+'-agendador-'+action;
+    const file=path.join(m.private,'schedule-'+action+'.json');m.write(file,{action,hour,timezone:'UTC'});const name=m.state.project+(m.state.naming==='company-v1'?'_scheduler_':'-agendador-')+action;
     const existing=await m.docker(['inspect','--format','{{index .Config.Labels "amanda.installer.project"}}',name],{quiet:true,allowFailure:true});
     if(existing.code===0){if(existing.stdout.trim()!==m.state.project)throw Error('Container de agendamento pertence a outro proprietário.');await m.docker(['rm','-f',name]);}
     await m.docker(['run','-d','--restart','unless-stopped','--name',name,'--label','amanda.installer.project='+m.state.project,'--mount','type=bind,source='+(process.env.AMANDA_DOCKER_SOCKET||'/var/run/docker.sock')+',target=/var/run/docker.sock','--mount',`type=bind,source=${m.root},target=${m.root}`,'-e','DOCKER_HOST=unix:///var/run/docker.sock','-e','AMANDA_INSTALL_DIR='+m.root,'-e','AMANDA_DOCKER_SOCKET='+(process.env.AMANDA_DOCKER_SOCKET||'/var/run/docker.sock'),'--entrypoint','node',process.env.AMANDA_MANAGER_IMAGE || 'amanda-installer:local','/opt/amanda-installer/scheduler.cjs',action],{label:'Instalando agendador Docker, horário UTC '+hour+':00'});
   }
   async portainer(port){await this.ready();if(!Number.isInteger(port)||port<1||port>65535)throw Error('Porta inválida.');const m=this.m;
-    await m.docker(['run','-d','--restart','unless-stopped','--name',m.state.project+'-portainer','--label','amanda.installer.project='+m.state.project,'-p','127.0.0.1:'+port+':9443','--mount','type=bind,source='+(process.env.AMANDA_DOCKER_SOCKET||'/var/run/docker.sock')+',target=/var/run/docker.sock','--mount',`type=volume,source=${m.state.project}_portainer_data,target=/data`,'portainer/portainer-ce:latest'],{label:'Instalando Portainer em container, acesso restrito ao servidor'});
+    await m.docker(['run','-d','--restart','unless-stopped','--name',m.state.project+'_portainer','--label','amanda.installer.project='+m.state.project,'-p','127.0.0.1:'+port+':9443','--mount','type=bind,source='+(process.env.AMANDA_DOCKER_SOCKET||'/var/run/docker.sock')+',target=/var/run/docker.sock','--mount',`type=volume,source=${m.state.project}_portainer_data,target=/data`,'portainer/portainer-ce:latest'],{label:'Instalando Portainer em container, acesso restrito ao servidor'});
     m.runner.emit('Portainer: https://localhost:'+port+' — concluir cadastro administrativo pelo navegador.\n');}
   async ghcr(username,token){await this.ready();if(!/^[a-zA-Z0-9-]+$/.test(username)||!token||/[\r\n]/.test(token))throw Error('Credencial GHCR inválida.');const m=this.m;m.runner.secret(token);const dir=path.join(m.private,'docker-auth'),file=path.join(m.private,'registry-input');fs.mkdirSync(dir,{recursive:true,mode:0o700});m.write(file,token);
     try{await m.docker(['--config',dir,'login','ghcr.io','--username',username,'--password-stdin'],{inputFile:file,label:'Autenticando no GHCR com credencial privada'});const config=path.join(dir,'config.json');if(fs.existsSync(config))fs.chmodSync(config,0o600);}finally{fs.unlinkSync(file);}}

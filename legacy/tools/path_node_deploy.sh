@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Uso: . /root/instalador_single_oficial/tools/path_node_deploy.sh
 # Deve rodar no contexto do usuário deploy (ex.: dentro de sudo su - deploy <<EOF).
 # Garante npm/npx no PATH: prefere Node 20.19.4 via n, senão a versão mais recente em /usr/local/n.

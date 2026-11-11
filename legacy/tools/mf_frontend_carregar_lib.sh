@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Carrega mf_tela_atualizacao_frontend.sh como root (deploy nao le /root/).
 
 mf_frontend_carregar_lib() {

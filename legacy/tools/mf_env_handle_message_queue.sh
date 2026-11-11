@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Atualiza/garante variáveis de throughput das filas Bull de mensagem
 # (Baileys -handleMessage e WhatsMeow -handleWuzapiMessage) no .env do backend.
 # Uso: source este arquivo (requer empresa definida) e chame:

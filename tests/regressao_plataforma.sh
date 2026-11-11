@@ -47,7 +47,9 @@ case "$1" in
       esac
       ;;
     esac
-    printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$dono" "$servico" "$oneoff" "$estado" "$saude" "$oom" "$codigo_saida" "$reinicio"
+    nome=amanda_${servico//-/_}
+    [ "$AMANDA_TEST_CASE" != nome_errado ] || nome=outro_backend
+    printf '%s|%s|%s|%s|%s|%s|%s|%s|/%s\n' "$dono" "$servico" "$oneoff" "$estado" "$saude" "$oom" "$codigo_saida" "$reinicio" "$nome"
     ;;
   *) printf '%s\n' 'Operação Docker não permitida no verificador.' >&2; exit 93 ;;
 esac
@@ -96,3 +98,10 @@ status=0
 bash "$verificador" --projeto '../outra' --frontend-url https://frontend.invalid/ --backend-url https://backend.invalid/health > "$WORK/resultado" 2>&1 || status=$?
 [ "$status" = 2 ] && [ ! -s "$AMANDA_TEST_LOG" ] || { printf '%s\n' 'FALHA: entrada inválida chegou aos serviços externos.' >&2; exit 1; }
 printf 'OK: %d cenários de saúde, serviço adicional e rejeição de entrada inválida.\n' "$casos"
+
+export AMANDA_TEST_CASE=saudavel
+bash "$verificador" "${args[@]}" --nomes-padronizados > "$WORK/nomes" 2>&1
+export AMANDA_TEST_CASE=nome_errado
+if bash "$verificador" "${args[@]}" --nomes-padronizados > "$WORK/nomes" 2>&1; then
+  printf '%s\n' 'FALHA: nome efetivo divergente foi aceito.' >&2; exit 1
+fi

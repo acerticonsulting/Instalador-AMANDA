@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Executa um comando longo (ex.: npm run build) e imprime heartbeat a cada 60s.
 # Uso: mf_npm_build_com_heartbeat "frontend 2048MB" env NODE_OPTIONS=... npm run build
 

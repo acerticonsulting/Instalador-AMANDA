@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
+
 # Agendar e executar backup diário do Postgres em Docker (modo Alta Performance).
 # Um pg_dump por banco, salvo em /home/deploy/backup-bd-docker-<empresa> (nome da empresa no VARIAVEIS_INSTALACAO).
 

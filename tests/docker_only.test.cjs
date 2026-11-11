@@ -10,6 +10,18 @@ const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');
 const {Addons}=require('../docker/installer/addons.cjs');
+const {forbiddenHostCommand,activeShellFiles}=require('./host_contract.cjs');
+test('production shell cannot install or execute application dependencies on the host',()=>{
+  for(const command of ['apt install nodejs','sudo apt-get install git','yum install nginx','dnf install python3','apk add ffmpeg','snap install node','npm install','pip3 install lib','pm2 start server','curl https://example.test | bash','node server.js','/usr/bin/python3 script.py','true; npm install'])assert.ok(forbiddenHostCommand(command),command);
+  assert.ok(!forbiddenHostCommand('docker run --rm node:22 npm install'));
+  for(const file of activeShellFiles(path.resolve(__dirname,'..')))assert.ok(!forbiddenHostCommand(fs.readFileSync(file,'utf8')),file);
+  assert.ok(!activeShellFiles(path.resolve(__dirname,'..')).some(f=>f.endsWith('Dockerfile')));
+});
+test('archived native recipes are blocked before any historical command',()=>{
+  const root=path.resolve(__dirname,'../legacy'),safe=new Set(['mf_operacoes_seguras.sh','mf_admin_inicial.sh','mf_repositorio_amanda.sh']);
+  function visit(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())visit(p);else if(e.name.endsWith('.sh')&&!safe.has(e.name)){const first=fs.readFileSync(p,'utf8').split(/\r?\n/).filter(l=>l.trim()&&!l.startsWith('#')).slice(0,2);assert.ok(first[0].startsWith("printf '%s\\n'"),p);assert.equal(first[1],'return 1 2>/dev/null || exit 1');}}}
+  visit(root);
+});
 const input = extra => ({ sourceUrl: SOURCE, ...extra });
 function temporary() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'amanda-manager-test-'));
@@ -41,16 +53,19 @@ class FakeRunner {
     else if(bin==='docker') {
       if(args[0]==='info')stdout=JSON.stringify({OSType:'linux',ServerVersion:'27.5.1',Architecture:'x86_64'});
       else if(args[0]==='volume')stdout=this.existing.join('\n');
-      else if(args[0]==='network')stdout='';
-      else if(args[0]==='ps')stdout=this.existingContainers?'b'.repeat(64):'';
+      else if(args[0]==='network')stdout=(this.existingNetworks||[]).join('\n');
+      else if(args[0]==='ps')stdout=args.includes('--format')?(this.containerNames||(args.includes('-a')?[]:CORE.map(n=>(this.project||'amanda')+'_'+n))).join('\n'):(this.existingContainers?'b'.repeat(64):'');
       else if(args[0]==='inspect'){if(args.some(a=>a.includes('.Config.Labels')))return{stdout:'',stderr:'',code:1};stdout='sha256:'+'c'.repeat(64);}
       else if(args[0]==='compose') {
+        this.project=args[args.indexOf('-p')+1];
         if(args.includes('config')) {
-          const project=args[args.indexOf('-p')+1];
-          stdout=JSON.stringify(project.endsWith('_voz')&&this.addonValid?{services:{voice:{image:project+'-voice:local',environment:{},healthcheck:{test:['CMD','true']}}},volumes:{voice_data:{name:project+'_voice_data'}},networks:{amanda:{name:'amanda_default',external:true}}}:{services:Object.fromEntries(CORE.map(n=>[n,{image:project+'-'+n+':local',environment:{}}])),volumes:Object.fromEntries(['postgres_data','redis_data','backend_database','backend_private','backend_public','oficial_public','wuzapi_data','rabbitmq_data','caddy_data','caddy_config'].map(n=>[n,{name:project+'_'+n}]))});
+          const project=args[args.indexOf('-p')+1];this.project=project;
+          stdout=JSON.stringify(project.endsWith('_voz')&&this.addonValid?{services:{voice:{container_name:project+'_voice',image:project+'-voice:local',environment:{},healthcheck:{test:['CMD','true']}}},volumes:{voice_data:{name:project+'_voice_data'}},networks:{amanda:{name:'amanda_default',external:true}}}:{services:Object.fromEntries([...CORE,'edge','migrate','seed','official-db-init','official-migrate'].map(n=>[n,{image:project+'-'+n+':local',environment:{}}])),networks:{default:{name:project+'_default',external:!!this.externalNetwork}},volumes:Object.fromEntries(['postgres_data','redis_data','backend_database','backend_private','backend_public','oficial_public','wuzapi_data','rabbitmq_data','caddy_data','caddy_config'].map(n=>[n,{name:project+'_'+n}]))});
+          if(args.includes(path.join(path.dirname(args[args.indexOf('--project-directory')+1]),'.amanda-installer','compose-names.json'))){const c=JSON.parse(stdout),overlay=JSON.parse(fs.readFileSync(args[args.lastIndexOf('-f')+1]));for(const [k,v]of Object.entries(overlay.services))c.services[k]={...c.services[k],...v};stdout=JSON.stringify(c);}
+          if(this.configTransform)stdout=JSON.stringify(this.configTransform(JSON.parse(stdout)));
         } else if(args.includes('ps')) {
           if(args.includes('-q'))stdout='b'.repeat(64);
-          else stdout=(args[args.indexOf('-p')+1].endsWith('_voz')&&this.addonValid?['voice']:[...CORE,'edge']).map(Service=>JSON.stringify({Service,State:Service===this.badService?'exited':'running',Health:'healthy'})).join('\n');
+          else stdout=(args[args.indexOf('-p')+1].endsWith('_voz')&&this.addonValid?['voice']:[...CORE,'edge']).map(Service=>JSON.stringify({Service,Name:this.wrongName?'wrong':(this.project||'amanda')+'_'+(Service==='edge'?'caddy':Service),State:Service===this.badService?'exited':'running',Health:'healthy'})).join('\n');
         } else if(args.includes('psql'))stdout=this.users;
       }
       if(args[0]==='run' && args.includes('-czf')) {
@@ -63,6 +78,66 @@ class FakeRunner {
   }
 }
 async function fixture() { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());return {...t,runner,m}; }
+test('company names are normalized separately from commercial titles',()=>{
+  assert.equal(normalizeConfig(input({project:' ÁCERTI Filial-2 '})).project,'acerti_filial_2');
+  for(const project of ['../x','a;id','a/b','_x','💜','a.b'])assert.throws(()=>normalizeConfig(input({project})));
+});
+test('new stacks use explicit names and check effective Docker names',async()=>{
+  const t=await fixture();try{
+    assert.equal(t.m.state.naming,'company-v1');
+    const overlay=JSON.parse(fs.readFileSync(path.join(t.m.private,'compose-names.json')));
+    for(const name of CORE)assert.equal(overlay.services[name].container_name,'amanda_'+name);
+    assert.equal(overlay.services.edge.container_name,'amanda_caddy');
+    assert.equal(overlay.services['official-migrate'].container_name,'amanda_official_migrate');
+    await t.m.initialize();t.runner.wrongName=true;await assert.rejects(t.m.verifyHealth(),/Nome efetivo/);
+    t.runner.wrongName=false;t.runner.containerNames=['intruder'];await assert.rejects(t.m.verifyHealth(),/docker ps/);
+  }finally{t.cleanup();}
+});
+test('one-off operations receive unique company names and automatic removal',async()=>{
+  const t=await fixture();try{
+    await t.m.initialize();await t.m.backup();
+    const jobs=t.runner.calls.filter(c=>c.bin==='docker'&&c.args.includes('run'));
+    const names=jobs.map(c=>c.args[c.args.indexOf('--name')+1]);
+    assert.equal(new Set(names).size,names.length);
+    for(const c of jobs){assert.match(c.args[c.args.indexOf('--name')+1],/^amanda_[a-z_]+_[a-f0-9]{32}$/);assert.ok(c.args.includes('--rm'));}
+  }finally{t.cleanup();}
+});
+test('legacy managed state preserves its original Compose naming policy',async()=>{
+  const t=await fixture();try{delete t.m.state.naming;t.m.save(t.m.state);t.m.load();t.runner.calls=[];await t.m.configuration();assert.ok(!t.runner.calls.some(c=>c.args.includes(path.join(t.m.private,'compose-names.json'))));}finally{t.cleanup();}
+});
+test('legacy update refuses supplier renaming before stopping services',async()=>{
+  const t=await fixture();try{
+    await t.m.initialize();delete t.m.state.naming;t.m.save(t.m.state);t.runner.calls=[];
+    let changed=false;t.runner.fail=({bin,args})=>{if(bin==='git'&&args.includes('merge'))changed=true;if(bin==='git'&&args.includes('checkout'))changed=false;return false;};
+    t.runner.configTransform=c=>{if(changed)c.services.backend.container_name='other_backend';return c;};
+    await assert.rejects(t.m.update(),/nome existente/);
+    assert.equal(t.m.state.phase,'ready');assert.ok(!t.runner.calls.some(c=>c.args.includes('stop')||c.args.includes('build')));
+  }finally{t.cleanup();}
+});
+test('enabling HTTPS checks Caddy effective name from the all-profile override',async()=>{
+  const t=await fixture();try{t.m.state.profiles.push('edge');t.runner.containerNames=[...CORE.map(n=>'amanda_'+n),'amanda_caddy'];await t.m.verifyHealth();t.runner.containerNames.pop();await assert.rejects(t.m.verifyHealth(),/docker ps.*edge/);}finally{t.cleanup();}
+});
+test('two companies use distinct names, volumes, networks and published ports',async()=>{
+  const a=await fixture(),b=temporary(),r=new FakeRunner(),m=new Manager(b.root,r);try{
+    await m.prepare(input({project:'acerti',frontendUrl:'http://localhost:3001',backendUrl:'http://localhost:8081',options:{officialPort:6001,wuzapiPort:8091}}));
+    const x=await a.m.configuration(),y=await m.configuration();
+    for(const k of CORE)assert.notEqual(x.services[k].container_name,y.services[k].container_name);
+    for(const k of Object.keys(x.volumes))assert.notEqual(x.volumes[k].name,y.volumes[k].name);
+    assert.notEqual(x.networks.default.name,y.networks.default.name);
+    const env=envValues(path.join(m.state.platform,'.env'));assert.equal(env.PORT_FRONTEND,'3001');assert.equal(env.PORT_BACKEND,'8081');assert.equal(env.PORT_APIOFICIAL,'6001');assert.equal(env.PORT_WUZAPI,'8091');
+  }finally{a.cleanup();b.cleanup();}
+});
+test('foreign container-name collisions and existing networks reject initialization without seed',async()=>{
+  for(const type of ['containerNames','existingNetworks']){
+    const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r[type]=[type==='containerNames'?'amanda_backend':'amanda_default'];
+    try{await assert.rejects(m.prepare(input()),/já existem/);assert.ok(!r.calls.some(c=>c.args.includes('seed')));}finally{t.cleanup();}
+  }
+});
+test('external networks are rejected and company installer gets a stable name',async()=>{
+  const t=await fixture(),old=process.env.AMANDA_MANAGER_CONTAINER,root=process.env.AMANDA_INSTALL_DIR;
+  try{t.runner.externalNetwork=true;await assert.rejects(t.m.configuration(),/Rede externa/);process.env.AMANDA_MANAGER_CONTAINER='amanda_bootstrap_test';process.env.AMANDA_INSTALL_DIR=t.m.root;await t.m.identifyManager();assert.ok(t.runner.calls.some(c=>c.args[0]==='rename'&&c.args[2]==='amanda_installer'));}
+  finally{if(old===undefined)delete process.env.AMANDA_MANAGER_CONTAINER;else process.env.AMANDA_MANAGER_CONTAINER=old;if(root===undefined)delete process.env.AMANDA_INSTALL_DIR;else process.env.AMANDA_INSTALL_DIR=root;t.cleanup();}
+});
 function isSeed(call) { return call.bin==='docker'&&call.args.includes('run')&&call.args.includes('seed'); }
 
 test('authorized repository is mandatory, canonical and cannot carry credentials or a fork',()=>{
@@ -148,14 +223,14 @@ test('GHCR credential uses stdin, private storage and no token in CLI arguments'
 
 test('external components reject missing Docker contracts and never borrow the connector token',async()=>{
   const t=await fixture();try{await t.m.initialize();t.runner.calls=[];const addon=new Addons(t.m);await assert.rejects(addon.deploy('voz',{sourceUrl:'https://token@github.com/owner/voice'}));assert.ok(!t.runner.calls.some(c=>c.args.includes('clone')));
-    t.runner.addonRemote='https://github.com/owner/voice';await assert.rejects(addon.deploy('voz',{sourceUrl:t.runner.addonRemote,token:'synthetic-addon-token'}),/healthcheck/);assert.ok(!fs.existsSync(path.join(t.m.private,'addon-voz.json')));assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.secrets/github_token'),'utf8'),'');assert.ok(!t.runner.calls.some(c=>c.args.includes('up')));
+    t.runner.addonRemote='https://github.com/owner/voice';await assert.rejects(addon.deploy('voz',{sourceUrl:t.runner.addonRemote,token:'synthetic-addon-token'}),/healthcheck|container_name/);assert.ok(!fs.existsSync(path.join(t.m.private,'addon-voz.json')));assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.secrets/github_token'),'utf8'),'');assert.ok(!t.runner.calls.some(c=>c.args.includes('up')));
   }finally{t.cleanup();}
 });
 
 test('valid external component participates in consistent backups; invalid update restores the old source',async()=>{
   const t=await fixture();try{await t.m.initialize();t.runner.addonValid=true;t.runner.addonRemote='https://github.com/owner/voice';const addon=new Addons(t.m);await addon.deploy('voz',{sourceUrl:t.runner.addonRemote,environment:{VOICE_TOKEN:'synthetic-voice-token'}});assert.equal(JSON.parse(fs.readFileSync(path.join(t.m.private,'addon-voz.json'))).phase,'ready');assert.ok((await t.m.configuration()).volumes.voz_voice_data);
     t.runner.calls=[];await t.m.backup();const pause=t.runner.calls.findIndex(c=>c.args.includes('amanda_voz')&&c.args.includes('stop')),dump=t.runner.calls.findIndex(c=>c.args.includes('pg_dump'));assert.ok(pause>=0&&pause<dump);assert.ok(t.runner.calls.some(c=>c.args.some(v=>v.includes('source=amanda_voz_voice_data,target=/data/voz_voice_data,readonly'))));
-    t.runner.calls=[];t.runner.invalidateAddonOnMerge=true;await assert.rejects(addon.deploy('voz',{},true),/healthcheck/);assert.ok(t.runner.calls.some(c=>c.bin==='git'&&c.options.cwd?.includes('/addons/')&&c.args.includes('--detach')));assert.equal(t.runner.addonValid,true);const changed=t.runner.calls.findIndex(c=>c.bin==='git'&&c.args.includes('merge'));assert.ok(changed>=0);assert.ok(!t.runner.calls.slice(changed+1).some(c=>c.args.includes('amanda_voz')&&c.args.includes('up')));
+    t.runner.calls=[];t.runner.invalidateAddonOnMerge=true;await assert.rejects(addon.deploy('voz',{},true),/healthcheck|container_name/);assert.ok(t.runner.calls.some(c=>c.bin==='git'&&c.options.cwd?.includes('/addons/')&&c.args.includes('--detach')));assert.equal(t.runner.addonValid,true);const changed=t.runner.calls.findIndex(c=>c.bin==='git'&&c.args.includes('merge'));assert.ok(changed>=0);assert.ok(!t.runner.calls.slice(changed+1).some(c=>c.args.includes('amanda_voz')&&c.args.includes('up')));
   }finally{t.cleanup();}
 });
 

@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Carrega versão|commit de tools/versoes_multiflow_pro.conf para um array associativo global.
 # Uso: source este arquivo; mf_carregar_versoes_no_array VERSOES_INSTALACAO
 #      ou mf_carregar_versoes_no_array VERSOES

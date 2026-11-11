@@ -1,5 +1,52 @@
 # Instalador AMANDA em Docker
 
+Instalações novas usam `{empresa}_{servico}`: `amanda_backend`,
+`amanda_frontend`, `amanda_postgres`, `amanda_redis`, `amanda_api_oficial`,
+`amanda_api_transcricao`, `amanda_wuzapi`, `amanda_rabbitmq` e, com HTTPS,
+`amanda_caddy`. O nome técnico informado é normalizado para letras minúsculas,
+números e underscore (até 40 caracteres, começando por letra/número).
+Por exemplo, `ÁCERTI Filial-2` vira `acerti_filial_2`. O título comercial
+é um campo independente e mantém espaços, acentos e maiúsculas.
+
+O gerenciador gera `.amanda-installer/compose-names.json` com `container_name`
+explícito para todos os serviços/perfis do Compose oficial, incluindo jobs.
+Use o ponto de entrada para operar a instalação: chamadas manuais ao Compose
+também precisam incluir esse segundo arquivo com `-f`. O código Git da plataforma
+permanece intacto. O estado registra a política `company-v1`.
+O gerenciador assume `{empresa}_installer` após identificar a instalação;
+antes da configuração, as ferramentas usam `amanda_bootstrap_<pid>` e
+`amanda_bootstrap_<pid>_build`, removidos ao sair. Jobs e manutenção usam
+`{empresa}_job_<uuid>` / `{empresa}_maintenance_<uuid>`, com `--rm`.
+Agendadores novos usam `{empresa}_scheduler_backup` e `_scheduler_update`.
+Colisões são recusadas; containers de terceiros nunca são removidos para liberar nomes.
+
+Volumes e redes permanecem no namespace Compose da empresa, como
+`amanda_postgres_data` e `amanda_default`. Cada empresa precisa de um diretório,
+identificador e portas publicados próprios. Configure `frontendUrl`, `backendUrl`,
+`options.officialPort` e `options.wuzapiPort` com portas diferentes da outra
+instalação. Dois Caddys não podem publicar simultaneamente 80/443 no mesmo IP;
+para coexistência nesse IP use publicação HTTP em portas distintas ou planeje
+um proxy Docker compartilhado explicitamente. O instalador atual não gerencia esse proxy.
+
+Instalações já gerenciadas sem `company-v1` e adoções conservam a convenção
+anterior. Atualizar não converte nomes nem muda projetos/volumes. Mudanças de nomes
+e recursos existentes no Compose atualizado são recusadas antes de parar a plataforma.
+Para converter uma instalação antiga, planeje recuperação isolada com backup
+validado; não basta editar o projeto ou a política no estado.
+Containers com `container_name` não suportam `--scale` para múltiplas réplicas;
+escalabilidade futura requer convenção explícita de réplicas e revisão da arquitetura.
+
+O status exige nomes efetivos corretos em `docker compose ps` e `docker ps`, além
+da saúde dos serviços. Para consulta externa somente de leitura, use
+`tests/validar_instalador.sh --plataforma --nomes-padronizados` com projeto,
+URLs e serviços esperados conforme o plano de testes. Omita essa flag para a
+política histórica. Isso não migra nem renomeia containers.
+
+As receitas executáveis históricas em `legacy/` estão bloqueadas antes do código
+antigo. Não há fallback para instalar dependências da aplicação no host.
+Se Docker estiver ausente, disponibilize Docker Engine/CLI e seus componentes
+oficiais seguindo as instruções do fornecedor; o instalador interrompe sem instalar pacotes.
+
 O menu principal anterior (opções 1 a 11), as ferramentas e a gestão da API Oficial
 foram restaurados. O menu aparece **antes** do download das ferramentas. Após uma
 operação ele retorna ao menu; 0 permite sair. Configurações da plataforma e seleção

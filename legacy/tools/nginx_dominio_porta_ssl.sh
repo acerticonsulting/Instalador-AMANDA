@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Ferramentas: novo server_name no Nginx (proxy reverso localhost:porta) + Let's Encrypt via Certbot.
 # Fluxo espelha config_nginx_base / nginx_apioficial do projeto (upstream + certbot não interativo).
 

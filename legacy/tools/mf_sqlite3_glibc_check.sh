@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Detecta sqlite3 nativo incompatível com a GLIBC do host (ERR_DLOPEN_FAILED)
 # e recompila no servidor de destino — evita Baileys travado em OPENING/conectando.
 #

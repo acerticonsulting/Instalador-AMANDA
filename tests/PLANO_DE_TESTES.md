@@ -1,5 +1,37 @@
 # Plano de testes do instalador AMANDA
 
+## Docker e nomenclatura por empresa — 2026-11-11
+
+A suíte Docker-only tem 59 casos. As novas regressões cobrem:
+
+| ID | Contrato | Evidência local |
+|---|---|---|
+| DOC-01 | Sem dependências nativas | Scanner conservador dos `.sh` ativos e bootstrap com executáveis proibidos simulados; Dockerfiles são excluídos porque seus comandos executam na imagem. |
+| DOC-02 | Receitas históricas inativas | Verifica barreira de encerramento antes do código histórico em cada receita arquivada. |
+| DOC-03 | Empresa e nomes | Normalização, caracteres inválidos, `container_name` de serviços/jobs/Caddy e renomeação do gerenciador simulada. |
+| DOC-04 | Identidade efetiva | Status rejeita divergência em `docker compose ps` e `docker ps`; consulta de plataforma confere `.Name` via inspect com `--nomes-padronizados`. |
+| DOC-05 | Tarefas temporárias | UUIDs exclusivos com prefixo da empresa e `--rm` em migrations, seed, backup e manutenção. |
+| DOC-06 | Coexistência | Duas configurações com nomes, redes, volumes e quatro portas diferentes; colisões de nomes e redes bloqueiam seed. |
+| DOC-07 | Compatibilidade | Estados anteriores continuam sem o override; atualização conserva nomes/recursos existentes e recuperação regenera override para a revisão restaurada. |
+| DOC-08 | Backup/recuperação | Regressões existentes de hashes, propriedade, importação, rollback e falhas continuam passando com containers auxiliares nomeados. |
+
+O scanner é um contrato conservador de comandos conhecidos, não um parser Shell
+completo nem uma prova contra ofuscação. Examina os pontos de entrada de produção,
+exclui testes e receitas históricas bloqueadas e não examina `RUN` em Dockerfiles
+como instalação no host. A barreira das receitas históricas tem regressão própria.
+
+Para instalações novas, acrescente `--nomes-padronizados` à consulta
+`--plataforma`; a flag confere nomes reais via Docker inspect, inclusive o sufixo
+`caddy` para o serviço `edge` e UUID de one-offs. Estados históricos devem ser
+consultados sem essa flag até uma migração explicitamente planejada.
+
+Resultado local não certifica instalação nova, ferramentas dos repositórios
+externos, build completo, duas plataformas simultâneas nem recuperação real.
+HOM-01, HOM-02, HOM-04 e HOM-05 continuam obrigatórios em Linux descartável sem
+dependências nativas da aplicação; registrar `docker ps`, `docker compose ps`,
+portas, redes/volumes, processos no host e integridade após recuperação.
+Não executar instalação, migration ou restauração reais na suíte local.
+
 ## 1. Objetivo e regra de execução
 
 Executar a validação depois de cada conjunto de alterações e antes de cada commit. O comando padrão é:

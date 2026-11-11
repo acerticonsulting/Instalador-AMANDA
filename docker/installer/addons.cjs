@@ -29,7 +29,8 @@ class Addons{
     if(!update){for(const v of Object.values(environment))m.runner.secret(v);writeEnv(envFile,{...environment,AMANDA_NETWORK:m.state.project+'_default'});}
     base=['compose','--project-directory',dir,'--env-file',envFile,'-p',project,'-f',file];
     const config=JSON.parse((await m.docker([...base,'config','--format','json'],{quiet:true})).stdout);
-    for(const service of Object.values(config.services||{})){
+    for(const [key,service] of Object.entries(config.services||{})){
+      if(m.state.naming==='company-v1'&&service.container_name!==project+'_'+key.replace(/-/g,'_'))throw Error('Componente deve declarar container_name com prefixo da empresa: '+key);
       for(const[k,v]of Object.entries(service.environment||{}))if(/KEY|TOKEN|SECRET|PASS/.test(k))m.runner.secret(v);
       if(service.privileged||service.cap_add?.length||service.network_mode||service.pid||service.devices?.length)throw Error('Contrato Docker do componente exige privilégios não suportados.');
       if(service.build){const context=path.resolve(service.build.context||dir);if(context!==dir&&!context.startsWith(dir+path.sep))throw Error('Contexto de build fora da pasta do componente recusado.');}

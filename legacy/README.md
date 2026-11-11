@@ -1,5 +1,12 @@
 > ARQUIVO HISTÓRICO: não executar estas receitas no fluxo atual. Consulte o README da raiz; os scripts e tools antigos estão em legacy/.
 
+As receitas `.sh` agora encerram com erro antes de executar o código histórico,
+inclusive quando carregadas com `source`. As três bibliotecas sem provisionamento
+usadas pelas regressões (`mf_operacoes_seguras`, `mf_admin_inicial` e
+`mf_repositorio_amanda`) continuam disponíveis para esses testes.
+Os comandos de instalação nativa abaixo são somente arquivo histórico; o ponto
+de entrada suportado é `../instalador_single.sh`, que usa Docker.
+
 # 🚀 Instalador Oficial AMANDA
 
 Suite oficial de instalação, atualização e gerenciamento 100% Docker para a plataforma **AMANDA**.

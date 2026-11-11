@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # ==============================================================================
 # AMANDA - Instalação e Garantia Oficial de Docker e Docker Compose
 # Suporte: Ubuntu 20.04, 22.04, 24.04 (Noble), Debian 11, 12, 13 e derivados

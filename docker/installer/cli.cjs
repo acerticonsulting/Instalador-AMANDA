@@ -114,7 +114,7 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
     return manager.lock(async () => { await manager.doctor(); await manager.adopt(url); });
   }
   if (action === 'build-token') {
-    return manager.lock(async () => { manager.load(); const token = await ask('Novo token de leitura do conector (não exibido)', undefined, true); if (!token || /[\r\n]/.test(token)) throw Error('Token vazio/inválido.'); manager.write(path.join(manager.state.platform,'.secrets/github_token'),token); console.log('Segredo de build atualizado fora do Git.'); });
+    return manager.lock(async () => { manager.load(); await manager.identifyManager(); const token = await ask('Novo token de leitura do conector (não exibido)', undefined, true); if (!token || /[\r\n]/.test(token)) throw Error('Token vazio/inválido.'); manager.write(path.join(manager.state.platform,'.secrets/github_token'),token); console.log('Segredo de build atualizado fora do Git.'); });
   }
   if (['status','logs'].includes(action)) return manager.execute(action);
   return manager.lock(() => manager.execute(action));

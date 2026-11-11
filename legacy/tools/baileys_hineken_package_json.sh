@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Baileys/Hineken: garante branch main no package.json do backend (MultiFlow-PRO).
 # Uso como root: . tools/baileys_hineken_package_json.sh && mf_baileys_fixar_branch_main_package_json "$pkg"
 # Em heredocs "su - deploy": path_node_deploy.sh carrega este script; chame mf_baileys_fixar_branch_main_package_json.

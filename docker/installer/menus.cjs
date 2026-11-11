@@ -36,7 +36,7 @@ class Menus{
     else if(['email','facebook','integrations'].includes(a))await ops.configure({backendEnv:await this.form(a)});else await this.dispatch(a);
     await this.ask('Pressione ENTER para continuar');
   }}
-  async token(){this.m.load();const kind=await this.choose('CREDENCIAIS GITHUB',[['1','Conector privado — segredo BuildKit','build'],['2','Leitura da plataforma — Git askpass','source'],['3','Configurar ambos separadamente','both']]);if(!kind)return;
+  async token(){this.m.load();await this.m.identifyManager();const kind=await this.choose('CREDENCIAIS GITHUB',[['1','Conector privado — segredo BuildKit','build'],['2','Leitura da plataforma — Git askpass','source'],['3','Configurar ambos separadamente','both']]);if(!kind)return;
     for(const role of(kind==='both'?['build','source']:[kind])){const token=await this.ask(role==='build'?'Novo token do conector (somente BuildKit)':'Novo token de leitura da plataforma',undefined,true);if(!token||/[\r\n\0]/.test(token))throw Error('Token inválido.');this.m.runner.secret(token);this.m.write(role==='build'?path.join(this.m.state.platform,'.secrets/github_token'):path.join(this.m.private,'source-token'),token);}
     this.out('Credenciais selecionadas atualizadas fora do Git.');
   }

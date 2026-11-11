@@ -2,12 +2,14 @@
 # Consulta uma instalação existente. Nenhum exec, restart, up ou migração.
 set -euo pipefail
 projeto='' frontend_url='' backend_url=''
+nomes_padronizados=false
 declare -a obrigatorios=(backend frontend postgres redis)
 uso() {
-  printf '%s\n' 'Uso: verificar_plataforma.sh --projeto NOME --frontend-url URL --backend-url URL [--servico NOME ...]'
+  printf '%s\n' 'Uso: verificar_plataforma.sh --projeto NOME --frontend-url URL --backend-url URL [--servico NOME ...] [--nomes-padronizados]'
 }
 while (( $# )); do
   case "$1" in
+    --nomes-padronizados) nomes_padronizados=true; shift ;;
     --projeto|--frontend-url|--backend-url|--servico)
       (( $# >= 2 )) || { uso >&2; exit 2; }
       case "$1" in
@@ -44,17 +46,25 @@ if [ -z "$ids" ]; then
   exit 1
 fi
 
-formato='{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.State.OOMKilled}}|{{.State.ExitCode}}|{{.HostConfig.RestartPolicy.Name}}'
+formato='{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.State.OOMKilled}}|{{.State.ExitCode}}|{{.HostConfig.RestartPolicy.Name}}|{{.Name}}'
 while IFS= read -r id; do
   [ -n "$id" ] || continue
   if ! dados=$(timeout --kill-after=5s 20s docker inspect --format "$formato" "$id" 2>/dev/null); then
     printf '%s\n' 'FALHA: não foi possível inspecionar um container.' >&2
     falhas=$((falhas+1)); continue
   fi
-  IFS='|' read -r dono servico oneoff estado saude oom codigo_saida reinicio <<< "$dados"
+  IFS='|' read -r dono servico oneoff estado saude oom codigo_saida reinicio nome <<< "$dados"
   if [ "$dono" != "$projeto" ] || ! [[ "$servico" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
     printf '%s\n' 'FALHA: identidade de container divergente ou incompleta.' >&2
     falhas=$((falhas+1)); continue
+  fi
+  if "$nomes_padronizados"; then
+    if [[ "$oneoff" = True || "$oneoff" = true ]]; then
+      [[ "${nome#/}" =~ ^${projeto}_[a-z0-9_]+_[a-f0-9]{32}$ ]] || { printf '%s\n' 'FALHA: nome temporário fora do padrão.' >&2; falhas=$((falhas+1)); }
+    else
+      sufixo=${servico//-/_}; [ "$servico" != edge ] || sufixo=caddy
+      [ "${nome#/}" = "${projeto}_${sufixo}" ] || { printf 'FALHA: nome efetivo divergente para %s.\n' "$servico" >&2; falhas=$((falhas+1)); }
+    fi
   fi
   [[ "$oneoff" = True || "$oneoff" = true ]] && continue
   encontrados["$servico"]=1

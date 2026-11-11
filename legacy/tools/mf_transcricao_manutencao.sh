@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Manutenção da API de transcrição após git pull (FAST e atualização completa).
 # run_transcricao.sh é gerado localmente pelo instalador; garante wrapper e PM2 após atualização.
 

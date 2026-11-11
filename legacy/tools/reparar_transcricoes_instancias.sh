@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Repara porta e PM2 da transcrição em cada instância em /home/deploy/*
 # Cada instância usa SUA porta (TRANSCRIBE_URL do backend/.env da pasta).
 

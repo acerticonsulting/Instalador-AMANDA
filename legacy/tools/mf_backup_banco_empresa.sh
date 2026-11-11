@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Backup do banco de uma instância em /home/deploy/backup-<empresa>/
 # Uso: source "$(dirname ...)/tools/mf_backup_banco_empresa.sh"
 #      mf_backup_banco_empresa "web01" && echo "$MF_BACKUP_ARQUIVO"

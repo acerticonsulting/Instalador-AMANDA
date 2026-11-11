@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # tools/instalador_multiflow_voz.sh
 # Instala MultiFlow VOZ (API + Frontend + Engine WaCalls) em VPS com Multiflow
 # já instalado (reaproveita variáveis) ou em VPS limpo (instala dependências).

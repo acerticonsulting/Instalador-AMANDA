@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Historical archive: never execute native provisioning on the host.
+printf '%s\n' 'Receita histórica bloqueada. Use instalador_single.sh da raiz (100% Docker).' >&2
+return 1 2>/dev/null || exit 1
 # Sincroniza o repositório da instância com o remote origin já configurado
 # (fetch + reset --hard). Não hardcoda um único repo (ultrawhats, multiflow-pro, etc.).
 #
