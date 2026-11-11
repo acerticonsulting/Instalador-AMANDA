@@ -11,7 +11,7 @@ não muda grupos/permissões do servidor. O menu volta após as operações e te
 |---|---|---|
 | 1 | Instalar | Formulário completo, gerador oficial, build, migrations, seed exclusivo de banco novo, login/sessão/identidade |
 | 2 | Atualizar | Código oficial + build + backup + migrations; preserva contas/configurações |
-| 3 | URLs | Frontend, backend, Oficial, transcrição, WuzAPI, todas as URLs e SSL; inclui entrada GoFlow com bloqueio explícito por ausência de consumidor |
+| 3 | URLs | Frontend, backend, Oficial, transcrição, WuzAPI, todas as URLs e SSL |
 | 4 | Status/reiniciar | Todos ou backend/frontend/Oficial/WuzAPI/transcrição; iniciar/parar |
 | 5 | Logs | Últimos 200 registros filtrados; acesso privado |
 | 6 | Backup | Dois bancos + volumes + configurações + imagens/revisões + SHA-256 |
@@ -33,7 +33,7 @@ não muda grupos/permissões do servidor. O menu volta após as operações e te
 | 3 | Instalar WhatsMeow | Inicia WuzAPI do Compose oficial |
 | 4 | Rollback | Código, imagens e dados do backup; não inicia código novo sobre esquema antigo |
 | 5 | Nova instância | Projeto/volumes próprios em instances/NOME; escolher portas livres |
-| 6 e 7 | Agendar backup (alta performance/nativo) | Ambos executam em container; não usam cron nem banco no host |
+| 6 | Agendar backup | Executa em container; não usa cron nem banco no host |
 | 8 | Backup Redis | Incluído no snapshot completo; pausa os gravadores |
 | 9 | Restaurar Redis | Somente o volume redis_data do snapshot validado |
 | 10 | Importar banco AMANDA | .sql ou pg_dump custom em imports/; backup antes e migrations depois, sem seed |
@@ -45,12 +45,9 @@ não muda grupos/permissões do servidor. O menu volta após as operações e te
 | 16 | Atualizar Baileys | Usa revisão oficial e lockfile, sem npm no host ou instalação avulsa de pacote |
 | 17 | Atualizar WhatsMeow | Backup, pull da imagem indicada pelo Compose, recriação e espera de saúde |
 | 18 | Otimizar PostgreSQL | Presets de conexões/shared_buffers no container, com backup e verificação |
-| 19 | Portainer | Container com volume próprio, socket Docker e HTTPS no loopback |
 | 20 e 21 | Domínio/porta/SSL | Caddy em Docker substitui Nginx/Certbot no host; HTTPS da API Oficial opcional |
 | 22 | Backup WhatsMeow | Volume wuzapi_data/SQLite incluído no snapshot; não pressupõe um PostgreSQL inexistente |
 | 23 | Restaurar WhatsMeow | Somente wuzapi_data do snapshot validado |
-| 24 e 25 | Instalar/atualizar VOZ | Fonte Docker autorizada do fornecedor; dependência externa pendente de fornecimento/homologação |
-| 26 e 27 | Instalar/atualizar HUB | Mesmo contrato externo; URL/chave sincronizáveis pela API no menu 12 |
 | 30 | Token + FAST | Tokens de clone/conector separados; atualização oficial com backup/migrations |
 | 31 | Gestão API Oficial | Abre submenu completo |
 | 32 | Atualizar API Oficial | Atualização sincronizada de código e esquema da plataforma |
@@ -65,18 +62,10 @@ recria esse container, porque a Oficial faz parte da stack completa atual.
 
 ## Dependências externas e limites observados
 
-O repositório AMANDA não contém o código dos serviços VOZ/HUB/GoFlow. Os scripts
-históricos baixavam repositórios separados e rodavam componentes no host. Não são
-executados novamente, pois isso violaria a exigência de todos os serviços em Docker.
-Os menus VOZ/HUB recebem fonte, token e Compose do fornecedor. Sem um Compose
-válido (healthchecks, volumes isolados, rede externa AMANDA_NETWORK), a operação
-falha claramente. Tokens do conector privado não são reutilizados nesses downloads.
-Configuração de URL não equivale a instalar ou homologar o serviço externo.
-
-GoFlow não tem consumidor no backend atual: a entrada permanece visível para não
-ocultar a função anterior, mas informa a dependência de fonte/contrato/adaptador.
-Não grava uma variável sem efeito nem a marca como concluída. A implementação e
-homologação integral desse item estão pendentes dessas informações.
+Os instaladores de VOZ/HUB, GoFlow e Portainer foram retirados dos menus por
+não integrarem o Compose atual. Permanece a configuração das integrações
+VOZ/HUB já implementadas no backend. Registros de componentes anteriormente
+gerenciados continuam preservados para compatibilidade de backup/recuperação.
 
 Watchtower direto foi substituído por atualização agendada com build, backup e
 migrations. O provedor GHCR só fornece autenticação para imagens; a plataforma
@@ -87,4 +76,12 @@ na validação local foi testada a geração/parse do Caddyfile, sem emitir cert
 A suíte local testa os caminhos com Docker/Git/SQL simulados. Não foram executadas
 restaurações, imports, exclusões ou atualizações reais sobre os dados locais. Um
 ciclo completo em VPS descartável, restauração representativa, envio push no
-navegador, contas Meta/VOZ/HUB, certificados públicos e GoFlow continuam pendentes.
+navegador, contas Meta/VOZ/HUB e certificados públicos continuam pendentes.
+
+## Referência visual
+
+Banner, roxo #8B5CF6, números destacados, perguntas em telas separadas e escolha
+inicial IP/domínio recuperados de 3e6b5cf (outubro/2026). Implementação atual em
+ui.cjs e bootstrap POSIX, ambos sem dependências adicionais no host. Menus
+operacionais preservam os números históricos compatíveis. O item 7 de ferramentas
+(modo nativo duplicado) foi retirado; backup Docker permanece no item 6.

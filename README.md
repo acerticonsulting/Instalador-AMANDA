@@ -6,7 +6,7 @@ operação ele retorna ao menu; 0 permite sair. Configurações da plataforma e 
 de instâncias estão também nas opções 12 e 13.
 
 Consulte a [matriz de todos os menus](docs/MENUS_E_COMPATIBILIDADE.md), incluindo
-as dependências externas ainda necessárias para VOZ, HUB e GoFlow.
+as opções compatíveis com a plataforma atual.
 
 O único requisito adicional no Linux é o Docker Engine com containers Linux,
 BuildKit e acesso ao socket local. O ponto de entrada usa o `sh` do sistema.
@@ -211,8 +211,7 @@ substituído pelo atualizador que aplica build, backup e migrations em conjunto;
 um Watchtower que apenas troca containers não sincroniza o esquema da plataforma.
 O agendador roda diariamente na hora UTC escolhida, mantém último sucesso/tentativa
 na pasta privada e usa o lock da instância para não concorrer com outra operação.
-Portainer é opcional, em container, ligado ao socket e publicado somente no loopback;
-para VPS, acesse por túnel SSH ou proxy configurado conscientemente pelo operador.
+Portainer e instaladores externos VOZ/HUB não são oferecidos: não fazem parte do Compose da plataforma.
 
 Se o Docker apresentar permission denied no socket, use a conta autorizada ao
 Docker ou execute o comando com sudo. O instalador não altera permissões/grupos.
@@ -241,10 +240,32 @@ Backups de outra revisão devem usar rollback completo, não restauração parci
 banco. Mudanças no conjunto de volumes exigem recuperação isolada com o contrato
 original. Backups antigos sem hashes não são restaurados automaticamente.
 
-VOZ/HUB usam repositórios separados. Os menus foram preservados e permitem fornecer
-fonte autorizada, token separado e Compose mantido pelo fornecedor. Exigem
-healthchecks, volumes isolados e rede externa `${AMANDA_NETWORK}`; não executam
-instaladores PM2/APT. Sem fonte/contrato válido, informam o bloqueio e não declaram
-sucesso. A URL/chave do HUB local e a URL VOZ são sincronizadas pela API no menu 12.
-O código atual não contém consumidor GoFlow: sua URL não é gravada como se tivesse
-efeito; a fonte e o contrato do adaptador ainda precisam ser fornecidos/implementados.
+VOZ/HUB não são instalados pelo gerenciador. Apenas as integrações de URL/chave
+que existem na plataforma permanecem no menu 12. GoFlow foi retirado dos menus.
+
+## Visual e sequência de instalação
+
+O banner em blocos AMANDA, o roxo #8B5CF6, os destaques e a apresentação das
+perguntas foram recuperados do histórico de outubro/2026 (3e6b5cf). O visual
+aparece no menu inicial, nos submenus e em cada pergunta da instalação.
+Terminais sem cor, TERM=dumb e NO_COLOR recebem texto simples.
+
+1. Escolha IP/local ou domínios HTTPS (Caddy em container).
+2. Informe host e portas, ou os domínios backend e frontend.
+3. Mantenha ou personalize o acesso administrativo padrão.
+4. Informe empresa/projeto, senhas PostgreSQL e MASTER, título e suporte.
+5. Informe Facebook, tokens separados, link obrigatório AMANDA, portas APIs e SMTP.
+6. Revise URLs, projeto e administrador; confirme para iniciar. Senhas não aparecem na revisão.
+
+Contas Linux Deploy, PM2, Nginx no host e escolha de serviços nativos não são
+reintroduzidos. A numeração histórica é mantida nos itens compatíveis; os números
+dos componentes removidos não são reutilizados. ENTER permite ler o resultado
+antes de voltar ao menu principal. Para atualizar este instalador usando apenas Docker:
+
+```sh
+cd ~/Instalador-AMANDA
+sudo docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only
+sudo sh ./instalador_single.sh
+```
+
+Use sudo somente se sua conta precisar dele para acessar o Docker.

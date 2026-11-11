@@ -70,11 +70,11 @@ test('authorized repository is mandatory, canonical and cannot carry credentials
   for(const s of ['',undefined,'http://github.com/acerticonsulting/AMANDA','https://github.com/acerticonsulting/AMANDA-extra','https://user:secret@github.com/acerticonsulting/AMANDA','https://github.com/acerticonsulting/AMANDA?x=1'])assert.throws(()=>sourceUrl(s));
 });
 
-test('all original main/tools/API numbers are preserved and menus repeat after an operation',async()=>{
+test('compatible historical main/tools/API numbers are preserved and menus repeat after an operation',async()=>{
   assert.deepEqual(MAIN.slice(0,11).map(x=>x[0]),Array.from({length:11},(_,i)=>String(i+1)));
-  assert.deepEqual(TOOLS.map(x=>x[0]),['2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','30','31','32']);
+  assert.deepEqual(TOOLS.map(x=>x[0]),['2','3','4','5','6','8','9','10','11','12','13','14','15','16','17','18','20','21','22','23','30','31','32']);
   assert.deepEqual(API.map(x=>x[0]),Array.from({length:9},(_,i)=>String(i+1)));
-  const t=temporary();try{const m=new Manager(t.root,new FakeRunner()),answers=['14','0'],calls=[],menus=new Menus(m,async()=>answers.shift(),null,{out:()=>{}});menus.dispatch=async action=>calls.push(action);await menus.run();assert.deepEqual(calls,['doctor']);assert.equal(answers.length,0);}finally{t.cleanup();}
+  const t=temporary();try{const m=new Manager(t.root,new FakeRunner()),answers=['14','','0'],calls=[],menus=new Menus(m,async()=>answers.shift(),null,{out:()=>{}});menus.dispatch=async action=>calls.push(action);await menus.run();assert.deepEqual(calls,['doctor']);assert.equal(answers.length,0);}finally{t.cleanup();}
 });
 
 test('nested operation locks are reentrant but a second independent manager is blocked',async()=>{
@@ -161,7 +161,7 @@ test('valid external component participates in consistent backups; invalid updat
 
 test('restored main menu is shown before any Docker download and exit creates no resources',()=>{
   const t=temporary();try{const bin=path.join(t.root,'bin');fs.mkdirSync(bin);const log=path.join(t.root,'docker-calls');fs.writeFileSync(path.join(bin,'docker'),'#!/bin/sh\nprintf called >> "$TEST_LOG"\nexit 99\n',{mode:0o755});const script=path.resolve(__dirname,'../instalador_single.sh');const quote=s=>"'"+s.replace(/'/g,"'\\''")+"'";
-    const run=spawnSync('script',['-q','-c','sh '+quote(script),'/dev/null'],{input:'0\n',encoding:'utf8',timeout:5000,env:{...process.env,PATH:bin+':/usr/bin:/bin',TEST_LOG:log}});assert.equal(run.status,0,run.stderr);assert.ok(run.stdout.includes('[11]'));assert.ok(run.stdout.includes('[8]'));assert.ok(!fs.existsSync(log));
+    const run=spawnSync('script',['-q','-c','sh '+quote(script),'/dev/null'],{input:'0\n',encoding:'utf8',timeout:5000,env:{...process.env,PATH:bin+':/usr/bin:/bin',TEST_LOG:log}});assert.equal(run.status,0,run.stderr);const plain=run.stdout.replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');assert.ok(plain.includes('[11]'));assert.ok(plain.includes('[8]'));assert.ok(plain.includes('█████╗'));for(const[id,label]of MAIN)assert.ok(plain.includes('['+id+'] '+label));assert.ok(!fs.existsSync(log));
     const nonInteractive=spawnSync(process.execPath,[path.resolve(__dirname,'../docker/installer/cli.cjs'),'menu'],{env:{...process.env,AMANDA_INSTALL_DIR:t.root},encoding:'utf8',timeout:5000});assert.equal(nonInteractive.status,1);assert.ok(nonInteractive.stderr.includes('terminal interativo'));
   }finally{t.cleanup();}
 });
@@ -291,5 +291,74 @@ test('POSIX bootstrap calls only Docker and preserves spaced paths and rootless 
     const result=spawnSync('/bin/sh',[script,'status','--dir',target],{env,encoding:'utf8'});assert.equal(result.status,0,result.stderr);const text=fs.readFileSync(log,'utf8');assert.ok(text.includes(target+':'+target));assert.ok(text.includes('source=/run/user/1000/docker.sock,target=/var/run/docker.sock'));assert.ok(text.includes('status'));
     assert.notEqual(spawnSync('/bin/sh',[script,'--dir','/etc/amanda'],{env}).status,0);
     assert.notEqual(spawnSync('/bin/sh',[script,'--unknown'],{env}).status,0);
+  }finally{t.cleanup();}
+});
+
+
+test('historical purple banner, menu highlights and optional plain output match bootstrap',()=>{
+  const {LOGO,createUI}=require('../docker/installer/ui.cjs');
+  const ui=createUI({tty:true,env:{TERM:'xterm-256color'}}),shell=fs.readFileSync(path.resolve(__dirname,'../instalador_single.sh'),'utf8');
+  for(const line of LOGO){assert.ok(ui.banner('MENU').includes(line));assert.ok(shell.includes(line));}
+  assert.ok(ui.banner('MENU').includes('\x1b[38;2;139;92;246m'));
+  assert.ok(ui.item('1','Instalar').includes('\x1b[1;38;2;139;92;246m'));
+  assert.ok(shell.includes('38;2;139;92;246'));
+  for(const options of [{tty:false},{tty:true,env:{NO_COLOR:'1'}},{tty:true,env:{TERM:'dumb'}}])assert.ok(!createUI(options).banner('MENU').includes('\x1b'));
+  assert.ok(!ui.question('Teste\x1b[31m','valor\n').includes('Teste\x1b[31m'));
+  assert.ok(!TOOLS.some(x=>/addon-|portainer/.test(x[2])));
+});
+
+test('historical installation questions configure local ports, defaults and explicit confirmation',async()=>{
+  const prompts=[],output=[];
+  const c=await installInput(undefined,{out:s=>output.push(s),question:async(label,fallback,secret)=>{
+    prompts.push({label,secret});
+    if(label.startsWith('Link da plataforma'))return SOURCE;
+    if(label.startsWith('Confirma a instalação'))return 's';
+    return fallback||'';
+  }});
+  assert.equal(c.edge,false);assert.equal(c.adminEmail,'admin@amanda.com.br');assert.equal(c.adminPassword,'adminamanda');
+  assert.equal(c.frontendUrl,'http://localhost:3000');assert.equal(c.options.appName,'AMANDA');
+  assert.ok(prompts.find(p=>p.label.startsWith('Senha MASTER')).secret);
+  assert.ok(prompts.findIndex(p=>p.label.includes('nome da sua empresa'))<prompts.findIndex(p=>p.label.includes('Título da Aplicação')));
+  assert.ok(output.some(s=>s.includes('REVISÃO DA INSTALAÇÃO')));
+  assert.ok(!output.join('').includes('adminamanda'));
+});
+
+test('domain flow retains backend-first questions and custom admin; cancellation creates no resources',async()=>{
+  const prompts=[];const question=async(label,fallback)=>{
+    prompts.push(label);
+    if(label==='Selecione a opção [1 ou 2]')return '2';
+    if(label.includes('domínio/URL do Backend'))return 'api.example.com';
+    if(label.includes('domínio/URL do Frontend'))return 'app.example.com';
+    if(label.startsWith('Personalizar o acesso'))return 's';
+    if(label.startsWith('Digite o seu melhor'))return 'owner@example.com';
+    if(label==='Senha do administrador'||label==='Confirme a senha')return 'synthetic-admin-password';
+    if(label.startsWith('Link da plataforma'))return SOURCE;
+    if(label.startsWith('Confirma a instalação'))return 's';
+    return fallback||'';
+  };
+  const c=await installInput(undefined,{out:()=>{},question});assert.equal(c.edge,true);assert.equal(c.backendUrl,'https://api.example.com');assert.equal(c.adminEmail,'owner@example.com');
+  assert.ok(prompts.findIndex(p=>p.includes('domínio/URL do Backend'))<prompts.findIndex(p=>p.includes('domínio/URL do Frontend')));
+  await assert.rejects(installInput(undefined,{out:()=>{},question:(label,fallback)=>label.startsWith('Confirma a instalação')?'n':question(label,fallback)}),/cancelada antes de criar recursos/);
+  await assert.rejects(installInput(undefined,{out:()=>{},question:()=> '3'}),/Modo de acesso inválido/);
+});
+
+
+test('local installation maps custom ports and rejects malformed host input',async()=>{
+  const question=async(label,fallback)=>{
+    if(label.startsWith('Personalizar as portas'))return 's';
+    if(label.startsWith('Porta do Frontend'))return '3300';
+    if(label.startsWith('Porta do Backend'))return '8800';
+    if(label.startsWith('Link da plataforma'))return SOURCE;
+    if(label.startsWith('Confirma a instalação'))return 's';
+    return fallback||'';
+  };
+  const c=await installInput(undefined,{out:()=>{},question});assert.equal(c.frontendUrl,'http://localhost:3300');assert.equal(c.backendUrl,'http://localhost:8800');
+  await assert.rejects(installInput(undefined,{out:()=>{},question:(label,fallback)=>label.startsWith('Insira o IP')?'localhost/path':question(label,fallback)}),/servidor inválido/);
+});
+
+test('status is displayed after the banner and remains visible until the next selection',async()=>{
+  const t=await fixture();try{await t.m.initialize();const output=[],answers=['0','0'];t.runner.emit=s=>output.push(s);const menus=new Menus(t.m,async()=>answers.shift(),null,{out:s=>output.push(s)});await menus.services();
+    assert.ok(output[0].includes('STATUS E REINÍCIO'));assert.ok(t.runner.calls.some(c=>c.args.includes('ps')));assert.equal(answers.length,1);
+    const order=[];await menus.choose('TESTE',[],async()=>order.push('status'));assert.deepEqual(order,['status']);
   }finally{t.cleanup();}
 });

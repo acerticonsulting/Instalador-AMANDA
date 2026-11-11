@@ -138,3 +138,38 @@ com menos de 32 bytes ao omitir zeros iniciais. A geração agora preserva o esc
 preenche zeros à esquerda até 32 bytes. A mesma regressão usa escalar curto fixo,
 além da geração real e preservação das chaves existentes. 43 testes passaram após
 a correção; nenhuma chave ou assinatura real foi modificada.
+
+## 2026-11-11 — visual histórico e fluxo da instalação
+
+Referência: commit 3e6b5cf de 16/10/2026. Recuperados o mesmo banner AMANDA em
+blocos, roxo #8B5CF6, números destacados, menu inicial e perguntas em telas
+separadas. ui.cjs centraliza o visual do gerenciador; bootstrap POSIX mostra o
+mesmo banner antes de qualquer download, sem novos requisitos no Linux.
+NO_COLOR/TERM=dumb e saída sem TTY recebem texto simples.
+
+Fluxo: IP/local ou domínios; backend/frontend e portas; acesso padrão ou
+personalizado; empresa/projeto; PostgreSQL/MASTER; título/suporte; Facebook;
+tokens separados/link AMANDA; portas APIs/SMTP; revisão e confirmação final.
+O modo domínio aceita subdomínio sem protocolo e usa Caddy em container. Senhas
+continuam ocultas. ENTER mantém resultados visíveis antes de limpar a tela.
+
+Retirados dos menus: GoFlow, Portainer, provisionamento externo VOZ/HUB e opção
+duplicada de backup nativo. Integrações VOZ/HUB existentes na API e compatibilidade
+com backups antigos foram preservadas. Não se restauram contas Linux Deploy,
+PM2, apt ou proxy no host. Todos os oito serviços continuam em Docker.
+
+Validação: suíte local obrigatória, scripts sintaticamente válidos e regressões
+com Docker/Git/SQL simulados. Novos casos cobrem tema/NO_COLOR, paridade do menu
+inicial, perguntas IP/domínio, login personalizado, portas, confirmação/cancelamento
+e ordem de exibição do status. Nenhuma instalação, migration, seed, restauração
+ou exclusão real executada. Operação real de VPS permanece fora desta validação.
+
+Atualizar: seguir o pull via alpine/git e executar sudo sh instalador_single.sh
+conforme README. Recuperação operacional segue menus 15 (retomar), backup e
+rollback; alteração visual não exige migrar dados.
+
+Resultados observados: 47 scripts e 5 suítes locais aprovados; após os últimos
+casos, 48/48 testes Docker-only passaram em container sem rede. Imagem
+amanda-installer:visual-validation construída pelo Docker/BuildKit; ajuda e
+carregamento do tema na imagem executados com sucesso sem rede/socket/dados.
+O hook obrigatório repetirá a suíte completa sobre os arquivos preparados.

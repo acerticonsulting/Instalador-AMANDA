@@ -196,3 +196,12 @@ com senha contendo dólar/caracteres reservados, parâmetros PostgreSQL, URLs in
 e geração segura do Caddyfile com domínio opcional da API Oficial. Esses testes não
 emitem certificados. Fonte VOZ/HUB/GoFlow, integrações e recuperação completa em VPS
 continuam pendentes conforme docs/MENUS_E_COMPATIBILIDADE.md.
+
+## Regressão visual e perguntas — 2026-11-11
+
+Referência histórica 3e6b5cf (16/10/2026). A suíte Docker-only passa a 48 testes.
+Verifica banner/paleta, NO_COLOR e TERM=dumb, paridade bootstrap/menus antes de
+download, ordem das perguntas, domínios sem protocolo, padrões administrativos
+e personalização, confirmação/cancelamento, portas e status após o banner.
+As opções ausentes da plataforma deixam de integrar a tabela de menus.
+A suíte continua sem realizar operações reais na instalação existente.
