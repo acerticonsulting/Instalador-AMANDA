@@ -237,10 +237,7 @@ Não altere portas internas Docker. `options.databasePassword`, `masterPassword`
 omiti-los usa geração criptográfica. Cifrões, aspas e caracteres reservados são
 serializados com segurança; a senha Prisma recebe codificação URI separada.
 
-`sourceToken` autentica a leitura da plataforma; `buildToken` é o segredo BuildKit
-do conector privado. Não coloque tokens em URLs Git. Build sem acesso ao conector
-falha sem declarar instalação concluída. Proteja/remova o JSON após configurar;
-não publique segredos nem a pasta privada.
+`sourceToken` autentica somente a leitura da própria plataforma AMANDA. O backend usa Baileys público e não solicita token de terceiros. `buildToken` de configurações antigas é aceito para compatibilidade e ignorado. Não coloque tokens em URLs Git. Proteja/remova o JSON após configurar; não publique segredos nem a pasta privada.
 
 ## Configurar depois de instalar
 
@@ -306,7 +303,7 @@ Falha na preparação antes de registrar recursos não autoriza apagar estado/vo
 para forçar seed; revise o erro e utilize um diretório novo quando necessário.
 
 Configurações ficam em `platform/.env`, `.env.backend`, `.env.oficial` quando usado,
-e `.secrets/github_token`. Estado, histórico, logs filtrados, acesso inicial e
+e arquivos legados `.secrets/github_token` preservados, sem uso no build. Estado, histórico, logs filtrados, acesso inicial e
 backups ficam em `.amanda-installer/`, com arquivos privados em modo 600.
 Não mova o diretório nem altere nomes de volumes para atualizar.
 Receitas de `legacy/` estão bloqueadas antes do código histórico.
@@ -337,3 +334,9 @@ Meta/WhatsApp, SMTP do provedor, OAuth, push e pagamentos continuam sujeitos a
 homologação em ambiente descartável e contas de teste.
 A [matriz de configuração](docs/CONFIGURACAO_E_COMPATIBILIDADE.md) identifica cada
 consumidor e compara a experiência com o instalador original.
+
+### Retomar build interrompido
+
+Após disponibilizar a correção na main da AMANDA, execute o comando resume no mesmo diretório da empresa. Na fase build, antes de qualquer seed, o gerenciador busca origin/main e aceita apenas avanço fast-forward de um checkout limpo. Mantém .env, credencial de origem, estado e volumes. Falha de rede ou histórico divergente interrompe a retomada sem reset. Fases posteriores não atualizam o código automaticamente.
+
+O comando legado build-token apenas informa que a credencial não é necessária. A opção histórica de credenciais mantém sua posição no menu e configura somente o acesso à AMANDA.

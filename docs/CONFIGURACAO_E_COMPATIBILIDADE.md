@@ -74,7 +74,7 @@ As classificações abaixo descrevem disponibilidade no código e cobertura loca
 | IA IVR | `.env.backend`: OPENAI_API_KEY | InterpretVoiceIvrSpeechService lê o fallback para IVR. | Somente consumidor existente; não configura agentes ou faz chamadas pagas automaticamente. |
 | Push | `.env.backend`: VAPID_PUBLIC_KEY/PRIVATE_KEY/SUBJECT | Backend em runtime, P-256 no gerenciador. | Par correspondente, segredos preservados e recriação do backend. Navegador/rede exigem homologação. |
 | Pagamentos | Settings via API administrativa | paymentGatewaySettings lê chaves do gateway; sem build. | Allowlist, autenticação e valores secretos em ambiente do exec, sem URL/comando contendo credencial. Provedor exige homologação. |
-| Tokens Git | source-token privado e platform/.secrets/github_token | Git askpass no gerenciador; BuildKit para conector. | Não vão para remote, URL ou imagem final. Segredos separados e logs filtrados. |
+| Tokens Git | source-token privado da AMANDA | Git askpass no gerenciador; build com dependências públicas. | buildToken antigo é ignorado; segredo legado é preservado sem uso. Tokens não vão para URLs nem imagens. |
 | HTTPS | `.env`, perfil edge e volumes Caddy | Script oficial prepara Caddyfile com domínio opcional e proxy interno. | DNS antes de dados, parser/Caddyfile e GET público com TLS. Não promete emissão quando teste falhar. |
 
 ## Operação e recuperação

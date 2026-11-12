@@ -250,7 +250,7 @@ class Manager {
     await this.runner.run(process.execPath,[path.join(this.state.platform,'docker/configure.cjs')], { cwd: this.state.platform, label: 'Gerando configuração privada no container' });
     const f = new URL(c.frontendUrl), b = new URL(c.backendUrl);
     editEnv(path.join(this.state.platform,'.env'), { COMPOSE_PROJECT_NAME: c.project, COMPOSE_PROFILES: this.state.profiles.join(','), USE_WHATSAPP_OFICIAL: String(flags.official), RABBITMQ_ENABLED_GLOBAL: String(flags.rabbit), WUZAPI_URL: flags.wuzapi?'http://wuzapi:8080':'', FRONTEND_URL: c.frontendUrl, BACKEND_URL: c.backendUrl, ALLOWED_ORIGINS: c.frontendUrl, BIND_ADDRESS: c.edge || !c.public ? '127.0.0.1' : '0.0.0.0', PORT_FRONTEND: c.edge ? (c.options.frontendPort||3000) : (f.port || 80), PORT_BACKEND: c.edge ? (c.options.backendPort||8080) : (b.port || 80), FRONTEND_HOST: f.hostname, BACKEND_HOST: b.hostname });
-    if (c.buildToken) this.write(path.join(this.state.platform,'.secrets/github_token'), c.buildToken);
+    // buildToken remains accepted in old configuration files, but is no longer used.
     const o=c.options;
     for(const v of [o.databasePassword,o.masterPassword,o.officialToken,o.wuzapiToken,...Object.values(o.backendEnv || {})])this.runner.secret(v);
     for(const[k,v]of Object.entries(o.initialSettings||{}))if(/key|token|pass|secret/i.test(k))this.runner.secret(v);
@@ -275,6 +275,16 @@ class Manager {
     this.save({ ...this.state, phase: 'build', freshResourcesVerified: true });
   }
   async build() { await this.compose(['build',...this.services().filter(s=>['backend','frontend','api_transcricao','api_oficial'].includes(s))], { label: 'Compilando os componentes selecionados dentro do Docker' }); }
+  async refreshInterruptedBuild() {
+    if (this.state.phase !== 'build' || this.state.initialized || this.state.seedAttempted) return;
+    await this.validateSource(true);
+    const env = { GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: path.join(__dirname,'source-askpass.cjs'), AMANDA_SOURCE_TOKEN_FILE: path.join(this.private,'source-token') };
+    await this.git(['-c','credential.helper=','fetch','origin','main'], { env, label: 'Obtendo correções oficiais para o build interrompido' });
+    await this.git(['merge-base','--is-ancestor','HEAD','origin/main'], { quiet: true });
+    await this.git(['merge','--ff-only','origin/main'], { label: 'Aplicando correções sem substituir configuração ou dados' });
+    if (this.state.naming === 'company-v1') await this.configureNames();
+    this.save({ ...this.state, revision: await this.revision() });
+  }
   async migrations() {
     await this.compose(['up','-d','--wait','--wait-timeout','180','postgres','redis'], { label: 'Aguardando PostgreSQL e Redis' });
     await this.compose(['run','--rm','--no-deps','migrate'], { label: 'Migrations Sequelize no container' });
@@ -438,6 +448,7 @@ class Manager {
     if (action === 'update') return this.update();
     if (action === 'resume') {
       await this.validateSource(true);
+      await this.refreshInterruptedBuild();
       if (!this.state.initialized) { if (!this.state.freshResourcesVerified) throw Error('Preparação incompleta; não é seguro assumir banco novo.'); await this.build(); return this.initialize(); }
       if (this.state.phase === 'preparing-update') {
         await this.restoreTags(this.state.rollbackImages);

@@ -312,7 +312,7 @@ test('preexisting containers and nonempty directories are not overwritten',async
 test('separate source/build tokens stay in protected files, never URLs or Compose context changes',async()=>{
   const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
     await m.prepare(input({sourceToken:'synthetic-source-token',buildToken:'synthetic-build-token',adminPassword:"custom$#'value"}));
-    assert.equal(fs.readFileSync(path.join(m.state.platform,'.secrets/github_token'),'utf8'),'synthetic-build-token');
+    assert.equal(fs.readFileSync(path.join(m.state.platform,'.secrets/github_token'),'utf8'),'');
     const clone=r.calls.find(c=>c.args.includes('clone'));assert.ok(clone.args.includes(SOURCE));assert.ok(!JSON.stringify(clone.args).includes('synthetic-'));
     assert.equal(fs.statSync(path.join(m.private,'admin-access.json')).mode&0o777,0o600);
     assert.ok(!fs.readFileSync(path.join(m.state.platform,'.env'),'utf8').includes("custom$#'value"));
@@ -327,6 +327,32 @@ test('initial seed only runs after migrations and an empty user table; all servi
     const seed=t.runner.calls.find(isSeed);assert.equal(seed.options.env.AMANDA_ADMIN_EMAIL,'admin@amanda.com.br');assert.equal(seed.options.env.AMANDA_ADMIN_PASSWORD,'adminamanda');
     const start=t.runner.calls.find(c=>c.args.includes('up')&&c.args.includes('backend'));for(const name of CORE)assert.ok(start.args.includes(name));
     assert.ok(t.runner.calls.some(c=>c.args.some(a=>String(a).includes('/auth/me'))));
+  }finally{t.cleanup();}
+});
+
+test('interrupted build refreshes only official main without replacing configuration, volumes or source credentials',async()=>{
+  const t=await fixture();try{
+    const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');
+    t.runner.calls=[];await t.m.refreshInterruptedBuild();
+    assert.ok(t.runner.calls.some(c=>c.bin==='git'&&c.args.includes('fetch')&&c.args.includes('main')));
+    assert.ok(t.runner.calls.some(c=>c.bin==='git'&&c.args.includes('--ff-only')));
+    assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+    assert.ok(!t.runner.calls.some(c=>isSeed(c)||c.args.includes('down')||c.args.includes('reset')||c.args.includes('volume')));
+    t.m.state.seedAttempted=true;t.runner.calls=[];await t.m.refreshInterruptedBuild();assert.equal(t.runner.calls.length,0);
+  }finally{t.cleanup();}
+});
+
+test('failed official fast-forward leaves interrupted build and private configuration resumable',async()=>{
+  const t=await fixture();try{
+    const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');
+    t.runner.calls=[];t.runner.fail=c=>c.bin==='git'&&c.args.includes('merge-base');
+    await assert.rejects(t.m.refreshInterruptedBuild());
+    assert.equal(t.m.state.phase,'build');assert.equal(t.m.state.seedAttempted,false);
+    assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+    assert.ok(!t.runner.calls.some(c=>isSeed(c)||c.args.includes('reset')||c.args.includes('--ff-only')||c.args.includes('build')));
+    t.runner.fail=null;t.runner.calls=[];t.runner.dirty=true;
+    await assert.rejects(t.m.refreshInterruptedBuild(),/alterações locais/);
+    assert.ok(!t.runner.calls.some(c=>c.args.includes('fetch')));
   }finally{t.cleanup();}
 });
 test('existing users cause initialization to refuse seeds',async()=>{

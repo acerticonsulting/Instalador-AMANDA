@@ -1,3 +1,33 @@
+# Remoção do conector privado — 12/11/2026
+
+Objetivo: clonar somente acerticonsulting/AMANDA main e construir a plataforma
+corrigida com dependências públicas, sem solicitar acesso ao Hineken.
+Alterados: cli/historical/wizard/manager/menus, testes Docker-only/históricos,
+README, CONFIGURACAO_E_COMPATIBILIDADE e PLANO_DE_TESTES.
+
+Implementado: retirada das perguntas de token do conector; buildToken antigo
+aceito e ignorado; comando legado build-token apenas informa que é dispensável.
+Credencial de origem da AMANDA, posições dos menus, Docker-only e layout deploy
+mantidos. Arquivos antigos de segredo não são removidos nem enviados ao build.
+Resume na fase build anterior ao seed busca main e aceita apenas fast-forward
+limpo. Sem reset, limpeza de volumes ou sobrescrita de .env; erro de rede ou
+histórico mantém o checkpoint. Fases posteriores não atualizam código sozinhas.
+
+Validação: cinco suítes locais, 83 scripts e 112 testes Node aprovados; regressão cobre
+recusa de histórico divergente/checkout alterado antes de build ou seed. O teste de interrupção aguarda a liberação observável do flock para evitar corrida com os filhos do proprietário; a proteção de produção não mudou. O hook
+valida novamente o conteúdo preparado para commit. Testes usam comandos
+simulados; nenhuma VPS ou instalação existente foi alterada.
+Na plataforma: npm ci, TypeScript e imagem Docker aprovados; 5 testes Baileys
+sem rede e 2 integrações reais isoladas (saúde PostgreSQL, Socket.IO, Bull/Redis)
+aprovados. Sem uso de conta WhatsApp; QR apenas simulado.
+
+Pendências: publicar ambos os commits somente quando autorizado e homologar
+WhatsApp real com conta de teste autorizada. A retomada obterá a correção apenas
+quando ela estiver disponível na main da AMANDA. Para retomar depois disso:
+sh instalador_single.sh resume --dir /home/deploy/{empresa}
+Não apagar estado nem volumes, não repetir seeds.
+
+# Histórico anterior
 # Estrutura deploy — tarefa atual
 
 Objetivo: novas empresas em `/home/deploy/{empresa}`, com conta deploy e arquivos

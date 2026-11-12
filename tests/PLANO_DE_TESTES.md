@@ -1,3 +1,11 @@
+# Dependências públicas e retomada — 12/11/2026
+
+O assistente histórico e o adicional não perguntam token de conector. Regressões
+verificam buildToken legado ignorado, credencial da própria AMANDA preservada,
+retomada anterior ao seed por fetch main/fast-forward, preservação de .env e
+recusa de checkout alterado/histórico divergente sem reset, seed ou build.
+A suíte Docker-only passa a 112 testes no total com os demais grupos Node.
+Nenhuma conta WhatsApp ou instalação real é acessada por esses testes.
 # Plano de testes do instalador AMANDA
 
 ## Conta deploy e diretórios por empresa

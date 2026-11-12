@@ -59,9 +59,12 @@ class Menus{
     else if(['email','facebook','integrations','google','ai'].includes(a)){await ops.ready(false,true);await ops.configure({backendEnv:await this.form(a)});}else await this.dispatch(a);
     await this.ask('Pressione ENTER para continuar');
   }}
-  async token(){this.m.load();await this.m.identifyManager();const kind=await this.choose('CREDENCIAIS GITHUB',[['1','Conector privado — segredo BuildKit','build'],['2','Leitura da plataforma — Git askpass','source'],['3','Configurar ambos separadamente','both']]);if(!kind)return;
-    for(const role of(kind==='both'?['build','source']:[kind])){const token=await this.ask(role==='build'?'Novo token do conector (somente BuildKit)':'Novo token de leitura da plataforma',undefined,true);if(!token||/[\r\n\0]/.test(token))throw Error('Token inválido.');this.m.runner.secret(token);this.m.write(role==='build'?path.join(this.m.state.platform,'.secrets/github_token'):path.join(this.m.private,'source-token'),token);}
-    this.out('Credenciais selecionadas atualizadas fora do Git.');
+  async token(){this.m.load();await this.m.identifyManager();
+    this.out('O backend usa dependências públicas; somente o acesso à própria AMANDA pode exigir credencial.');
+    const token=await this.ask('Novo token de leitura da plataforma',undefined,true);
+    if(!token||/[\r\n\0]/.test(token))throw Error('Token inválido.');
+    this.m.runner.secret(token);this.m.write(path.join(this.m.private,'source-token'),token);
+    this.out('Credencial da plataforma atualizada fora do Git.');
   }
   async instances(){const choices=[['1','Nova instância isolada','new'],['2','Selecionar instância neste diretório','select'],['3','Adotar Compose oficial neste diretório','adopt']];const a=await this.choose('INSTÂNCIAS',choices);if(!a)return;
     if(a==='new'){const c=await this.input({parent:this.m.root});this.m=await new Operations(this.m).instance(c);}

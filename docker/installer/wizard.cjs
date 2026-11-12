@@ -67,7 +67,7 @@ async function collectInstallation({question,out=console.log,getResources,direct
     async()=>{
       show('JWT, refresh, banco, transcrição, API Oficial, WuzAPI e RabbitMQ recebem chaves distintas pelo gerador oficial. Atualizações preservam as chaves.');
       const master=await read('MASTER_KEY personalizada (ENTER gera automaticamente)',undefined,v=>{if(v)validateOptions({masterPassword:v});return v;},true,draft.options.masterPassword);if(master)draft.options.masterPassword=master;else delete draft.options.masterPassword;
-      draft.sourceToken=await read('Token GitHub de leitura da plataforma (vazio se público)',undefined,null,true,draft.sourceToken);draft.buildToken=await read('Token do conector privado (BuildKit; vazio se acesso já disponível)',undefined,null,true,draft.buildToken);
+      draft.sourceToken=await read('Token GitHub de leitura da plataforma (vazio se público)',undefined,null,true,draft.sourceToken);
       draft.sourceUrl=await read('Link da plataforma (obrigatório: https://github.com/acerticonsulting/AMANDA)',undefined,v=>normalizeConfig({sourceUrl:v}).sourceUrl);
     },
     async()=>{
