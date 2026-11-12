@@ -1,8 +1,9 @@
 # Preparação da integração à main — 12/11/2026
 
-Objetivo: entregar a correção já existente por PR revisável e explicar por que
-baixar a branch não muda o instalador executado na main. Não há autorização de
-merge ou push na main; a preferência de commit/push aplica-se à branch de trabalho.
+Objetivo: entregar a correção por PR e explicar por que baixar a branch não muda
+o instalador executado na main. Em 12/11/2026, o usuário autorizou integrar os
+dois PRs e definiu como preferência permanente commit, push e integração à main
+após as validações exigidas. A autorização está registrada nos dois AGENTS.md.
 
 Revisões analisadas: official/main 8d748f1; fix/retomada-diretorio-existente
 8704c51 (43ce96f, 52c4618 e registro de push). Os 18 arquivos do diff foram
@@ -37,8 +38,9 @@ A main da plataforma ainda usa Hineken, portanto também foi preparado o PR
 https://github.com/acerticonsulting/AMANDA/pull/1 com a correção já validada em
 Docker anteriormente. Homologação real com WhatsApp permanece pendente.
 
-Entrega organizada em branch e Pull Request. Próximos passos: revisar os dois
-PRs e obter autorização explícita para integrar à main. A VPS
+Entrega organizada em Pull Requests dos dois repositórios, com integração
+autorizada pelo usuário. Próximo passo operacional: atualizar a main na VPS e
+retomar no diretório original; nenhuma operação foi realizada no servidor. A VPS
 pode usar a branch de correção explicitamente na homologação. Depois do merge,
 atualizar main e retomar no mesmo diretório, sem excluir estado ou volumes.
 
