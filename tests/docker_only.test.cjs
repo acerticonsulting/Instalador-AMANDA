@@ -482,7 +482,7 @@ test('historical HTTPS bindings persist through later configuration and safe upd
 test('historical administrative selection targets only the selected managed instance',async()=>{
  const t=await fixture();
  try{
-  const childRoot=path.join(t.root,'instances','filial'),child=new Manager(childRoot,new FakeRunner());await child.prepare(input({project:'filial'}));
+  const childRoot=path.join(t.root,'instances','filial-antiga'),child=new Manager(childRoot,new FakeRunner());await child.prepare(input({project:'filial'}));
   const original=fs.readFileSync(t.m.stateFile,'utf8'),menu=new Menus(t.m,async()=> '2',null,{out:()=>{}});await menu.selectInstance();assert.equal(menu.m.root,childRoot);assert.equal(menu.m.state.project,'filial');assert.equal(fs.readFileSync(t.m.stateFile,'utf8'),original);
   const canceled=new Menus(t.m,async()=> '0',null,{out:()=>{}});await assert.rejects(canceled.selectInstance(),/cancelada/);assert.equal(canceled.m,t.m);
  }finally{t.cleanup();}

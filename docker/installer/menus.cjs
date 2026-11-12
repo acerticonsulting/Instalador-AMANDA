@@ -7,7 +7,7 @@ const API=require('./historical.cjs').labels("api").map(([id,label])=>[id,label,
 class Menus{
   async selectInstance(){
     const {Manager}=require('./manager.cjs'),base=this.baseRoot,children=path.join(base,'instances');
-    const roots=[...(fs.existsSync(path.join(base,'.amanda-installer/state.json'))?[base]:[]),...(fs.existsSync(children)?fs.readdirSync(children).filter(n=>/^[a-z0-9][a-z0-9_]{0,39}$/.test(n)&&!fs.lstatSync(path.join(children,n)).isSymbolicLink()&&fs.existsSync(path.join(children,n,'.amanda-installer/state.json'))).sort().map(n=>path.join(children,n)):[])];
+    const roots=[...(fs.existsSync(path.join(base,'.amanda-installer/state.json'))?[base]:[]),...(fs.existsSync(children)?fs.readdirSync(children).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&!fs.lstatSync(path.join(children,n)).isSymbolicLink()&&fs.existsSync(path.join(children,n,'.amanda-installer/state.json'))).sort().map(n=>path.join(children,n)):[])];
     if(!roots.length)return;
     if(roots.length===1){if(roots[0]!==this.m.root)this.m=new Manager(roots[0]);this.m.load();return;}
     this.out(this.ui.banner('SELECIONAR INSTÂNCIA'));roots.forEach((root,i)=>this.out(this.ui.item(String(i+1),path.basename(root))));

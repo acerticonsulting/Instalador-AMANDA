@@ -72,6 +72,8 @@ Canal main é o único validado; demais posições não executam atualizações.
 Configurações complementares continuam acessíveis por `configure`, instâncias
 por `instances`, diagnóstico por `doctor` e retomada por `resume`. O assistente
 adicional de 11 etapas foi preservado sob `wizard`, sem substituir o padrão histórico.
+Diretórios históricos de instância com hífen continuam selecionáveis, sem renomear
+projeto, containers ou volumes; links simbólicos não entram na seleção automática.
 
 ## Validação e limites
 
