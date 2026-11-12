@@ -27,6 +27,14 @@ precisar dele para acessar Docker. O instalador não altera grupos/permissões d
 A preparação da imagem pode baixar ferramentas; instalar a plataforma exige a
 confirmação final. Use sempre o mesmo diretório absoluto nas operações seguintes.
 
+No menu inicial, linhas vazias são ignoradas e espaços/retorno de carro de texto
+colado são removidos das extremidades da opção. Uma opção inválida pede nova
+entrada, sem encerrar o instalador. Enter sozinho não inicia instalação.
+O arquivo também é versionado como executável para execução direta em Linux.
+Para ir diretamente à instalação, use `sh ./instalador_single.sh install`;
+para uma instalação interrompida já registrada, use
+`sh ./instalador_single.sh resume --dir /home/deploy/amanda`.
+
 ### Conferir qual revisão será executada
 
 `git pull` atualiza a branch selecionada. A mensagem `[new branch]` apenas
