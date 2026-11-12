@@ -37,9 +37,9 @@ O banner inclui `v1.0.0`, a paleta mantém os números lilás, e o menu principa
 volta às opções 1–11. Ferramentas mantém suas seções e números históricos.
 
 As senhas de banco/MASTER podem ser geradas com ENTER; os padrões públicos
-históricos foram substituídos. Senhas e tokens ficam ocultos, inclusive no resumo.
+históricos foram substituídos. Senhas e tokens são visíveis durante a digitação e permanecem ocultos no resumo.
 O e-mail informado identifica a conta administrativa inicial; sua senha, confirmada
-separadamente, não é a senha do banco. Acesso público exige pelo menos 12 caracteres.
+separadamente, não é a senha do banco. Senhas obrigatórias devem ser não vazias; não há comprimento mínimo ou complexidade exigida.
 O token do conector é separado do token de clone. Use `:cancelar` durante as
 perguntas históricas ou responda N na confirmação para sair sem criar a plataforma.
 
@@ -81,7 +81,7 @@ As funcionalidades abaixo descrevem esse assistente adicional.
 | 1 | Domínios/HTTPS, IP do servidor ou ambiente local. |
 | 2 | URLs e portas. No modo IP, IPv4/IPv6 e publicação na rede; no local, loopback. |
 | 3 | Nome comercial, título da plataforma, projeto Docker e telefone de suporte. |
-| 4 | Acesso padrão ou e-mail/senha personalizados, com senha oculta e confirmação. |
+| 4 | Acesso padrão ou e-mail/senha personalizados, com digitação visível e confirmação. |
 | 5 | Senha PostgreSQL automática/personalizada e perfil econômico/intermediário/alto/personalizado. |
 | 6 | MASTER_KEY opcional, tokens Git separados e link obrigatório da plataforma. |
 | 7 | API Oficial, WuzAPI e RabbitMQ opcionais; portas/tokens e Facebook/Meta. |
@@ -107,7 +107,7 @@ TLS, acesso de rede e respostas HTTP do proxy/aplicação. Não há correção a
 de firewall ou DNS do host.
 
 O padrão administrativo é **admin@amanda.com.br / adminamanda**. Em produção, o
-assistente recomenda personalização e exige 12 caracteres na senha personalizada.
+assistente permite personalização sem exigir comprimento mínimo ou complexidade.
 Se optar explicitamente pelo padrão, altere-o antes de liberar acesso aos usuários.
 Atualizações nunca redefinem contas; seed é exclusivo de projeto novo com tabela
 Users vazia. Não use seed para reparar login.

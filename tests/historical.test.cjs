@@ -5,6 +5,26 @@ const {installInput}=require('../docker/installer/cli.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {SOURCE,normalizeConfig}=require('../docker/installer/manager.cjs');
 const original=require('./fixtures/7a5b31d-menus.json');
+test('short and literal passwords work in historical local, public IP and HTTPS installations',async()=>{
+ for(const password of ['123','admin','teste123','123456','Amanda@123','MinhaSenhaPersonalizada','a$#\'"'])for(const mode of ['local','ip','https']){
+  const t=input({0:mode==='https'?'2':'1',1:mode==='https'?'api.example.test':mode==='ip'?'192.0.2.10':'localhost',4:password,5:password,13:password,14:password}),q=t.options.question;
+  t.options.question=(...args)=>/domínio\/URL do Frontend/.test(t.output.at(-1)||'')?Promise.resolve('app.example.test'):q(...args);
+  const c=await collectHistorical(t.options);assert.equal(c.adminPassword,password);assert.equal(c.options.databasePassword,password);assert.equal(c.options.masterPassword,password);if(password!=='admin')assert.ok(!t.output.join('').includes(password));assert.ok(t.output.join('').includes('[oculta]'));
+ }
+ for(const password of ['', 'a\nb', 'a\x1bb']){const t=input({13:password,14:password});await assert.rejects(collectHistorical(t.options),/vazia\/inválida/);}
+});
+test('interactive credentials echo normally without showing stored defaults',async()=>{
+ const {spawn}=require('node:child_process');
+ const code="require('./docker/installer/cli.cjs').ask('Credencial', 'stored-private-default', true).then(v=>{if(v!=='typed$123')process.exitCode=2;console.log('READ_OK')})";
+ const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
+ await new Promise((resolve,reject)=>{
+  const child=spawn('script',['-q','-c',quote(process.execPath)+' -e '+quote(code),'/dev/null'],{cwd:path.join(__dirname,'..'),env:{...process.env,TERM:'dumb',NO_COLOR:'1'}});let output='',sent=false;
+  const timeout=setTimeout(()=>{child.kill();reject(Error('Timeout de leitura interativa'));},7000);
+  child.on('error',e=>{clearTimeout(timeout);reject(e);});
+  child.stdout.on('data',chunk=>{output+=chunk;if(!sent&&output.includes('> ')){sent=true;child.stdin.write('typed$123\n');}});
+  child.on('close',status=>{clearTimeout(timeout);try{assert.equal(status,0,output);assert.ok(output.includes('typed$123'));assert.ok(output.includes('READ_OK'));assert.ok(!output.includes('stored-private-default'));resolve();}catch(e){reject(e);}});
+ });
+});
 const plain=s=>s.replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');
 function historical(screen){const result=spawnSync('sh',['-c','clear(){ :; }\n'+original.banner+'\n'+original[screen]],{encoding:'utf8',env:{PATH:process.env.PATH,nome_titulo:'AMANDA'}});assert.equal(result.status,0,result.stderr);return result.stdout;}
 function input(changes={}){

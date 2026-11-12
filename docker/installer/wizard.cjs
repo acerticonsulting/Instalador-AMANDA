@@ -50,10 +50,10 @@ async function collectInstallation({question,out=console.log,getResources,direct
     },
     async()=>{draft.companyName=await read('Nome comercial da empresa',draft.companyName,v=>{if(!v.trim()||v.length>120)throw Error('Informe até 120 caracteres.');return v.trim();});draft.options.appName=await read('Nome de exibição da plataforma',draft.options.appName,v=>{validateOptions({appName:v});return v;});draft.project=await read('Nome técnico do projeto Docker',draft.project,v=>normalizeConfig({sourceUrl:SOURCE,project:v}).project);draft.options.supportPhone=await read('Número de telefone do suporte',draft.options.supportPhone,v=>{validateOptions({supportPhone:v});return v;});},
     async()=>{
-      show('O padrão local é admin@amanda.com.br / adminamanda. Para produção, use senha exclusiva com pelo menos 12 caracteres.');
+      show('O padrão local é admin@amanda.com.br / adminamanda. Informe a senha que deseja utilizar.');
       const customized=draft.adminPassword&&draft.adminPassword!=='adminamanda'||draft.adminEmail&&draft.adminEmail!=='admin@amanda.com.br';
       const custom=await yes('Personalizar o acesso administrativo',customized||draft.public||draft.edge?'s':'n');
-      if(custom){draft.adminEmail=await read('E-mail do administrador',draft.adminEmail||'admin@amanda.com.br',email);const previous=draft.adminPassword;draft.adminPassword=await read('Senha do administrador',undefined,v=>{if(!v||v.length>256||((draft.edge||draft.public)&&v.length<12))throw Error('Senha inválida.');return v;},true,previous);await read('Confirmação da senha',undefined,v=>{if(v!==draft.adminPassword)throw Error('Confirmação diferente.');return v;},true,draft.adminPassword===previous?previous:undefined);}
+      if(custom){draft.adminEmail=await read('E-mail do administrador',draft.adminEmail||'admin@amanda.com.br',email);const previous=draft.adminPassword;draft.adminPassword=await read('Senha do administrador',undefined,v=>{if(!v||v.length>256)throw Error('Senha inválida.');return v;},true,previous);await read('Confirmação da senha',undefined,v=>{if(v!==draft.adminPassword)throw Error('Confirmação diferente.');return v;},true,draft.adminPassword===previous?previous:undefined);}
       else{draft.adminEmail='admin@amanda.com.br';draft.adminPassword='adminamanda';if(draft.edge||draft.public)show('AVISO: acesso padrão público. Altere a senha na plataforma antes de liberar acesso aos usuários.');}
     },
     async()=>{

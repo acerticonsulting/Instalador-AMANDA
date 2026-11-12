@@ -55,9 +55,8 @@ async function collectHistorical({question,out=console.log,directory=process.env
   else{c.options.backendPort=+back;c.options.frontendPort=+front;}
   // Novas perguntas estritamente necessárias vêm após o bloco histórico intacto.
   text('A conta administrativa usa o e-mail informado. A senha é distinta da senha do banco.');
-  c.adminPassword=await extra('Senha do administrador (oculta)',undefined,true);
+  c.adminPassword=await extra('Senha do administrador',undefined,true);
   if(!c.adminPassword||/[\x00-\x1f\x7f]/.test(c.adminPassword)||c.adminPassword.length>256)throw Error('Senha administrativa vazia/inválida.');
-  if((c.public||c.edge)&&c.adminPassword.length<12)throw Error('Use pelo menos 12 caracteres na senha administrativa para acesso público.');
   if(await extra('Confirmação da senha',undefined,true)!==c.adminPassword)throw Error('Confirmação diferente.');
   c.buildToken=await extra('Token de leitura do conector privado (ENTER se já disponível)',undefined,true)||'';
   c=normalizeConfig(c);

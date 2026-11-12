@@ -1,5 +1,15 @@
 # Plano de testes do instalador AMANDA
 
+## Digitação de credenciais e senhas curtas
+
+`ask` usa leitura visível para todas as entradas, inclusive SMTP/tokens; valores
+secretos continuam fora dos padrões, resumos e logs. Regressões cobrem eco em
+pseudoterminal após o prompt, senhas de 3/8/12+ caracteres em local/IP/HTTPS nos
+dois assistentes, banco/MASTER literais, controle/vazio e confirmação já existente.
+O seed oficial aceita senha curta; a regra de cadastro de outros usuários no
+backend não participa da inicialização e não foi modificada. Limites máximos e
+requisitos criptográficos dos tokens permanecem. Alteração pontual, sem runtime real.
+
 ## Restauração 7a5b31d — 12/11/2026
 
 O padrão interativo volta à referência `7a5b31d`; o assistente adicional permanece

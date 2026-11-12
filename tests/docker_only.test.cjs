@@ -433,6 +433,12 @@ function wizardQuestion(overrides={}){
     return fallback||'';
   };
 }
+test('additional wizard accepts short passwords in all access modes without leaking summaries',async()=>{
+ for(const mode of ['1','2','3'])for(const password of ['123','teste123','MinhaSenhaPersonalizada']){
+  const output=[],c=await installInput(undefined,{out:s=>output.push(s),question:wizardQuestion({'Tipo de instalação':mode,'IP do servidor':'192.0.2.10','URL do frontend HTTPS':'app.example.test','URL do backend HTTPS':'api.example.test','Personalizar o acesso administrativo':'s','Senha do administrador':password,'Confirmação da senha':password,'Gerar senha PostgreSQL segura automaticamente':'n','Senha PostgreSQL personalizada':password,'MASTER_KEY personalizada':password})});
+  assert.equal(c.adminPassword,password);assert.equal(c.options.databasePassword,password);assert.equal(c.options.masterPassword,password);assert.ok(!output.join('').includes(password));
+ }
+});
 test('eleven-stage wizard configures localhost and reviews all public choices',async()=>{
   const output=[],prompts=[];const q=wizardQuestion();const c=await installInput(undefined,{directory:'/srv/local',out:s=>output.push(s),question:(...args)=>{prompts.push(args);return q(...args);}});
   assert.equal(c.frontendUrl,'http://localhost:3000');assert.equal(c.backendUrl,'http://localhost:8080');assert.equal(c.adminEmail,'admin@amanda.com.br');assert.equal(c.companyName,'AMANDA');assert.equal(c.options.pg.sharedBuffers,'128MB');

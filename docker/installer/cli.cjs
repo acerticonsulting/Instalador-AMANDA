@@ -13,27 +13,11 @@ function configInput(file) {
 
 async function ask(label, fallback, secret = false) {
   if (!process.stdin.isTTY) throw Error('Use --config com JSON para execução não interativa.');
-  if (!secret) {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    try { const value = await rl.question(label===''?'\n> ':ui.question(label,fallback)); return value || fallback || ''; } finally { rl.close(); }
-  }
-  process.stdout.write(label===''?'\n> ':ui.question(label));
-  return new Promise((resolve, reject) => {
-    let value = '';
-    const previous = process.stdin.isRaw;
-    process.stdin.setRawMode(true); process.stdin.resume();
-    const cleanup = () => { process.stdin.removeListener('data', receive); process.stdin.setRawMode(previous); process.stdin.pause(); process.stdout.write('\n'); };
-    const receive = buffer => {
-      for (const ch of buffer.toString()) {
-        if (ch === '\u0003' || ch === '\u0004') { cleanup(); reject(Error('Entrada cancelada.')); return; }
-        if (ch === '\r' || ch === '\n') { cleanup(); resolve(value); return; }
-        if (ch === '\u007f' || ch === '\b') value = value.slice(0,-1);
-        else if (ch >= ' ' && value.length < 4096) value += ch;
-      }
-    };
-    process.stdin.on('data', receive);
-  });
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  // Segredos têm digitação visível, mas nunca são apresentados como padrão.
+  try { const value = await rl.question(label===''?'\n> ':ui.question(label,secret?undefined:fallback)); return value || fallback || ''; } finally { rl.close(); }
 }
+
 async function advancedInput(configFile,options={}) {
   if(configFile)return normalizeConfig(configInput(configFile));
   return require('./wizard.cjs').collectInstallation({question:ask,...options});
@@ -75,10 +59,10 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
     return manager.lock(async () => { await manager.doctor(); await manager.adopt(url); });
   }
   if (action === 'build-token') {
-    return manager.lock(async () => { manager.load(); await manager.identifyManager(); const token = await ask('Novo token de leitura do conector (não exibido)', undefined, true); if (!token || /[\r\n]/.test(token)) throw Error('Token vazio/inválido.'); manager.write(path.join(manager.state.platform,'.secrets/github_token'),token); console.log('Segredo de build atualizado fora do Git.'); });
+    return manager.lock(async () => { manager.load(); await manager.identifyManager(); const token = await ask('Novo token de leitura do conector', undefined, true); if (!token || /[\r\n]/.test(token)) throw Error('Token vazio/inválido.'); manager.write(path.join(manager.state.platform,'.secrets/github_token'),token); console.log('Segredo de build atualizado fora do Git.'); });
   }
   if (['status','logs'].includes(action)) return manager.execute(action);
   return manager.lock(() => manager.execute(action));
 }
 if (require.main === module) main().catch(error => { console.error('ERRO: ' + error.message); process.exitCode = 1; });
-module.exports = { main, installInput, advancedInput };
+module.exports = { main, installInput, advancedInput, ask };
