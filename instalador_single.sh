@@ -30,9 +30,20 @@ if [ "$action" = menu ] && [ -t 0 ]; then
   historical_main
   display_target=$target
   if [ "$deploy_layout" = 1 ] && [ "$historical_target" = 0 ]; then display_target='/home/deploy/{empresa}'; fi
-  printf "\nDiretório da instalação: %s\n> " "$display_target"
-  read -r initial || exit 0
-  case "$initial" in 0) exit 0 ;; 1|2|3|4|5|6|7|8|9|10|11) ;; *) printf '%s\n' 'Opção inválida.' >&2; exit 2 ;; esac
+  printf "\nDiretório da instalação: %s\n" "$display_target"
+  while :; do
+    printf '> '
+    IFS= read -r initial || exit 0
+    # Pasted commands can leave blank lines, spaces or a trailing CR in the TTY.
+    initial=${initial#"${initial%%[![:space:]]*}"}
+    initial=${initial%"${initial##*[![:space:]]}"}
+    case "$initial" in
+      '') continue ;;
+      0) exit 0 ;;
+      1|2|3|4|5|6|7|8|9|10|11) break ;;
+      *) printf '%s\n' 'Opção inválida. Digite um número de 0 a 11.' >&2 ;;
+    esac
+  done
 fi
 case "$target" in
   /*) ;;

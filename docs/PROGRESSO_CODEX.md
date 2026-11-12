@@ -1,3 +1,34 @@
+# Entrada do menu em terminal — 12/11/2026
+
+Objetivo: tratar a saída Opção inválida ao iniciar instalador_single.sh.
+Base analisada: main 6e7630e. A versão atual mostra o menu normalmente em PTY;
+foi reproduzida a mensagem e saída 2 quando a entrada inicial contém uma linha
+vazia, CRLF com espaços ou uma seleção inválida. A revisão efetiva da VPS não
+foi inspecionada, portanto não se presume que essa seja a única causa remota.
+
+Correção: leitura inicial em laço POSIX, preservando a apresentação; ignora
+linhas vazias, remove espaços/CR das extremidades e permite corrigir entrada
+inválida. Não inicia instalação por Enter vazio. Opções válidas mantêm --initial
+para o gerenciador. Entrypoint versionado com modo executável Linux (100755).
+Arquivos: instalador_single.sh, tests/historical.test.cjs, README e plano de testes.
+
+Validação: controle anterior passou na abertura normal e falhou nos dois casos
+de entradas residuais/repetição. Após correção, quatro testes PTY aprovados com
+sh, bash e execução direta, desde outra pasta e com espaços no caminho. Sair não
+chama Docker nem cria diretório; opções 1 e 11 são encaminhadas a Docker simulado.
+Suíte completa aprovada: 140 testes Node, 83 scripts e cinco suítes locais.
+Nenhuma aplicação, conta ou instalação real foi executada/alterada na VPS.
+
+Atualização: um repositório Git descartável confirmou que o chmod local do
+script anterior pode impedir o fast-forward de uma alteração no mesmo arquivo.
+As instruções preservam somente esse arquivo em stash antes do pull, sem reset
+ou exclusão de dados; o stash fica disponível para revisão posterior.
+
+Publicação por commit/push e PR com integração à main, conforme autorização
+permanente. Depois, atualizar o clone do instalador antes de abrir o menu ou usar
+resume --dir /home/deploy/amanda para a instalação interrompida registrada.
+
+# Histórico anterior
 # Preparação da integração à main — 12/11/2026
 
 Objetivo: entregar a correção por PR e explicar por que baixar a branch não muda

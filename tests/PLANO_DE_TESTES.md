@@ -1,3 +1,11 @@
+# Menu inicial em PTY — 12/11/2026
+
+140 testes Node, 83 scripts e cinco suítes locais. Novos testes executam o
+bootstrap real sob pseudo-terminal, via sh, bash e arquivo executável, partindo
+de outra pasta e usando caminho com espaços. O teste envia dados só depois de
+observar menu e prompt, cobre linhas vazias/CRLF/espaços e opção inválida seguida
+de válida. Saída 0 não chama Docker nem cria instalação; escolhas 1 e 11 são
+encaminhadas ao Docker simulado, sem operações no daemon ou VPS.
 # Integração da correção à main — 12/11/2026
 
 136 testes Node, 83 scripts e cinco suítes locais. O driver de integração executa

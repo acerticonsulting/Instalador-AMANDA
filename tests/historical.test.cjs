@@ -5,6 +5,46 @@ const {installInput}=require('../docker/installer/cli.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {SOURCE,normalizeConfig}=require('../docker/installer/manager.cjs');
 const original=require('./fixtures/7a5b31d-menus.json');
+
+async function runBootstrapTTY(input,mode='sh'){
+ const os=require('node:os'),{spawn}=require('node:child_process'),root=fs.mkdtempSync(path.join(os.tmpdir(),'amanda-bootstrap-tty-')),copy=path.join(root,'installer with spaces'),bin=path.join(root,'bin'),log=path.join(root,'docker-calls');
+ fs.mkdirSync(bin);fs.writeFileSync(path.join(bin,'docker'),`#!/bin/sh
+case "$1" in
+info) echo linux ;;
+context) echo unix:///var/run/docker.sock ;;
+run) printf '%s\\n' "$@" >> "$BOOTSTRAP_TEST_LOG" ;;
+*) exit 2 ;;
+esac
+`,{mode:0o755});
+ fs.mkdirSync(path.join(copy,'docker/installer'),{recursive:true});
+ for(const file of ['instalador_single.sh','docker/installer/historical.sh'])fs.copyFileSync(path.join(__dirname,'..',file),path.join(copy,file));
+ const entry=path.join(copy,'instalador_single.sh');fs.chmodSync(entry,0o755);
+ const quote=s=>"'"+s.replaceAll("'","'\\''")+"'",command=(mode==='executable'?'':mode+' ')+quote(entry);
+ try{return await new Promise((resolve,reject)=>{
+  const child=spawn('script',['-q','-e','-c',command,'/dev/null'],{cwd:root,env:{...process.env,PATH:bin+':'+process.env.PATH,BOOTSTRAP_TEST_LOG:log,TERM:'dumb',NO_COLOR:'1',HOME:root,AMANDA_INSTALL_DIR:path.join(root,'company')},stdio:['pipe','pipe','pipe']});let output='',sent=false;
+  const timeout=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Bootstrap TTY timeout'));},5000);
+  child.on('error',error=>{clearTimeout(timeout);reject(error);});
+  child.stdout.on('data',chunk=>{output+=chunk;if(!sent&&output.includes('Diretório da instalação:')&&output.includes('> ')){sent=true;child.stdin.write(input);}});
+  child.stderr.on('data',chunk=>output+=chunk);
+  child.on('close',status=>{clearTimeout(timeout);resolve({status,output,sent,changed:fs.existsSync(path.join(root,'company')),commands:fs.existsSync(log)?fs.readFileSync(log,'utf8'):''});});
+ });}finally{fs.rmSync(root,{recursive:true,force:true});}
+}
+
+test('bootstrap displays its real menu before reading and exits without Docker or installation writes',async()=>{
+ for(const mode of ['sh','bash','executable']){const result=await runBootstrapTTY('0\n',mode);assert.equal(result.status,0,result.output);assert.equal(result.sent,true);assert.ok(result.output.includes('[1] Instalar AMANDA'));assert.ok(!result.output.includes('Preparando ferramentas em container'));assert.equal(result.changed,false);assert.equal(result.commands,'');}
+});
+
+test('bootstrap ignores buffered blank lines and accepts padded CRLF choices in sh bash and direct execution',async()=>{
+ for(const mode of ['sh','bash','executable']){const result=await runBootstrapTTY('\n 0 \r\n',mode);assert.equal(result.status,0,result.output);assert.ok(!result.output.includes('Opção inválida'));assert.equal(result.changed,false);}
+});
+
+test('bootstrap retries an invalid selection instead of closing the terminal menu',async()=>{
+ const result=await runBootstrapTTY('not-an-option\n0\n');assert.equal(result.status,0,result.output);assert.equal((result.output.match(/Opção inválida/g)||[]).length,1);assert.equal(result.changed,false);
+});
+
+test('bootstrap forwards the selected menu option after buffered blank lines without executing real Docker',async()=>{
+ for(const choice of ['1','11']){const result=await runBootstrapTTY('\n '+choice+' \r\n','executable');assert.equal(result.status,0,result.output);assert.ok(!result.output.includes('Opção inválida'));assert.ok(result.commands.includes('--initial\n'+choice+'\n'));assert.equal(result.changed,false);}
+});
 test('short and literal passwords work in historical local, public IP and HTTPS installations',async()=>{
  for(const password of ['123','admin','teste123','123456','Amanda@123','MinhaSenhaPersonalizada','a$#\'"'])for(const mode of ['local','ip','https']){
   const t=input({0:mode==='https'?'2':'1',1:mode==='https'?'api.example.test':mode==='ip'?'192.0.2.10':'localhost',4:password,5:password,13:password,14:password}),q=t.options.question;
