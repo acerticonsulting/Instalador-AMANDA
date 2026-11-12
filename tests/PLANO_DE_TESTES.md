@@ -1,3 +1,15 @@
+# Terminal do bootstrap ao container — 12/11/2026
+
+A regressão local cobre stdin interativo com stdout em pipe (Docker recebe -it)
+e stdin não interativo (Docker recebe -i). A suíte padrão tem 142 testes Node
+executados, dois testes opt-in ignorados, 84 scripts e cinco suítes locais.
+`bash tests/integracao_terminal.sh` constrói a imagem de ferramentas e executa
+dois testes com Docker real: controle sem TTY reproduz a mensagem relatada;
+bootstrap corrigido preserva TTY e a CLI encerra com sucesso.
+O socket é usado exclusivamente para criar containers descartáveis de ferramentas.
+Os containers internos não recebem socket, volumes, portas ou rede e executam
+somente `menu --initial 0`. Nenhuma instalação ou operação da plataforma é feita.
+
 # Menu inicial em PTY — 12/11/2026
 
 140 testes Node, 83 scripts e cinco suítes locais. Novos testes executam o

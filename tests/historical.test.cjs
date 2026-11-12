@@ -6,27 +6,40 @@ const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {SOURCE,normalizeConfig}=require('../docker/installer/manager.cjs');
 const original=require('./fixtures/7a5b31d-menus.json');
 
-async function runBootstrapTTY(input,mode='sh'){
+async function runBootstrapTTY(input,mode='sh',transport){
  const os=require('node:os'),{spawn}=require('node:child_process'),root=fs.mkdtempSync(path.join(os.tmpdir(),'amanda-bootstrap-tty-')),copy=path.join(root,'installer with spaces'),bin=path.join(root,'bin'),log=path.join(root,'docker-calls');
  fs.mkdirSync(bin);fs.writeFileSync(path.join(bin,'docker'),`#!/bin/sh
 case "$1" in
 info) echo linux ;;
 context) echo unix:///var/run/docker.sock ;;
-run) printf '%s\\n' "$@" >> "$BOOTSTRAP_TEST_LOG" ;;
+run) printf '%s\\n' "$@" >> "$BOOTSTRAP_TEST_LOG"
+ if [ -n "\${AMANDA_TTY_TEST_IMAGE:-}" ]; then
+  for arg do
+   if [ "$arg" = --init ]; then
+    flag=-i
+    for option do [ "$option" != -it ] || flag=-it; done
+    [ "$BOOTSTRAP_FORCE_NO_TTY" != 1 ] || flag=-i
+    /usr/local/bin/docker run --rm "$flag" --network none --name "$BOOTSTRAP_PROBE_NAME" -e AMANDA_INSTALL_DIR=/tmp/amanda-tty-probe -e NO_COLOR=1 --entrypoint node "$AMANDA_TTY_TEST_IMAGE" /opt/amanda-installer/cli.cjs menu --initial 0
+    result=$?
+    printf '%s' "$result" > "$BOOTSTRAP_PROBE_STATUS"
+    exit "$result"
+   fi
+  done
+ fi ;;
 *) exit 2 ;;
 esac
 `,{mode:0o755});
  fs.mkdirSync(path.join(copy,'docker/installer'),{recursive:true});
  for(const file of ['instalador_single.sh','docker/installer/historical.sh'])fs.copyFileSync(path.join(__dirname,'..',file),path.join(copy,file));
  const entry=path.join(copy,'instalador_single.sh');fs.chmodSync(entry,0o755);
- const quote=s=>"'"+s.replaceAll("'","'\\''")+"'",command=(mode==='executable'?'':mode+' ')+quote(entry);
+ const quote=s=>"'"+s.replaceAll("'","'\\''")+"'",command=(mode==='executable'?'':['stdout-pipe','noninteractive'].includes(mode)?'sh ':mode+' ')+quote(entry)+(mode==='stdout-pipe'?' | cat':mode==='noninteractive'?' < /dev/null | cat':'');
  try{return await new Promise((resolve,reject)=>{
-  const child=spawn('script',['-q','-e','-c',command,'/dev/null'],{cwd:root,env:{...process.env,PATH:bin+':'+process.env.PATH,BOOTSTRAP_TEST_LOG:log,TERM:'dumb',NO_COLOR:'1',HOME:root,AMANDA_INSTALL_DIR:path.join(root,'company')},stdio:['pipe','pipe','pipe']});let output='',sent=false;
-  const timeout=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Bootstrap TTY timeout'));},5000);
+  const child=spawn('script',['-q','-e','-c',command,'/dev/null'],{cwd:root,env:{...process.env,AMANDA_TTY_TEST_IMAGE:transport?process.env.AMANDA_TTY_TEST_IMAGE:'',BOOTSTRAP_FORCE_NO_TTY:transport==='control'?'1':'0',BOOTSTRAP_PROBE_NAME:path.basename(root),BOOTSTRAP_PROBE_STATUS:path.join(root,'probe-status'),PATH:bin+':'+process.env.PATH,BOOTSTRAP_TEST_LOG:log,TERM:'dumb',NO_COLOR:'1',HOME:root,AMANDA_INSTALL_DIR:path.join(root,'company')},stdio:['pipe','pipe','pipe']});let output='',sent=false;
+  const timeout=setTimeout(()=>{child.kill('SIGKILL');if(transport)spawnSync('/usr/local/bin/docker',['rm','-f',path.basename(root)],{timeout:5000});reject(Error('Bootstrap TTY timeout'));},transport?20000:5000);
   child.on('error',error=>{clearTimeout(timeout);reject(error);});
   child.stdout.on('data',chunk=>{output+=chunk;if(!sent&&output.includes('Diretório da instalação:')&&output.includes('> ')){sent=true;child.stdin.write(input);}});
   child.stderr.on('data',chunk=>output+=chunk);
-  child.on('close',status=>{clearTimeout(timeout);resolve({status,output,sent,changed:fs.existsSync(path.join(root,'company')),commands:fs.existsSync(log)?fs.readFileSync(log,'utf8'):''});});
+  child.on('close',status=>{clearTimeout(timeout);resolve({status,output,sent,probeStatus:fs.existsSync(path.join(root,'probe-status'))?fs.readFileSync(path.join(root,'probe-status'),'utf8'):undefined,changed:fs.existsSync(path.join(root,'company')),commands:fs.existsSync(log)?fs.readFileSync(log,'utf8'):''});});
  });}finally{fs.rmSync(root,{recursive:true,force:true});}
 }
 
@@ -44,6 +57,22 @@ test('bootstrap retries an invalid selection instead of closing the terminal men
 
 test('bootstrap forwards the selected menu option after buffered blank lines without executing real Docker',async()=>{
  for(const choice of ['1','11']){const result=await runBootstrapTTY('\n '+choice+' \r\n','executable');assert.equal(result.status,0,result.output);assert.ok(!result.output.includes('Opção inválida'));assert.ok(result.commands.includes('--initial\n'+choice+'\n'));assert.equal(result.changed,false);}
+});
+
+test('bootstrap keeps Docker TTY when stdin is interactive and stdout is piped',async()=>{
+ const result=await runBootstrapTTY('1\n','stdout-pipe');assert.equal(result.status,0,result.output);assert.ok(result.commands.split('\n').includes('-it'),result.commands);assert.ok(result.commands.includes('--initial\n1\n'));assert.equal(result.changed,false);
+});
+
+test('bootstrap keeps noninteractive Docker input without allocating a TTY',async()=>{
+ const result=await runBootstrapTTY('','noninteractive');assert.equal(result.status,0,result.output);assert.ok(result.commands.split('\n').includes('-i'));assert.ok(!result.commands.split('\n').includes('-it'));assert.equal(result.sent,false);assert.equal(result.changed,false);
+});
+
+test('real Docker terminal transport: missing TTY reproduces the reported CLI error',{skip:!process.env.AMANDA_TTY_TEST_IMAGE},async()=>{
+ const result=await runBootstrapTTY('1\n','stdout-pipe','control');assert.equal(result.probeStatus,'1',result.output);assert.match(result.output,/O menu requer terminal interativo/);assert.equal(result.changed,false);
+});
+
+test('real Docker terminal transport: bootstrap preserves TTY through piped stdout',{skip:!process.env.AMANDA_TTY_TEST_IMAGE},async()=>{
+ const result=await runBootstrapTTY('1\n','stdout-pipe','actual');assert.equal(result.probeStatus,'0',result.output);assert.doesNotMatch(result.output,/O menu requer terminal interativo/);assert.ok(result.commands.split('\n').includes('-it'));assert.equal(result.changed,false);
 });
 test('short and literal passwords work in historical local, public IP and HTTPS installations',async()=>{
  for(const password of ['123','admin','teste123','123456','Amanda@123','MinhaSenhaPersonalizada','a$#\'"'])for(const mode of ['local','ip','https']){
