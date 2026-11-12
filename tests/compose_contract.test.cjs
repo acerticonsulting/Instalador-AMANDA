@@ -37,3 +37,6 @@ test('built manager includes the recovered historical presentation',()=>{
  const output=execFileSync('sh',['/opt/amanda-installer/historical.sh','--main'],{encoding:'utf8'});
  assert.ok(output.includes('MULTICANAL v1.0.0'));assert.ok(output.includes('[8] Menu de Ferramentas Adicionais'));assert.ok(output.includes('[11] Instalar ou Gerenciar API Oficial'));
 });
+test('built manager provides kernel operation locking without host dependencies',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'amanda-image-lock-'));try{const m=new Manager(root,new Runner(null,{write(){}}));await m.lock(()=>m.lock(async()=>{}));assert.ok(!fs.existsSync(path.join(root,'.amanda-installer/operation.lock')));}finally{fs.rmSync(root,{recursive:true});}
+});

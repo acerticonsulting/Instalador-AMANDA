@@ -431,6 +431,8 @@ class Manager {
   async execute(action) {
     await this.doctor();
     if (action === 'doctor') return;
+    if(action==='resume'&&!fs.existsSync(this.stateFile))throw Error('Instalação ainda não registrada. Inicie pelo comando install.');
+    if(action==='resume'){try{this.load();}catch(e){if(e.code==='ENOENT')throw Error('Preparação interrompida: fonte ou configuração ausente. Preserve o diretório e revise a preparação antes de retomar; não repita seed.');throw e;}if(!this.state.initialized&&!this.state.freshResourcesVerified)throw Error('Preparação interrompida na fase '+this.state.phase+'. Preserve código, configuração e volumes; não é seguro assumir banco novo. Revise a preparação antes de retomar, sem repetir seed.');}
     this.load();await this.identifyManager(); await this.validateSource(); await this.configuration();
     if (action === 'update') return this.update();
     if (action === 'resume') {
@@ -459,20 +461,10 @@ class Manager {
   }
   async lock(fn) {
     if(this.operationScope.getStore()===this)return fn();
-    fs.mkdirSync(this.private, { recursive: true, mode: 0o700 });
-    const file = path.join(this.private,'operation.lock');
-    let fd;
-    try { fd = fs.openSync(file,'wx',0o600); } catch { throw Error('Outra operação está registrada. Verifique o gerenciador anterior e use unlock se já encerrou.'); }
-    fs.writeFileSync(fd, JSON.stringify({ container: process.env.HOSTNAME, at: new Date().toISOString() })); fs.closeSync(fd);
-    try { return await this.operationScope.run(this,fn); } finally { fs.unlinkSync(file); }
+    return require('./operation-lock.cjs').withLock(this,()=>this.operationScope.run(this,fn));
   }
   async unlock() {
-    const file = path.join(this.private,'operation.lock');
-    const data = JSON.parse(fs.readFileSync(file,'utf8'));
-    if (!/^[a-f0-9]{12,64}$/.test(data.container || '')) throw Error('Lock sem identificação Docker; revise-o manualmente.');
-    const r = await this.docker(['inspect','--format','{{.State.Running}}',data.container], { quiet: true, allowFailure: true });
-    if (r.code === 0 && r.stdout.trim() === 'true') throw Error('Gerenciador anterior ainda está ativo.');
-    fs.unlinkSync(file); this.runner.emit('Lock de operação encerrada removido.\n');
+    return require('./operation-lock.cjs').withLock(this,null,true);
   }
 }
 module.exports = { SOURCE, CORE, PROFILES, sourceUrl, rootPath, normalizeConfig, envValues, editEnv, Runner, Manager };

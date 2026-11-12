@@ -51,6 +51,7 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
   if (action === 'unlock') { await manager.doctor(); return manager.unlock(); }
   if(['configure','instances','urls','services','official','ssl','push','postgres','optional-service','rollback','schedule-backup','wuzapi-start','native-unavailable','channels-unavailable','external-unavailable','helper-unavailable'].includes(action))return new Menus(manager,ask,context=>installInput(configFile,{directory:context?.parent?c=>path.join(context.parent,'instances',c.project):manager.root})).dispatch(action);
   if (action === 'install'||action==='wizard') {
+    if(fs.existsSync(manager.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem repetir a configuração ou seeds.');
     const input = await (action==='wizard'?advancedInput:installInput)(configFile,{directory:manager.root,getResources:()=>manager.resources()});
     return manager.lock(async () => { await manager.doctor(); await manager.prepare(input); await manager.build(); await manager.initialize(); });
   }

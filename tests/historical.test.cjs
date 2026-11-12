@@ -115,8 +115,7 @@ test('unavailable administrative recipes report failure and never claim a comple
  assert.equal(messages.length,0);
 });
 test('historical performance choices map to bounded PostgreSQL profiles in containers',async()=>{
- const t=input({17:'2'}),c=await collectHistorical(t.options);assert.equal(c.options.pg.maxConnections,200);assert.equal(c.options.pg.sharedBuffers,'256MB');
- assert.ok(t.output.at(-1).includes('PostgreSQL em container'));assert.ok(!t.output.at(-1).includes('Nginx'));
+ for(const profile of ['0','1','2','3']){const t=input({17:profile}),c=await collectHistorical(t.options);if(profile==='0')assert.equal(c.options.pg,undefined);else{assert.equal(c.options.pg.maxConnections,Number(profile)*100);assert.equal(c.options.pg.sharedBuffers,{'1':'128MB','2':'256MB','3':'512MB'}[profile]);}assert.ok(t.output.at(-1).includes('PostgreSQL em container'));assert.ok(!t.output.at(-1).includes('Nginx'));}
 });
 test('real color terminals retain menu dispatch while rendering the original lilac highlights',()=>{
  const script="Object.defineProperty(process.stdout,'isTTY',{value:true});const {MAIN,TOOLS}=require('./docker/installer/menus.cjs');const {render}=require('./docker/installer/historical.cjs');process.stdout.write(JSON.stringify({main:MAIN.map(x=>x[0]),tools:TOOLS.map(x=>x[0]),screen:render('main')}));";

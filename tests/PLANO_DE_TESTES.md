@@ -1,5 +1,17 @@
 # Plano de testes do instalador AMANDA
 
+## Bloqueio de operações
+
+Oito regressões novas usam flock real dentro do container de testes: primeira
+aquisição, reentrância, falha/liberação, concorrência, proprietário Docker
+ativo/parado/ausente/daemon indisponível, identidade inválida, substituição do
+arquivo e SIGINT/SIGTERM com recuperação posterior. Os testes anteriores mantêm
+build/migrations/seed interrompidos, retomada, administração e volumes preservados.
+O teste da imagem verifica flock embarcado. Nenhuma operação ocorre na VPS.
+Perfil PostgreSQL continua coletado antes de lock/prepare, conforme regressões
+históricas; não é uma operação administrativa. Um processo morto por sinal deixa
+metadados recuperáveis: não se tenta liberar enquanto filhos ainda podem operar.
+
 ## Digitação de credenciais e senhas curtas
 
 `ask` usa leitura visível para todas as entradas, inclusive SMTP/tokens; valores
