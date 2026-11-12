@@ -31,6 +31,11 @@ No menu inicial, linhas vazias são ignoradas e espaços/retorno de carro de tex
 colado são removidos das extremidades da opção. Uma opção inválida pede nova
 entrada, sem encerrar o instalador. Enter sozinho não inicia instalação.
 O arquivo também é versionado como executável para execução direta em Linux.
+Se você já executou `chmod +x` na versão anterior, essa alteração de modo pode
+bloquear o pull do mesmo arquivo. Preserve a alteração antes de atualizar com
+`git stash push -m "antes-da-correcao-menu" -- instalador_single.sh` e use
+`git pull --ff-only` na `main`. O stash continua disponível para revisão;
+não é reaplicado automaticamente sobre o script corrigido.
 Para ir diretamente à instalação, use `sh ./instalador_single.sh install`;
 para uma instalação interrompida já registrada, use
 `sh ./instalador_single.sh resume --dir /home/deploy/amanda`.

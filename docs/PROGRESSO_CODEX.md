@@ -19,6 +19,11 @@ chama Docker nem cria diretório; opções 1 e 11 são encaminhadas a Docker sim
 Suíte completa aprovada: 140 testes Node, 83 scripts e cinco suítes locais.
 Nenhuma aplicação, conta ou instalação real foi executada/alterada na VPS.
 
+Atualização: um repositório Git descartável confirmou que o chmod local do
+script anterior pode impedir o fast-forward de uma alteração no mesmo arquivo.
+As instruções preservam somente esse arquivo em stash antes do pull, sem reset
+ou exclusão de dados; o stash fica disponível para revisão posterior.
+
 Publicação por commit/push e PR com integração à main, conforme autorização
 permanente. Depois, atualizar o clone do instalador antes de abrir o menu ou usar
 resume --dir /home/deploy/amanda para a instalação interrompida registrada.
