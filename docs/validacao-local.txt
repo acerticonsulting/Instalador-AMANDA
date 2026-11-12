@@ -1,0 +1,35 @@
+OK: sintaxe de 43 scripts Shell.
+
+[Contratos do instalador]
+Contratos estáticos e formato do exemplo válidos.
+OK: Contratos do instalador
+
+[Regressões do instalador com comandos simulados]
+Nenhum container crítico da instância foi identificado.
+ >> c1 está com estado 'running'. Últimos logs:
+ >> A plataforma não foi marcada como concluída. Corrija os erros acima e tente novamente.
+ >> Encerrando conexões com o banco teste...
+ >> Recriando banco teste...
+ >> Restaurando backup em teste...
+ >> Falha na restauração. O banco não foi recuperado; mantenha os serviços parados.
+Branch remota não encontrada: inexistente
+ >> Verificando e garantindo ambiente Docker e Docker Compose...
+
+ >> Aguardando liberação do gerenciador de pacotes apt/dpkg...
+APT/DPKG continua ocupado. Aguarde a operação existente terminar e tente novamente.
+ >> Verificando e garantindo ambiente Docker e Docker Compose...
+ >> Aguardando liberação do gerenciador de pacotes apt/dpkg...
+APT/DPKG continua ocupado. Aguarde a operação existente terminar e tente novamente.
+OK: isolamento, falhas Docker/SQL/APT, saúde, configuração literal, checkpoints e branch.
+OK: Regressões do instalador com comandos simulados
+
+[Regressões do verificador de plataforma]
+OK: 17 cenários de saúde, serviço adicional e rejeição de entrada inválida.
+OK: Regressões do verificador de plataforma
+
+[Regressões do executor de testes]
+OK: executor detecta erros, propaga falhas e funciona fora da raiz/em caminho com espaços.
+OK: Regressões do executor de testes
+
+RESULTADO LOCAL: APROVADO (43 scripts e 4 suítes).
+Plataforma em execução: NÃO VERIFICADA. Use --plataforma em uma instalação existente.

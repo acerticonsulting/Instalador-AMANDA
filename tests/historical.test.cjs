@@ -1,0 +1,105 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path');const {spawnSync}=require('node:child_process');
+const {render,collectHistorical}=require('../docker/installer/historical.cjs');
+const {installInput}=require('../docker/installer/cli.cjs');
+const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
+const {SOURCE,normalizeConfig}=require('../docker/installer/manager.cjs');
+const original=require('./fixtures/7a5b31d-menus.json');
+const plain=s=>s.replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');
+function historical(screen){const result=spawnSync('sh',['-c','clear(){ :; }\n'+original.banner+'\n'+original[screen]],{encoding:'utf8',env:{PATH:process.env.PATH,nome_titulo:'AMANDA'}});assert.equal(result.status,0,result.stderr);return result.stdout;}
+function input(changes={}){
+ const answers=['1','localhost','owner@example.test','acerti','db$secure','master$secure','Minha AMANDA','5511999999999','app-id','fb$secret','gh$token',SOURCE,'s','admin$secret','admin$secret','build$secret','s','0'];
+ for(const[k,v]of Object.entries(changes))answers[+k]=v;
+ const output=[],prompts=[];let index=0;
+ return {output,prompts,options:{out:s=>output.push(s),directory:'/srv/acerti',question:async(label,fallback,secret)=>{prompts.push({label,secret,screen:output.at(-1)});if(index>=answers.length)throw Error('Pergunta inesperada: '+label);const value=answers[index++];return value===undefined?fallback??'':value;}}};
+}
+test('7a5b31d main presentation and banner are recovered verbatim except the unsafe scheduler label',()=>{
+ assert.equal(plain(render('main')),historical('main').replace('Configurar Watchtower','Configurar Atualização Agendada'));
+ assert.deepEqual(MAIN.map(x=>x[0]),Array.from({length:11},(_,i)=>String(i+1)));
+ for(const screen of ['main','tools','api'])assert.ok(render(screen).includes('MULTICANAL v1.0.0'));
+});
+test('historical tool sections, ordering and valid numbers remain; unavailable operations retain their slots',()=>{
+ const ids=s=>[...s.matchAll(/\[(\d+)\]/g)].map(m=>m[1]).filter(id=>id!=='0');
+ assert.deepEqual(TOOLS.map(x=>x[0]),ids(historical('tools')).filter(id=>!['24','25','26','27'].includes(id)));
+ assert.deepEqual(API.map(x=>x[0]),ids(historical('api')));
+ assert.ok(TOOLS.some(x=>x[0]==='7'));assert.ok(TOOLS.some(x=>x[0]==='19'));
+ for(const title of historical('tools').match(/━━ [^\n]+ ━━/g))assert.ok(render('tools').includes(title));
+ assert.ok(TOOLS.every(x=>x[2]));assert.ok(API.every(x=>x[2]));
+});
+test('default interactive installation uses the historical question order and keeps credentials private',async()=>{
+ const t=input(),c=await installInput(undefined,t.options);
+ assert.equal(c.project,'acerti');assert.equal(c.adminEmail,'owner@example.test');assert.equal(c.options.databasePassword,'db$secure');assert.equal(c.options.masterPassword,'master$secure');assert.equal(c.options.appName,'Minha AMANDA');assert.equal(c.sourceToken,'gh$token');assert.equal(c.sourceUrl,SOURCE);assert.equal(c.public,false);assert.equal(c.backendUrl,'http://localhost:8080');
+ const labels=['Selecione como deseja','Insira o IP','Digite o seu melhor email','Digite o nome da sua empresa','senha do Banco','senha para o MASTER','Titulo da Aplicação','telefone para suporte','FACEBOOK_APP_ID','FACEBOOK_APP_SECRET','TOKEN de acesso pessoal','URL do repositório','Usar as portas padrão'];
+ labels.forEach((label,i)=>assert.ok(t.prompts[i].screen.includes(label),label));
+ for(const i of [4,5,9,10,13,14,15])assert.equal(t.prompts[i].secret,true);
+ const visible=t.output.join('\n');for(const secret of ['db$secure','master$secure','fb$secret','gh$token','admin$secret','build$secret'])assert.ok(!visible.includes(secret));
+ assert.ok(visible.includes('Minha AMANDA'));assert.ok(visible.includes('/srv/acerti'));assert.ok(visible.includes('[oculta]'));
+ assert.ok(!/GoFlow|PgBouncer/.test(visible));
+});
+test('official URL variants and custom IP ports survive the original form',async()=>{
+ for(const url of [SOURCE,SOURCE+'/',SOURCE.replace('.git',''),SOURCE.replace('.git','')+'/']){
+ const t=input({1:'2001:db8::1',11:url,12:'n'}),answers=['8800','3300'];
+ const question=t.options.question;let portIndex=0;
+ t.options.question=(label,fallback,secret)=>{
+ if(/Qual porta deseja/.test(t.output.at(-1)||''))return Promise.resolve(answers[portIndex++]);
+ return question(label,fallback,secret);
+ };
+ const c=await collectHistorical(t.options);assert.equal(c.sourceUrl,SOURCE);assert.equal(c.backendUrl,'http://[2001:db8::1]:8800');assert.equal(c.frontendUrl,'http://[2001:db8::1]:3300');assert.equal(c.public,true);
+ }
+});
+test('historical HTTPS questions ask backend before frontend and preserve custom proxy bindings',async()=>{
+ const t=input({0:'2',1:'api.example.test'}),q=t.options.question;
+ t.options.question=(label,fallback,secret)=>{
+ const screen=t.output.at(-1)||'';
+ if(/domínio\/URL do Frontend/.test(screen))return Promise.resolve('app.example.test');
+ if(/Usar as portas padrão/.test(screen))return q(label,fallback,secret).then(()=> 'n');
+ if(/Qual porta deseja para o Backend/.test(screen))return Promise.resolve('8810');
+ if(/Qual porta deseja para o Frontend/.test(screen))return Promise.resolve('3310');
+ return q(label,fallback,secret);
+ };
+ const c=await collectHistorical(t.options);assert.equal(c.edge,true);assert.equal(c.backendUrl,'https://api.example.test');assert.equal(c.frontendUrl,'https://app.example.test');assert.equal(c.options.backendPort,8810);assert.equal(c.options.frontendPort,3310);
+});
+test('historical cancellation and EOF never invoke platform provisioning',async()=>{
+ for(const changes of [{0:':cancelar'},{11:null},{13:':cancelar'},{15:':cancelar'},{16:'n'},{17:null}]){const t=input(changes);await assert.rejects(collectHistorical(t.options),/cancelada antes de criar recursos/);}
+ const t=input({14:'different'});await assert.rejects(collectHistorical(t.options),/Confirmação diferente/);
+});
+test('historical form retries unauthorized repositories and does not echo supplied credentials',async()=>{
+ const t=input({11:'https://user:private@example.test/fork.git'}),q=t.options.question;let retried=false;
+ t.options.question=(label,fallback,secret)=>{
+  if(retried&&/URL do repositório/.test(t.output.at(-1)||''))return Promise.resolve(SOURCE);
+  return q(label,fallback,secret).then(value=>{if(value==='https://user:private@example.test/fork.git')retried=true;return value;});
+ };
+ const c=await collectHistorical(t.options);assert.equal(c.sourceUrl,SOURCE);assert.ok(!t.output.join('').includes('user:private'));
+});
+test('unvalidated historical channels and unavailable tools never execute an update or provisioning',async()=>{
+ for(const branch of ['2','3','4']){
+  let executions=0;const m={root:'/tmp/example',state:{project:'acerti'},load(){},execute(){executions++;}};
+  const answers=['s',branch,'feature/test'];const menu=new Menus(m,async()=>answers.shift(),null,{out:()=>{}});
+  await assert.rejects(menu.update(),/indisponível/);assert.equal(executions,0);
+ }
+ let executions=0;const m={root:'/tmp/example',state:{project:'acerti'},load(){},execute(action){assert.equal(action,'update');executions++;}};
+ const answers=['s','1'];await new Menus(m,async()=>answers.shift(),null,{out:()=>{}}).update();assert.equal(executions,1);
+});
+test('HTTPS custom binding validation includes proxy and optional-service port collisions',()=>{
+ const c={sourceUrl:SOURCE,edge:true,frontendUrl:'https://app.example.test',backendUrl:'https://api.example.test',options:{frontendPort:3310,backendPort:8810}};
+ assert.equal(normalizeConfig(c).options.backendPort,8810);
+ for(const options of [{backendPort:3310},{backendPort:443},{frontendPort:6000},{frontendPort:0},{backendPort:65536}])assert.throws(()=>normalizeConfig({...c,options:{...c.options,...options}}),/Porta/);
+});
+test('every recovered historical entry point delegates to the isolated Docker bootstrap',()=>{
+ const entries=['atualizador_pro.sh','atualizador_fast_sistema.sh','atualizador_remoto.sh','atualizador_remoto_FAST.sh','atualizar_apioficial.sh','instalador_apioficial.sh','instalador_whatsmeow.sh','instalar_nginx_ssl.sh','tools/agendar_backup_bd_docker.sh','tools/instalador_instancias.sh','tools/instalar_push.sh','tools/roolback_versao.sh','tools/trocar_dominios.sh'];
+ for(const file of entries){const s=fs.readFileSync(path.join(__dirname,'..',file),'utf8');assert.ok(s.includes('exec sh "$installer_root/instalador_single.sh"'));assert.ok(s.includes('"$@"'));}
+});
+test('unavailable administrative recipes report failure and never claim a completed operation',async()=>{
+ const messages=[],m={root:'/tmp/example'},menu=new Menus(m,async()=>{throw Error('Entrada inesperada');},null,{out:s=>messages.push(s)});
+ for(const action of ['native-unavailable','portainer-unavailable','external-unavailable','helper-unavailable'])await assert.rejects(menu.dispatch(action,true),/indisponível/);
+ assert.equal(messages.length,0);
+});
+test('historical performance choices map to bounded PostgreSQL profiles in containers',async()=>{
+ const t=input({17:'2'}),c=await collectHistorical(t.options);assert.equal(c.options.pg.maxConnections,200);assert.equal(c.options.pg.sharedBuffers,'256MB');
+ assert.ok(t.output.at(-1).includes('PostgreSQL em container'));assert.ok(!t.output.at(-1).includes('Nginx'));
+});
+test('real color terminals retain menu dispatch while rendering the original lilac highlights',()=>{
+ const script="Object.defineProperty(process.stdout,'isTTY',{value:true});const {MAIN,TOOLS}=require('./docker/installer/menus.cjs');const {render}=require('./docker/installer/historical.cjs');process.stdout.write(JSON.stringify({main:MAIN.map(x=>x[0]),tools:TOOLS.map(x=>x[0]),screen:render('main')}));";
+ const result=spawnSync(process.execPath,['-e',script],{cwd:path.join(__dirname,'..'),encoding:'utf8',env:{...process.env,TERM:'xterm-256color',NO_COLOR:undefined}});assert.equal(result.status,0,result.stderr);
+ const value=JSON.parse(result.stdout);assert.equal(value.main.length,11);assert.equal(value.tools.length,25);assert.ok(value.screen.includes('\x1b[1;38;2;167;139;250m'));assert.ok(value.screen.includes('\x1b[38;2;139;92;246m'));
+});

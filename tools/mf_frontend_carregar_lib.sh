@@ -1,28 +1,6 @@
-#!/usr/bin/env bash
-# Carrega mf_tela_atualizacao_frontend.sh como root (deploy nao le /root/).
-
-mf_frontend_carregar_lib() {
-  local lib _dir
-
-  if declare -F mf_frontend_garantir_porta_env >/dev/null 2>&1; then
-    return 0
-  fi
-
-  _dir="${INSTALADOR_DIR:-}"
-  for lib in \
-    "${_dir}/tools/mf_tela_atualizacao_frontend.sh" \
-    "/root/instalador_single_oficial/tools/mf_tela_atualizacao_frontend.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/mf_tela_atualizacao_frontend.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/tools/mf_tela_atualizacao_frontend.sh"; do
-    [ -n "$lib" ] || continue
-    [ -f "$lib" ] || continue
-    # shellcheck source=/dev/null
-    source <(sed '1s/^\xEF\xBB\xBF//' "$lib")
-    if declare -F mf_frontend_garantir_porta_env >/dev/null 2>&1; then
-      return 0
-    fi
-  done
-
-  printf '%s\n' "ERRO: mf_tela_atualizacao_frontend.sh nao encontrado." >&2
-  return 1
-}
+#!/bin/sh
+# Caminho histórico 7a5b31d: operação adaptada ao Compose oficial, sem ferramentas nativas.
+set -eu
+case "$0" in */*) entry_dir=${0%/*} ;; *) entry_dir=. ;; esac
+installer_root=$(CDPATH= cd -P "$entry_dir/.." && pwd)
+exec sh "$installer_root/instalador_single.sh" helper-unavailable "$@"

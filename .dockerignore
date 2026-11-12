@@ -1,0 +1,5 @@
+**
+!docker/
+!docker/installer/
+!docker/installer/Dockerfile
+!docker/installer/*.cjs
