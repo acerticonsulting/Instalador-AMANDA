@@ -44,10 +44,11 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
   }
   const deploy=require('./deploy.cjs'),automatic=process.env.AMANDA_DEPLOY_LAYOUT==='1';
   let manager = new Manager(process.env.AMANDA_INSTALL_DIR || deploy.BASE);
-  const directory=context=>automatic?c=>deploy.companyDirectory(c.project):context?.parent?c=>path.join(context.parent,'instances',c.project):manager.root;
+  const directory=(context,m=manager)=>automatic?c=>deploy.companyDirectory(c.project):context?.parent?c=>path.join(context.parent,'instances',c.project):m.root;
+  const startInstall=(m,context)=>deploy.startInstallation(m,{question:ask,config:configFile?configInput(configFile):undefined,directory:directory(context,m),automatic,collect:options=>(action==='wizard'?advancedInput:installInput)(undefined,{question:ask,...options,getResources:()=>m.resources()}),manage:target=>new Menus(target,ask,null,{startInstall}).run()});
   if (action === 'menu') {
     if(!process.stdin.isTTY)throw Error('O menu requer terminal interativo. Para instalar sem interação use install --config /arquivo.json.');
-    return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context),getResources:()=>manager.resources()}),{initial,install:(m,input)=>deploy.install(m,input)}).run();
+    return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context),getResources:()=>manager.resources()}),{initial,startInstall}).run();
   }
   if(automatic&&!['menu','install','wizard','doctor','instances'].includes(action)){
     const selection=new Menus(manager,ask,null);await selection.selectInstance();manager=selection.m;
@@ -56,15 +57,15 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
   if (action === 'doctor') return manager.doctor();
   if(action==='migration-plan')return manager.lock(async()=>console.log(JSON.stringify(await deploy.migrationPlan(manager),null,2)));
   if (action === 'unlock') { await manager.doctor(); return manager.unlock(); }
-  if(['configure','instances','urls','services','official','ssl','push','postgres','optional-service','rollback','schedule-backup','wuzapi-start','native-unavailable','channels-unavailable','external-unavailable','helper-unavailable'].includes(action))return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context)})).dispatch(action);
-  if (action === 'install'||action==='wizard') {
-    if(fs.existsSync(manager.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem repetir a configuração ou seeds.');
-    const input = await (action==='wizard'?advancedInput:installInput)(configFile,{directory:directory(),getResources:()=>manager.resources()});
-    return deploy.install(manager,input);
-  }
+  if(['configure','instances','urls','services','official','ssl','push','postgres','optional-service','rollback','schedule-backup','wuzapi-start','native-unavailable','channels-unavailable','external-unavailable','helper-unavailable'].includes(action))return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context)}),{startInstall}).dispatch(action);
+  if (action === 'install'||action==='wizard') return startInstall(manager);
   if (action === 'adopt') {
     const url = configFile ? configInput(configFile).sourceUrl : await ask('Link da plataforma existente (obrigatório)');
     return manager.lock(async () => { await manager.doctor(); await manager.adopt(url); });
+  }
+  if(action==='resume'){
+    let project;try{project=JSON.parse(fs.readFileSync(manager.stateFile,'utf8')).project;}catch{throw Error('Estado ausente ou inválido em '+manager.root+'. Nenhum arquivo foi alterado.');}
+    const info=deploy.inspectInstallation(manager.root,project);if(info.kind==='unknown')throw Error(require('./directory-state.cjs').conflict(info));
   }
   if (action === 'build-token') {
     console.log('O backend usa dependências públicas. Nenhum token de conector é necessário.'); return;

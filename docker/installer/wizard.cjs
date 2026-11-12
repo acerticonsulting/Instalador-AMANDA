@@ -17,7 +17,7 @@ function publicSummary(c,directory){
     postgres:pg.maxConnections+' conexões / shared_buffers '+pg.sharedBuffers,integracoes:['Baileys','Transcrição',...(flags.official?['API Oficial']:[]),...(flags.wuzapi?['WuzAPI']:[]),...(flags.rabbit?['RabbitMQ']:[]),...(['facebook','google','ai'].filter(group=>GROUPS[group].some(([key])=>o.backendEnv?.[key])).map(g=>({facebook:'Facebook',google:'Google OAuth',ai:'OpenAI IVR'})[g])),...(o.pushEmail?['Push']:[]),...(o.initialSettings?.activePaymentGateway?['Pagamentos: '+o.initialSettings.activePaymentGateway]:[])].join(', '),smtp:o.backendEnv?.MAIL_HOST?'Habilitado (conexão '+(o.testSmtp?'será testada':'não testada')+')':'Configurar posteriormente',https:c.edge?'Caddy; certificado ainda não confirmado':'Desabilitado',servicos:selectedServices(o).concat(c.edge?['edge (Caddy)']:[]).join(', '),diretorio:typeof directory==='function'?directory(c):directory,
   };
 }
-async function collectInstallation({question,out=console.log,getResources,directory=process.env.AMANDA_DEPLOY_LAYOUT==='1'?c=>require('./deploy.cjs').companyDirectory(c.project):process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE}={}){
+async function collectInstallation({question,out=console.log,getResources,project,directory=process.env.AMANDA_DEPLOY_LAYOUT==='1'?c=>require('./deploy.cjs').companyDirectory(c.project):process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE}={}){
   const ui=createUI(),draft={sourceUrl:SOURCE,project:'amanda',companyName:'AMANDA',frontendUrl:'http://localhost:3000',backendUrl:'http://localhost:8080',edge:false,public:false,options:{appName:'AMANDA',supportPhone:'',backendEnv:{}}};
   let step=0,mode='3',resources;
   const show=s=>out(ui.text(s));
@@ -48,7 +48,7 @@ async function collectInstallation({question,out=console.log,getResources,direct
       }
       if(draft.frontendUrl===draft.backendUrl)throw Error('Frontend e backend precisam de endereços diferentes.');
     },
-    async()=>{draft.companyName=await read('Nome comercial da empresa',draft.companyName,v=>{if(!v.trim()||v.length>120)throw Error('Informe até 120 caracteres.');return v.trim();});draft.options.appName=await read('Nome de exibição da plataforma',draft.options.appName,v=>{validateOptions({appName:v});return v;});draft.project=await read('Nome técnico do projeto Docker',draft.project,v=>normalizeConfig({sourceUrl:SOURCE,project:v}).project);draft.options.supportPhone=await read('Número de telefone do suporte',draft.options.supportPhone,v=>{validateOptions({supportPhone:v});return v;});},
+    async()=>{draft.companyName=await read('Nome comercial da empresa',draft.companyName,v=>{if(!v.trim()||v.length>120)throw Error('Informe até 120 caracteres.');return v.trim();});draft.options.appName=await read('Nome de exibição da plataforma',draft.options.appName,v=>{validateOptions({appName:v});return v;});draft.project=project||await read('Nome técnico do projeto Docker',draft.project,v=>normalizeConfig({sourceUrl:SOURCE,project:v}).project);draft.options.supportPhone=await read('Número de telefone do suporte',draft.options.supportPhone,v=>{validateOptions({supportPhone:v});return v;});},
     async()=>{
       show('O padrão local é admin@amanda.com.br / adminamanda. Informe a senha que deseja utilizar.');
       const customized=draft.adminPassword&&draft.adminPassword!=='adminamanda'||draft.adminEmail&&draft.adminEmail!=='admin@amanda.com.br';

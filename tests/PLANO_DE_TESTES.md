@@ -1,3 +1,25 @@
+# Reconhecimento de diretórios e preparação recuperável — 12/11/2026
+
+A suíte passa a 131 testes Node, além dos quatro grupos Shell; 83 scripts têm
+sintaxe verificada. A imagem é validada por dez contratos sem rede/socket Docker.
+
+- deploy.test: ausente/vazio/temporários; estado parcial/concluído; origem,
+  empresa, caminho, modos, UID/GID, symlinks/hardlinks e arquivos desconhecidos;
+  checksum; diagnóstico sem segredos; seleção antes das perguntas; CLI real
+  bloqueando diretório desconhecido ou reconhecendo concluído sem daemon.
+- Docker-only: falhas de doctor, clone, configuração, build e migrations;
+  reuso de credenciais/URLs/VAPID; manifesto divergente preservado; recuperação
+  de configuração antiga somente com recursos ausentes; seed executado uma vez.
+- Assistentes: empresa já verificada não é perguntada novamente; perfil
+  PostgreSQL e escolhas administrativas mantidos. Banner, cores e eco preservados.
+- Lock/deploy anteriores: duas empresas, conta deploy, permissões, concorrência,
+  SIGINT/SIGTERM e bloqueios abandonados. Não há desbloqueio cruzado de raízes.
+- Contratos de imagem: useradd em cadastro isolado, módulo classificador
+  empacotado, tradução /host para caminho lógico, gerador Node real e Compose
+  real; retomada de preparação conserva os mesmos bytes do ambiente publicado.
+
+Não são executados instaladores, migrations, seeds ou exclusões em VPS real.
+Homologação operacional depende de alvo e acesso autorizados; nenhum foi fornecido.
 # Dependências públicas e retomada — 12/11/2026
 
 O assistente histórico e o adicional não perguntam token de conector. Regressões

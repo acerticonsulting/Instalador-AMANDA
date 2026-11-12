@@ -140,12 +140,12 @@ class Manager {
   services(){return ['postgres','redis','backend','frontend','api_transcricao',...(this.state.profiles.includes('official')?['api_oficial']:[]),...(this.state.profiles.includes('whatsmeow')?['wuzapi']:[]),...(this.state.profiles.includes('rabbit')?['rabbitmq']:[])];}
   databases(){return ['amanda',...(this.state.profiles.includes('official')?['api_oficial']:[])];}
   async resources(){const info=JSON.parse((await this.docker(['info','--format','{{json .}}'],{quiet:true})).stdout);return {memory:info.MemTotal,cpus:info.NCPU};}
-  load() {
+  load({preparing=false}={}) {
     const s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
     if (s.schema !== 1 || sourceUrl(s.sourceUrl) !== SOURCE || !/^[a-z0-9][a-z0-9_-]{0,39}$/.test(s.project)||!Array.isArray(s.profiles)||s.profiles.some(p=>!['official','whatsmeow','rabbit','edge'].includes(p))) throw Error('Estado do instalador inválido.');
     const relative = path.relative(this.root, s.platform);
     if (relative.startsWith('..') || path.isAbsolute(relative)) throw Error('Plataforma fora do diretório selecionado.');
-    const physicalRoot = fs.realpathSync(this.root), physical = fs.realpathSync(s.platform);
+    const physicalRoot = fs.realpathSync(this.root), physical = preparing&&s.phase==='preparing'&&!fs.existsSync(s.platform)?path.join(physicalRoot,'platform'):fs.realpathSync(s.platform);
     if (physical !== physicalRoot && !physical.startsWith(physicalRoot + path.sep)) throw Error('Link de diretório fora da instalação.');
     this.state = s; this.loadSecrets(); return s;
   }
@@ -234,47 +234,101 @@ class Manager {
     const names=new Set((await this.docker(['ps','-a','--format','{{.Names}}'],{quiet:true})).stdout.trim().split(/\s+/));
     if (ids || Object.values(config.services).some(s=>s.container_name&&names.has(s.container_name)) || Object.values(config.declaredVolumes).some(v => volumes.has(v.name)) || Object.values(config.networks||{}).some(n=>networks.has(n.name)) || networks.has(this.state.project + '_default')) throw Error('Projeto ou volumes já existem. Use adopt para a instalação oficial existente; nenhum seed foi executado.');
   }
-  async prepare(input) {
+  async prepare(input, { resume = false } = {}) {
     const c = normalizeConfig(input);
-    if(c.options.pg){const resources=await this.resources();if(!resources.memory)throw Error('Docker não informou memória para validar PostgreSQL.');validatePg(c.options.pg,resources.memory);}
-    if (fs.existsSync(this.stateFile)) throw Error('Instalação já registrada; use update ou resume.');
-    fs.mkdirSync(this.root, { recursive: true });
-    if (fs.readdirSync(this.root).some(p => p !== '.amanda-installer')) throw Error('Diretório não vazio. Escolha uma pasta nova ou use adopt.');
+    const {inspectInstallation}=require('./deploy.cjs'),{conflict,setupRecord}=require('./directory-state.cjs');
+    const info=inspectInstallation(this.root,c.project);
+    if(info.kind==='unknown')throw Error(conflict(info));
+    if(resume){
+      if(info.kind!=='partial'||info.phase!=='preparing'||!info.savedConfig)throw Error('Preparação interrompida sem configuração salva comprovada. Preserve o diretório e consulte o diagnóstico.');
+      this.state=info.state;
+    }else if(!['absent','empty','temporary'].includes(info.kind))throw Error('Instalação já registrada; use update ou resume.');
+    if(info.savedConfig&&JSON.stringify(info.savedConfig)!==JSON.stringify(c))throw Error('Configuração difere da preparação salva; use a retomada.');
     this.runner.secret(c.adminPassword); this.runner.secret(c.sourceToken); this.runner.secret(c.buildToken);
-    const flags={official:true,wuzapi:true,rabbit:true,...c.options.services};
-    const profiles=[...(flags.official?['official']:[]),...(flags.wuzapi?['whatsmeow']:[]),...(flags.rabbit?['rabbit']:[]),...(c.edge?['edge']:[])];
-    this.save({ schema: 1, sourceUrl: SOURCE, project: c.project, companyName:c.companyName, frontendUrl: c.frontendUrl, backendUrl: c.backendUrl, platform: path.join(this.root,'platform'), profiles, selectiveServices:true, retainedEdgeVolumes:c.edge, phase: 'preparing', initialized: false, seedAttempted: false, seedSucceeded: false });
-    if (c.sourceToken) this.write(path.join(this.private,'source-token'), c.sourceToken);
-    const gitEnv = { GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: path.join(__dirname,'source-askpass.cjs'), AMANDA_SOURCE_TOKEN_FILE: path.join(this.private,'source-token') };
-    await this.runner.run('git',['-c','credential.helper=','clone','--branch','main','--single-branch',SOURCE,this.state.platform], { env: gitEnv, label: 'Obtendo a plataforma autorizada' });
-    await this.runner.run(process.execPath,[path.join(this.state.platform,'docker/configure.cjs')], { cwd: this.state.platform, label: 'Gerando configuração privada no container' });
-    const f = new URL(c.frontendUrl), b = new URL(c.backendUrl);
-    editEnv(path.join(this.state.platform,'.env'), { COMPOSE_PROJECT_NAME: c.project, COMPOSE_PROFILES: this.state.profiles.join(','), USE_WHATSAPP_OFICIAL: String(flags.official), RABBITMQ_ENABLED_GLOBAL: String(flags.rabbit), WUZAPI_URL: flags.wuzapi?'http://wuzapi:8080':'', FRONTEND_URL: c.frontendUrl, BACKEND_URL: c.backendUrl, ALLOWED_ORIGINS: c.frontendUrl, BIND_ADDRESS: c.edge || !c.public ? '127.0.0.1' : '0.0.0.0', PORT_FRONTEND: c.edge ? (c.options.frontendPort||3000) : (f.port || 80), PORT_BACKEND: c.edge ? (c.options.backendPort||8080) : (b.port || 80), FRONTEND_HOST: f.hostname, BACKEND_HOST: b.hostname });
-    // buildToken remains accepted in old configuration files, but is no longer used.
     const o=c.options;
-    for(const v of [o.databasePassword,o.masterPassword,o.officialToken,o.wuzapiToken,...Object.values(o.backendEnv || {})])this.runner.secret(v);
+    for(const v of [o.databasePassword,o.masterPassword,o.officialToken,o.wuzapiToken,...Object.values(o.backendEnv||{})])this.runner.secret(v);
     for(const[k,v]of Object.entries(o.initialSettings||{}))if(/key|token|pass|secret/i.test(k))this.runner.secret(v);
-    const rootOptions={PORT_APIOFICIAL:o.officialPort || 6000,PORT_WUZAPI:o.wuzapiPort || 8090,REACT_APP_NUMBER_SUPPORT:o.supportPhone || ''};
-    rootOptions.OFICIAL_HOST=o.officialUrl?new URL(o.officialUrl).hostname:'';
-    if(o.databasePassword){rootOptions.DB_PASS=o.databasePassword;rootOptions.DB_URI_PASSWORD=encodeURIComponent(o.databasePassword);}
-    if(o.masterPassword)rootOptions.MASTER_KEY=o.masterPassword;
-    if(o.officialToken)rootOptions.TOKEN_API_OFICIAL=o.officialToken;
-    if(o.wuzapiToken)rootOptions.WUZAPI_ADMIN_TOKEN=o.wuzapiToken;
-    if(o.pg){rootOptions.PG_MAX_CONNECTIONS=o.pg.maxConnections;rootOptions.PG_SHARED_BUFFERS=o.pg.sharedBuffers;}
-    const backendOptions={...o.backendEnv};
-    for(const key of ['TRANSCRIBE_URL','URL_API_OFICIAL','WUZAPI_URL','GO_CAMPAIGN_DISPATCHER_URL','USE_GO_CAMPAIGN_DISPATCHER'])if(backendOptions[key]!==undefined){rootOptions[key]=backendOptions[key];delete backendOptions[key];}
-    writeEnv(path.join(this.state.platform,'.env'),rootOptions);
-    if(Object.keys(backendOptions).length)writeEnv(path.join(this.state.platform,'.env.backend'),backendOptions);
-    if(o.pushEmail){const ecdh=crypto.createECDH('prime256v1');ecdh.generateKeys();const{vapidPrivateKey}=require('./options.cjs');backendOptions.VAPID_PUBLIC_KEY=ecdh.getPublicKey().toString('base64url');backendOptions.VAPID_PRIVATE_KEY=vapidPrivateKey(ecdh.getPrivateKey());backendOptions.VAPID_SUBJECT='mailto:'+o.pushEmail;writeEnv(path.join(this.state.platform,'.env.backend'),backendOptions);}
-    this.write(path.join(this.private,'admin-access.json'), { email: c.adminEmail, password: c.adminPassword, appName:o.appName,companyName:c.companyName,initialSettings:o.initialSettings });
-    this.state.testSmtp=Boolean(o.testSmtp);
-    this.state.naming='company-v1';await this.configureNames();await this.identifyManager();
-    this.loadSecrets(); await this.validateSource(true); await this.assertFreshResources();
+    if(o.pg){const resources=await this.resources();if(!resources.memory)throw Error('Docker não informou memória para validar PostgreSQL.');validatePg(o.pg,resources.memory);}
+    fs.mkdirSync(this.root,{recursive:true,mode:0o700});
+    if(!info.savedConfig)this.write(path.join(this.private,'setup.json'),setupRecord(this.root,c));
+    const flags={official:true,wuzapi:true,rabbit:true,...o.services};
+    const profiles=[...(flags.official?['official']:[]),...(flags.wuzapi?['whatsmeow']:[]),...(flags.rabbit?['rabbit']:[]),...(c.edge?['edge']:[])];
+    if(!resume)this.save({schema:1,sourceUrl:SOURCE,project:c.project,companyName:c.companyName,frontendUrl:c.frontendUrl,backendUrl:c.backendUrl,platform:path.join(this.root,'platform'),profiles,selectiveServices:true,retainedEdgeVolumes:c.edge,phase:'preparing',initialized:false,seedAttempted:false,seedSucceeded:false});
+    const tokenFile=path.join(this.private,'source-token');
+    if(c.sourceToken&&!fs.existsSync(tokenFile))this.write(tokenFile,c.sourceToken);
+    const gitEnv={GIT_TERMINAL_PROMPT:'0',GIT_ASKPASS:path.join(__dirname,'source-askpass.cjs'),AMANDA_SOURCE_TOKEN_FILE:tokenFile};
+    if(!fs.existsSync(this.state.platform))await this.runner.run('git',['-c','credential.helper=','clone','--branch','main','--single-branch',SOURCE,this.state.platform],{env:gitEnv,label:'Obtendo a plataforma autorizada'});
+    else await this.validateSource(true);
+    // Prepare private staging files first. Publish only absent files or identical bytes.
+    // A crash never requires overwriting an existing environment or regenerating its keys.
+    const configRoot=path.join(this.private,'setup-files');
+    fs.mkdirSync(configRoot,{recursive:true,mode:0o700});
+    const admin={email:c.adminEmail,password:c.adminPassword,appName:o.appName,companyName:c.companyName,initialSettings:o.initialSettings};
+    const adminBytes=JSON.stringify(admin,null,2)+'\n';
+    const fingerprint=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
+    if(!this.state.configurationFiles){
+      const example=path.join(configRoot,'.env.example');
+      if(!fs.existsSync(example)){fs.copyFileSync(path.join(this.state.platform,'.env.example'),example,fs.constants.COPYFILE_EXCL);fs.chownSync(example,process.getuid(),process.getgid());fs.chmodSync(example,0o600);}
+      const stagedEnv=path.join(configRoot,'.env');
+      if(!fs.existsSync(stagedEnv))await this.runner.run(process.execPath,[path.join(this.state.platform,'docker/configure.cjs')],{cwd:configRoot,label:'Preparando configuração privada recuperável no container'});
+      const existing=envValues(stagedEnv);
+      if(!existing.DB_PASS||!existing.JWT_SECRET||!existing.JWT_REFRESH_SECRET)throw Error('Configuração em preparação incompleta; nenhuma chave existente foi substituída.');
+      const f=new URL(c.frontendUrl),b=new URL(c.backendUrl);
+      editEnv(stagedEnv,{COMPOSE_PROJECT_NAME:c.project,COMPOSE_PROFILES:profiles.join(','),USE_WHATSAPP_OFICIAL:String(flags.official),RABBITMQ_ENABLED_GLOBAL:String(flags.rabbit),WUZAPI_URL:flags.wuzapi?'http://wuzapi:8080':'',FRONTEND_URL:c.frontendUrl,BACKEND_URL:c.backendUrl,ALLOWED_ORIGINS:c.frontendUrl,BIND_ADDRESS:c.edge||!c.public?'127.0.0.1':'0.0.0.0',PORT_FRONTEND:c.edge?(o.frontendPort||3000):(f.port||80),PORT_BACKEND:c.edge?(o.backendPort||8080):(b.port||80),FRONTEND_HOST:f.hostname,BACKEND_HOST:b.hostname});
+      const rootOptions={PORT_APIOFICIAL:o.officialPort||6000,PORT_WUZAPI:o.wuzapiPort||8090,REACT_APP_NUMBER_SUPPORT:o.supportPhone||'',OFICIAL_HOST:o.officialUrl?new URL(o.officialUrl).hostname:''};
+      if(o.databasePassword){rootOptions.DB_PASS=o.databasePassword;rootOptions.DB_URI_PASSWORD=encodeURIComponent(o.databasePassword);}
+      if(o.masterPassword)rootOptions.MASTER_KEY=o.masterPassword;
+      if(o.officialToken)rootOptions.TOKEN_API_OFICIAL=o.officialToken;
+      if(o.wuzapiToken)rootOptions.WUZAPI_ADMIN_TOKEN=o.wuzapiToken;
+      if(o.pg){rootOptions.PG_MAX_CONNECTIONS=o.pg.maxConnections;rootOptions.PG_SHARED_BUFFERS=o.pg.sharedBuffers;}
+      const backendOptions={...o.backendEnv};
+      for(const key of ['TRANSCRIBE_URL','URL_API_OFICIAL','WUZAPI_URL','GO_CAMPAIGN_DISPATCHER_URL','USE_GO_CAMPAIGN_DISPATCHER'])if(backendOptions[key]!==undefined){rootOptions[key]=backendOptions[key];delete backendOptions[key];}
+      writeEnv(stagedEnv,rootOptions);
+      if(o.pushEmail){
+        const saved=fs.existsSync(path.join(configRoot,'.env.backend'))?envValues(path.join(configRoot,'.env.backend')):{};
+        if(saved.VAPID_PUBLIC_KEY&&saved.VAPID_PRIVATE_KEY){backendOptions.VAPID_PUBLIC_KEY=saved.VAPID_PUBLIC_KEY;backendOptions.VAPID_PRIVATE_KEY=saved.VAPID_PRIVATE_KEY;}
+        else{const ecdh=crypto.createECDH('prime256v1');ecdh.generateKeys();backendOptions.VAPID_PUBLIC_KEY=ecdh.getPublicKey().toString('base64url');backendOptions.VAPID_PRIVATE_KEY=require('./options.cjs').vapidPrivateKey(ecdh.getPrivateKey());}
+        backendOptions.VAPID_SUBJECT='mailto:'+o.pushEmail;
+      }
+      if(Object.keys(backendOptions).length)writeEnv(path.join(configRoot,'.env.backend'),backendOptions);
+      const files={};for(const name of ['.env','.env.backend'])if(fs.existsSync(path.join(configRoot,name)))files[name]=fingerprint(fs.readFileSync(path.join(configRoot,name)));
+      this.save({...this.state,configurationFiles:files,adminFingerprint:fingerprint(adminBytes),testSmtp:Boolean(o.testSmtp)});
+    }
+    const publish=(file,bytes,expected)=>{
+      if(fingerprint(bytes)!==expected)throw Error('Integridade da configuração em preparação inválida.');
+      if(fs.existsSync(file)){
+        const st=fs.lstatSync(file);if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||fingerprint(fs.readFileSync(file))!==expected)throw Error('Configuração existente difere da preparação salva; nenhum arquivo foi sobrescrito.');
+      }else fs.writeFileSync(file,bytes,{flag:'wx',mode:0o600});
+    };
+    for(const[name,expected]of Object.entries(this.state.configurationFiles)){
+      if(!['.env','.env.backend'].includes(name))throw Error('Arquivo de configuração não autorizado.');
+      publish(path.join(this.state.platform,name),fs.readFileSync(path.join(configRoot,name)),expected);
+    }
+    publish(path.join(this.private,'admin-access.json'),adminBytes,this.state.adminFingerprint);
+    this.state.naming='company-v1';this.save({...this.state,configurationReady:true});
+    await this.configureNames();await this.identifyManager();
+    this.loadSecrets();await this.validateSource(true);await this.assertFreshResources();
     await require('./preflight.cjs').assertPorts(this,await this.configuration());
-    if(c.edge){const hosts=[f.hostname,b.hostname,...(o.officialUrl?[new URL(o.officialUrl).hostname]:[])];await this.runner.run(process.execPath,['-e',`const d=require('node:dns').promises;Promise.all(${JSON.stringify(hosts)}.map(h=>d.lookup(h))).catch(()=>{console.error('DNS: domínio sem resolução; revise os registros antes de instalar.');process.exit(1)})`],{label:'Verificando resolução DNS antes de criar bancos'});}
-    this.save({ ...this.state, phase: 'build', freshResourcesVerified: true });
+    if(c.edge){const hosts=[new URL(c.frontendUrl).hostname,new URL(c.backendUrl).hostname,...(o.officialUrl?[new URL(o.officialUrl).hostname]:[])];await this.runner.run(process.execPath,['-e',`const d=require('node:dns').promises;Promise.all(${JSON.stringify(hosts)}.map(h=>d.lookup(h))).catch(()=>{console.error('DNS: domínio sem resolução; revise os registros antes de instalar.');process.exit(1)})`],{label:'Verificando resolução DNS antes de criar bancos'});}
+    this.save({...this.state,phase:'build',freshResourcesVerified:true});
   }
   async build() { await this.compose(['build',...this.services().filter(s=>['backend','frontend','api_transcricao','api_oficial'].includes(s))], { label: 'Compilando os componentes selecionados dentro do Docker' }); }
+  async recoverLegacyPreparation() {
+    const info=require('./deploy.cjs').inspectInstallation(this.root,this.state.project);
+    if(info.kind!=='partial'||info.phase!=='preparing'||this.state.seedAttempted||this.state.initialized)throw Error('Preparação interrompida sem checkpoint seguro para recuperação.');
+    const envFile=path.join(this.state.platform,'.env'),adminFile=path.join(this.private,'admin-access.json');
+    if(!fs.existsSync(envFile)||!fs.existsSync(adminFile))throw Error('Preparação interrompida sem configuração salva suficiente. Código, credenciais e estado foram preservados; consulte o diagnóstico.');
+    const env=envValues(envFile);let admin;try{admin=JSON.parse(fs.readFileSync(adminFile,'utf8'));}catch{throw Error('Arquivo privado de acesso inválido; conteúdo preservado para diagnóstico.');}
+    if(env.COMPOSE_PROJECT_NAME!==this.state.project||env.FRONTEND_URL!==this.state.frontendUrl||env.BACKEND_URL!==this.state.backendUrl||['DB_PASS','JWT_SECRET','JWT_REFRESH_SECRET','MASTER_KEY','TRANSCRIBE_API_KEY','TOKEN_API_OFICIAL'].some(k=>!env[k]))throw Error('Preparação interrompida com configuração incompleta ou de outra empresa; nenhum arquivo foi substituído.');
+    normalizeConfig({sourceUrl:SOURCE,project:this.state.project,frontendUrl:env.FRONTEND_URL,backendUrl:env.BACKEND_URL,edge:this.state.profiles.includes('edge'),public:env.BIND_ADDRESS==='0.0.0.0',adminEmail:admin.email,adminPassword:admin.password});
+    await this.validateSource(true);
+    if(fs.existsSync(path.join(this.private,'compose-names.json')))this.state.naming='company-v1';
+    const config=await this.configuration();
+    if(env.PG_MAX_CONNECTIONS||env.PG_SHARED_BUFFERS)validatePg({maxConnections:Number(env.PG_MAX_CONNECTIONS),sharedBuffers:env.PG_SHARED_BUFFERS},(await this.resources()).memory);
+    // Existing resources cannot be assumed fresh just because preparation stopped.
+    await this.assertFreshResources();await require('./preflight.cjs').assertPorts(this,config);
+    this.save({...this.state,phase:'build',freshResourcesVerified:true,configurationReady:true});
+  }
   async refreshInterruptedBuild() {
     if (this.state.phase !== 'build' || this.state.initialized || this.state.seedAttempted) return;
     await this.validateSource(true);
@@ -443,7 +497,7 @@ class Manager {
     await this.doctor();
     if (action === 'doctor') return;
     if(action==='resume'&&!fs.existsSync(this.stateFile))throw Error('Instalação ainda não registrada. Inicie pelo comando install.');
-    if(action==='resume'){try{this.load();}catch(e){if(e.code==='ENOENT')throw Error('Preparação interrompida: fonte ou configuração ausente. Preserve o diretório e revise a preparação antes de retomar; não repita seed.');throw e;}if(!this.state.initialized&&!this.state.freshResourcesVerified)throw Error('Preparação interrompida na fase '+this.state.phase+'. Preserve código, configuração e volumes; não é seguro assumir banco novo. Revise a preparação antes de retomar, sem repetir seed.');}
+    if(action==='resume'){try{this.load({preparing:true});if(this.state.phase==='preparing'){const info=require('./deploy.cjs').inspectInstallation(this.root,this.state.project);if(info.savedConfig)await this.prepare(info.savedConfig,{resume:true});else await this.recoverLegacyPreparation();}}catch(e){if(e.code==='ENOENT')throw Error('Preparação interrompida: fonte ou configuração ausente. Preserve o diretório e revise a preparação antes de retomar; não repita seed.');throw e;}if(!this.state.initialized&&!this.state.freshResourcesVerified)throw Error('Preparação interrompida na fase '+this.state.phase+'. Preserve código, configuração e volumes; não é seguro assumir banco novo. Revise a preparação antes de retomar, sem repetir seed.');}
     this.load();await this.identifyManager(); await this.validateSource(); await this.configuration();
     if (action === 'update') return this.update();
     if (action === 'resume') {

@@ -1,3 +1,52 @@
+# Recuperação de diretório existente — 12/11/2026
+
+Objetivo: reconhecer /home/deploy/{empresa} antes do questionário e retomar
+instalações interrompidas, preservando arquivos, credenciais, imagens e volumes.
+
+Causa comprovada: prepare grava state.json, fonte e ambiente antes do build.
+Uma nova escolha de Instalar repetia o questionário e chamava provision, que
+rejeitava qualquer estado/fonte existente, inclusive o checkpoint legítimo da
+falha anterior. O perfil PostgreSQL apenas precedia essa chamada; não era a
+causa. Locks de /root/amanda e /home/deploy/amanda têm escopos diferentes.
+
+Alterados: directory-state.cjs (novo); deploy, manager, cli, menus, historical,
+wizard; bootstrap; README; testes deploy/Docker-only/históricos/contratos da
+imagem e PLANO_DE_TESTES.
+
+Concluído: inspeção somente leitura distingue ausente, vazio, temporários
+conhecidos, parcial, concluído e desconhecido. Verifica identidade da empresa,
+origem, caminhos reais, links/hardlinks, proprietário/grupo, modos privados e
+checksums. Empresa identificada antes das demais perguntas e mantida nos dois
+assistentes. Parcial oferece retomada/diagnóstico; concluída oferece gestão.
+A retomada não chama provision nem apaga estado. A conta deploy do host é lida
+por montagem somente leitura; provisionamento novo mantém o helper Docker.
+
+Preparação: escolhas aprovadas são salvas antes de doctor; novos ambientes são
+montados em área privada, com manifesto antes da publicação exclusiva. Arquivo
+existente diferente nunca é substituído. Reentrada mantém chaves e senhas. A
+cópia nova do exemplo recebe proprietário do processo que a criou; não há
+chown recursivo sobre diretório desconhecido. Estado antigo sem draft só avança
+com configuração coerente, Git validado e ausência comprovada de recursos.
+
+Validação: suíte completa (83 scripts, cinco suítes, 131 testes Node) aprovada.
+O hook revalida o conteúdo preparado para commit.
+Imagem do gerenciador construída; dez contratos isolados aprovados, incluindo
+useradd em cadastro descartável, caminhos lógicos no helper, gerador real e
+parser Compose real após interrupção, sem regenerar credenciais. Novas regressões
+cobrem preparação/clone/build/migrations, falha de doctor, arquivos divergentes,
+seleção antecipada, PostgreSQL, duas empresas e gerenciamento de concluídas.
+Concorrência e recuperação após SIGINT/SIGTERM continuam cobertas.
+
+Limites: nenhuma VPS foi acessada; não foi fornecido endereço/acesso operacional
+para leitura --plataforma. Os testes não iniciam aplicações, bancos ou volumes
+reais. Estado insuficiente/corrompido, permissões inseguras e seed incompleto
+continuam bloqueados com diagnóstico, sem exclusões ou reinicialização.
+
+Próximo passo: revisar/publicar o commit somente quando autorizado, atualizar
+o instalador na VPS e executar resume --dir /home/deploy/amanda. O conserto
+anterior do Baileys precisa estar na main da plataforma para o fetch obtê-lo.
+
+# Histórico das tarefas anteriores
 # Remoção do conector privado — 12/11/2026
 
 Objetivo: clonar somente acerticonsulting/AMANDA main e construir a plataforma

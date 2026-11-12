@@ -299,8 +299,9 @@ Não há restauração de bancos opcionais desabilitados. Backups com seleção 
 volumes ou revisão incompatíveis exigem recuperação isolada com o contrato original.
 Falhas de migration mantêm estado para retomada; voltar imagem não reverte schema.
 Falha durante seed não permite repetição automática: preserve os dados e investigue.
-Falha na preparação antes de registrar recursos não autoriza apagar estado/volumes
-para forçar seed; revise o erro e utilize um diretório novo quando necessário.
+Falha na preparação não autoriza apagar estado ou volumes para forçar seed.
+Use o reconhecimento inicial ou `resume` no mesmo diretório. Configuração salva
+validada é reutilizada; estado insuficiente ou conflitante recebe diagnóstico.
 
 Configurações ficam em `platform/.env`, `.env.backend`, `.env.oficial` quando usado,
 e arquivos legados `.secrets/github_token` preservados, sem uso no build. Estado, histórico, logs filtrados, acesso inicial e
@@ -340,3 +341,46 @@ consumidor e compara a experiência com o instalador original.
 Após disponibilizar a correção na main da AMANDA, execute o comando resume no mesmo diretório da empresa. Na fase build, antes de qualquer seed, o gerenciador busca origin/main e aceita apenas avanço fast-forward de um checkout limpo. Mantém .env, credencial de origem, estado e volumes. Falha de rede ou histórico divergente interrompe a retomada sem reset. Fases posteriores não atualizam o código automaticamente.
 
 O comando legado build-token apenas informa que a credencial não é necessária. A opção histórica de credenciais mantém sua posição no menu e configura somente o acesso à AMANDA.
+
+### Reconhecimento antes do questionário
+
+Ao escolher instalar, o gerenciador pede primeiro o nome técnico da empresa e
+verifica `/home/deploy/{empresa}` antes das perguntas administrativas, URLs e
+PostgreSQL. Essa empresa fica fixa nos dois assistentes. `--dir` mantém o caminho
+explicitamente escolhido; não há migração automática entre `/root/amanda` e
+`/home/deploy/amanda`.
+
+| Diretório | Comportamento |
+|---|---|
+| Inexistente ou vazio | Instalação nova, com conta deploy criada/reutilizada. |
+| Somente temporários privados conhecidos | Verifica nomes, tipos, proprietário, permissões e integridade; reutiliza escolhas salvas quando comprovadas. |
+| Estado válido não concluído | Oferece retomar, diagnóstico sem segredos ou voltar; não reprovisiona. |
+| Estado válido concluído | Oferece gerenciamento/atualização; não repete instalação ou seed. |
+| Origem desconhecida, estado inválido ou links inseguros | Bloqueia antes de gravar configuração e explica o conflito. |
+
+As escolhas confirmadas ficam em `.amanda-installer/setup.json`, privado (600),
+com empresa, origem, caminho e checksum. A configuração é preparada em
+`.amanda-installer/setup-files/`; um manifesto de hashes é registrado antes de
+publicá-la. Um arquivo de destino existente só é aceito quando tem exatamente o
+conteúdo esperado. Diferenças são preservadas e bloqueiam a continuação; não são
+resolvidas por sobrescrita. Senhas e chaves já geradas não são regeneradas.
+Esses arquivos contêm segredos: não os publique nem altere seus modos privados.
+
+Estados antigos de preparação sem esse registro só avançam quando ambiente,
+acesso administrativo, empresa, origem Git e Compose são coerentes e o Docker
+comprova ausência dos recursos que seriam inicializados. Informação ausente,
+clone incompleto sem fonte verificável, corrupção ou recursos sem prova de origem
+exigem diagnóstico; nenhum dado é removido para contornar a proteção.
+
+Para a empresa do exemplo, depois de atualizar o código do instalador:
+
+```sh
+sh instalador_single.sh resume --dir /home/deploy/amanda
+```
+
+Também é possível escolher instalar e informar `amanda`: o estado existente é
+reconhecido antes do restante do questionário. Um `unlock --dir /root/amanda`
+atua somente naquele diretório e não desbloqueia `/home/deploy/amanda`.
+Falhas de build reutilizam configuração/código e cache de imagens; migrations
+retomam seus checkpoints. Seed iniciado e não concluído continua bloqueado para
+evitar repetição indiscriminada. Não remova diretórios, estado ou volumes.

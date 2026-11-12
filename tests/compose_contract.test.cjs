@@ -46,3 +46,40 @@ test('built manager provisions deploy in a disposable Linux account database',()
  const owner=provision('amanda',{host});assert.ok(owner.uid>0);const before=fs.readFileSync(host+'/etc/passwd','utf8');provision('acerti',{host});assert.equal(fs.readFileSync(host+'/etc/passwd','utf8'),before);assert.equal(fs.statSync(host+BASE+'/amanda').uid,owner.uid);assert.equal(fs.statSync(host+BASE+'/acerti').mode&0o777,0o700);assert.ok(!fs.readFileSync(host+'/etc/group','utf8').includes('docker'));assert.ok(!fs.readFileSync(host+'/etc/group','utf8').includes('sudo'));
  }finally{fs.rmSync(host,{recursive:true});}
 });
+
+test('built image includes read-only classification and preserves logical paths inside provisioning mount',()=>{
+ const {inspectDirectory,setupRecord}=require('/opt/amanda-installer/directory-state.cjs'),root=fs.mkdtempSync(path.join(os.tmpdir(),'amanda-classification-'));
+ try{
+  const logical='/home/deploy/acerti',config=require('../docker/installer/manager.cjs').normalizeConfig({sourceUrl:'https://github.com/acerticonsulting/AMANDA.git',project:'acerti'});
+  fs.mkdirSync(root+'/.amanda-installer',{mode:0o700});fs.writeFileSync(root+'/.amanda-installer/setup.json',JSON.stringify(setupRecord(logical,config)),{mode:0o600});
+  assert.equal(inspectDirectory(root,{project:'acerti',logicalRoot:logical}).kind,'temporary');
+  assert.equal(inspectDirectory(root,{project:'acerti'}).kind,'unknown');
+ }finally{fs.rmSync(root,{recursive:true});}
+});
+
+test('real generator and Compose resume staged preparation without regenerating published credentials',async()=>{
+ const source=process.env.AMANDA_PLATFORM_SOURCE,root=fs.mkdtempSync(path.join(os.tmpdir(),'amanda-staged-contract-')),platform=path.join(root,'platform');
+ const {SOURCE,normalizeConfig}=require('../docker/installer/manager.cjs'),{setupRecord}=require('../docker/installer/directory-state.cjs');
+ try{
+  fs.mkdirSync(platform+'/docker',{recursive:true});for(const file of ['docker-compose.yml','.env.example','docker/configure.cjs'])fs.copyFileSync(path.join(source,file),path.join(platform,file));
+  fs.writeFileSync(platform+'/.gitignore','.env\n.env.backend\n.secrets/\n');
+  const git=args=>execFileSync('git',args,{cwd:platform,stdio:'pipe'});git(['init']);git(['add','.']);git(['-c','user.name=fixture','-c','user.email=fixture@example.test','commit','-m','fixture']);git(['remote','add','origin',SOURCE]);
+  class StagingRunner extends Runner{
+   constructor(){super(null,{write(){}});this.block=true;this.generations=0;}
+   async run(bin,args,options){
+    if(bin===process.execPath){this.generations++;return super.run(bin,args,options);}
+    if(bin==='git')return super.run(bin,args,options);
+    if(bin!=='docker')throw Error('Unexpected test command');
+    if(args[0]==='compose'&&args.includes('config')){if(this.block)throw Error('synthetic config interruption');return super.run(bin,args,options);}
+    if(args[0]==='info')return {stdout:JSON.stringify({MemTotal:8*1024**3,NCPU:4}),code:0};
+    return {stdout:'',code:0}; // No daemon or containers are accessed by this contract test.
+   }
+  }
+  const runner=new StagingRunner(),m=new Manager(root,runner),c=normalizeConfig({sourceUrl:SOURCE,project:'acerti',adminPassword:'kept-choice',options:{pg:{maxConnections:100,sharedBuffers:'128MB'},services:{official:false,wuzapi:false,rabbit:false}}});
+  m.write(path.join(m.private,'setup.json'),setupRecord(root,c));m.save({schema:1,sourceUrl:SOURCE,project:'acerti',platform,profiles:[],selectiveServices:true,phase:'preparing',initialized:false,seedAttempted:false,seedSucceeded:false});
+  await assert.rejects(m.prepare(c,{resume:true}),/synthetic config interruption/);
+  const before=fs.readFileSync(platform+'/.env','utf8');assert.match(envValues(platform+'/.env').JWT_SECRET,/^[a-f0-9]{64}$/);
+  runner.block=false;await m.prepare(c,{resume:true});assert.equal(m.state.phase,'build');assert.equal(fs.readFileSync(platform+'/.env','utf8'),before);assert.equal(runner.generations,1);
+  const config=await m.configuration();assert.equal(config.services.backend.environment.DB_HOST,'postgres');assert.equal(config.services.postgres.command.includes('max_connections=100'),true);assert.equal(JSON.parse(fs.readFileSync(m.private+'/admin-access.json')).password,'kept-choice');
+ }finally{fs.rmSync(root,{recursive:true});}
+});

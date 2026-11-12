@@ -64,6 +64,7 @@ docker run --rm --name "${bootstrap}_build" --mount "type=bind,source=$socket,ta
 terminal=-i
 if [ -t 0 ] && [ -t 1 ]; then terminal=-it; fi
 set -- run --rm --init --name "$bootstrap" "$terminal" --mount "type=bind,source=$socket,target=/var/run/docker.sock" -e "AMANDA_MANAGER_CONTAINER=$bootstrap" -e TERM -e COLORTERM -e NO_COLOR -e WT_SESSION -e DOCKER_HOST=unix:///var/run/docker.sock -e "AMANDA_DOCKER_SOCKET=$socket" -e "AMANDA_DEPLOY_LAYOUT=$deploy_layout" -e "AMANDA_INSTALL_DIR=$target" -e "AMANDA_MANAGER_IMAGE=$image"
+set -- "$@" --mount type=bind,source=/etc/passwd,target=/run/amanda-host-passwd,readonly
 case "$action" in help|doctor) ;; *) set -- "$@" -v "$target:$target" ;; esac
 if [ "$deploy_layout" = 1 ] && [ "$target" != /home/deploy ]; then set -- "$@" -v /home/deploy:/home/deploy; fi
 if [ -n "$config" ]; then

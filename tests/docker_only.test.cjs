@@ -42,6 +42,7 @@ class FakeRunner {
       if(args.includes('clone')) {
         const dir=args.at(-1); fs.mkdirSync(path.join(dir,'.git/info'),{recursive:true});fs.mkdirSync(path.join(dir,'.secrets'));fs.mkdirSync(path.join(dir,'docker'));
         fs.writeFileSync(path.join(dir,'docker-compose.yml'),'# official test fixture\n');fs.writeFileSync(path.join(dir,'docker/ensure-transcription-key.cjs'),'');fs.writeFileSync(path.join(dir,'.secrets/github_token'),'');
+        fs.writeFileSync(path.join(dir,'.env.example'),defaultEnv);
       }
       if(args.includes('get-url'))stdout=options.cwd?.includes('/addons/')?(this.addonRemote||this.remote):this.remote;
       if(args.includes('status'))stdout=this.dirty?' M docker-compose.yml\n':'';
@@ -50,7 +51,7 @@ class FakeRunner {
         if(args.includes('merge')&&this.invalidateAddonOnMerge)this.addonValid=false;
         if(args.includes('checkout')&&this.invalidateAddonOnMerge)this.addonValid=true;
       }
-    } else if(bin===process.execPath && args[0].endsWith('configure.cjs')) fs.writeFileSync(path.join(options.cwd,'.env'),defaultEnv);
+    } else if(bin===process.execPath && args[0].endsWith('configure.cjs')) fs.writeFileSync(path.join(options.cwd,'.env'),defaultEnv,{mode:0o600});
     else if(bin==='docker') {
       if(args[0]==='info')stdout=JSON.stringify({OSType:'linux',ServerVersion:'27.5.1',Architecture:'x86_64',MemTotal:8*1024**3,NCPU:4});
       else if(args[0]==='volume'){if(args[1]==='inspect'&&this.volumeAbsent)return {stdout:'',stderr:'',code:1};stdout=this.existing.join('\n');}
@@ -80,6 +81,77 @@ class FakeRunner {
   }
 }
 async function fixture() { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());return {...t,runner,m}; }
+
+test('preparation interrupted before configuration resumes saved choices without another clone or questionnaire',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  r.fail=c=>c.bin===process.execPath&&c.args[0].endsWith('configure.cjs');
+  const config=input({sourceToken:'synthetic-source',adminPassword:'selected-password',options:{pg:{maxConnections:100,sharedBuffers:'128MB'}}});
+  await assert.rejects(m.prepare(config));assert.equal(m.state.phase,'preparing');assert.ok(fs.existsSync(path.join(m.private,'setup.json')));
+  r.fail=null;await m.execute('resume');assert.equal(m.state.phase,'ready');assert.equal(r.calls.filter(c=>c.bin==='git'&&c.args.includes('clone')).length,1);assert.equal(r.calls.filter(isSeed).length,1);
+  assert.equal(fs.readFileSync(path.join(m.private,'source-token'),'utf8'),'synthetic-source');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(m.private,'admin-access.json'))).password,'selected-password');assert.equal(envValues(path.join(m.state.platform,'.env')).PG_MAX_CONNECTIONS,'100');
+ }finally{t.cleanup();}
+});
+
+test('source acquisition failure resumes saved company without creating a second deployment',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  r.fail=c=>c.bin==='git'&&c.args.includes('clone');await assert.rejects(m.prepare(input({adminPassword:'saved-choice'})));assert.ok(!fs.existsSync(m.state.platform));
+  r.fail=null;await require('../docker/installer/deploy.cjs').startInstallation(m,{automatic:false,question:async()=> '1',collect:async()=>{throw Error('must not repeat questions');},out(){}});
+  assert.equal(m.state.phase,'ready');assert.equal(r.calls.filter(isSeed).length,1);assert.equal(JSON.parse(fs.readFileSync(path.join(m.private,'admin-access.json'))).password,'saved-choice');assert.ok(!r.calls.some(c=>c.args.includes('--provision')));
+ }finally{t.cleanup();}
+});
+
+test('failed Docker preflight retains approved configuration before preparation starts',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  const deploy=require('../docker/installer/deploy.cjs');r.fail=c=>c.bin==='docker'&&c.args[0]==='info';await assert.rejects(deploy.install(m,input({adminPassword:'approved-choice'})));assert.ok(!fs.existsSync(m.stateFile));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(m.private,'setup.json'))).config.adminPassword,'approved-choice');r.fail=null;
+  await deploy.startInstallation(m,{automatic:false,config:input(),collect:async()=>{throw Error('must not repeat questionnaire');},out(){}});
+  assert.equal(m.state.phase,'ready');assert.equal(JSON.parse(fs.readFileSync(path.join(m.private,'admin-access.json'))).password,'approved-choice');
+ }finally{t.cleanup();}
+});
+test('failure after configuration publication reuses exact credentials, URLs and push keys on resume',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  r.fail=c=>c.bin==='docker'&&c.args.includes('config');
+  await assert.rejects(m.prepare(input({adminPassword:'kept-password',options:{pushEmail:'owner@example.test'}})));
+  const env=fs.readFileSync(path.join(m.state.platform,'.env'),'utf8'),backend=fs.readFileSync(path.join(m.state.platform,'.env.backend'),'utf8'),account=fs.readFileSync(path.join(m.private,'admin-access.json'),'utf8');
+  assert.equal(m.state.configurationReady,true);r.fail=null;await m.execute('resume');
+  assert.equal(fs.readFileSync(path.join(m.state.platform,'.env'),'utf8'),env);assert.equal(fs.readFileSync(path.join(m.state.platform,'.env.backend'),'utf8'),backend);assert.equal(fs.readFileSync(path.join(m.private,'admin-access.json'),'utf8'),account);
+  assert.equal(r.calls.filter(c=>c.bin===process.execPath&&c.args[0].endsWith('configure.cjs')).length,1);assert.equal(r.calls.filter(isSeed).length,1);
+ }finally{t.cleanup();}
+});
+test('changed configuration after interrupted preparation is preserved and blocks publication and seeds',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  r.fail=c=>c.bin==='docker'&&c.args.includes('config');await assert.rejects(m.prepare(input()));r.fail=null;
+  const file=path.join(m.state.platform,'.env');fs.appendFileSync(file,'CUSTOM=keep\n');const before=fs.readFileSync(file,'utf8');
+  await assert.rejects(m.execute('resume'),/nenhum arquivo foi sobrescrito/);assert.equal(fs.readFileSync(file,'utf8'),before);assert.equal(r.calls.filter(isSeed).length,0);
+ }finally{t.cleanup();}
+});
+test('install recognizes a failed build and resumes existing configuration without reprovisioning',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  const deploy=require('../docker/installer/deploy.cjs');r.fail=c=>c.bin==='docker'&&c.args.includes('build');await assert.rejects(deploy.install(m,input({adminPassword:'keep-me'})));
+  const before=fs.readFileSync(path.join(m.state.platform,'.env'),'utf8');r.fail=null;
+  await deploy.startInstallation(m,{automatic:false,config:input(),collect:async()=>{throw Error('must not collect');},out(){}});
+  assert.equal(m.state.phase,'ready');assert.equal(fs.readFileSync(path.join(m.state.platform,'.env'),'utf8'),before);assert.equal(r.calls.filter(isSeed).length,1);assert.equal(r.calls.filter(c=>c.bin==='git'&&c.args.includes('clone')).length,1);assert.ok(!r.calls.some(c=>c.args.includes('--provision')||c.args.includes('down')));
+ }finally{t.cleanup();}
+});
+test('first-install migration failure resumes claimed resources without reasserting an empty project',async()=>{
+ const t=await fixture();try{
+  t.runner.fail=c=>c.args.includes('run')&&c.args.includes('migrate');await assert.rejects(t.m.initialize());assert.equal(t.m.state.phase,'migrations');assert.equal(t.m.state.resourcesClaimed,true);
+  const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');t.runner.fail=null;t.runner.existing=['amanda_postgres_data'];await t.m.execute('resume');assert.equal(t.m.state.phase,'ready');assert.equal(t.runner.calls.filter(isSeed).length,1);assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+ }finally{t.cleanup();}
+});
+
+test('older prepared state without draft resumes only with consistent private config and proven empty resources',async()=>{
+ for(const occupied of [false,true]){const t=await fixture();try{
+  fs.unlinkSync(path.join(t.m.private,'setup.json'));fs.rmSync(path.join(t.m.private,'setup-files'),{recursive:true});
+  const state={...t.m.state,phase:'preparing'};for(const key of ['freshResourcesVerified','configurationFiles','configurationReady','adminFingerprint','naming'])delete state[key];t.m.save(state);
+  writeEnv(path.join(t.m.state.platform,'.env'),{MASTER_KEY:'fixture-master',TOKEN_API_OFICIAL:'fixture-official'});
+  const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');if(occupied)t.runner.existing=['amanda_postgres_data'];
+  if(occupied){await assert.rejects(t.m.execute('resume'),/volumes já existem/);assert.equal(t.runner.calls.filter(isSeed).length,0);assert.equal(t.m.state.phase,'preparing');}
+  else{await t.m.execute('resume');assert.equal(t.m.state.phase,'ready');assert.equal(t.runner.calls.filter(isSeed).length,1);}
+  assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+ }finally{t.cleanup();}}
+});
 test('company names are normalized separately from commercial titles',()=>{
   assert.equal(normalizeConfig(input({project:' ÁCERTI Filial-2 '})).project,'acerti_filial_2');
   for(const project of ['../x','a;id','a/b','_x','💜','a.b'])assert.throws(()=>normalizeConfig(input({project})));
@@ -470,6 +542,12 @@ test('eleven-stage wizard configures localhost and reviews all public choices',a
   assert.equal(c.frontendUrl,'http://localhost:3000');assert.equal(c.backendUrl,'http://localhost:8080');assert.equal(c.adminEmail,'admin@amanda.com.br');assert.equal(c.companyName,'AMANDA');assert.equal(c.options.pg.sharedBuffers,'128MB');
   for(let i=1;i<=11;i++)assert.ok(output.some(s=>s.includes('[ETAPA '+String(i).padStart(2,'0')+'/11]')));
   assert.ok(output.join('').includes('/srv/local'));assert.ok(prompts.find(a=>a[0].startsWith('MASTER_KEY'))[2]);
+});
+
+test('wizard keeps the preflight company fixed while retaining PostgreSQL and administrative choices',async()=>{
+ const prompts=[],q=wizardQuestion({'Nome técnico do projeto Docker':'other','Perfil PostgreSQL':'2'});
+ const c=await installInput(undefined,{project:'acerti',out(){},question:(...args)=>{prompts.push(args[0]);return q(...args);}});
+ assert.equal(c.project,'acerti');assert.equal(c.options.pg.maxConnections,200);assert.ok(!prompts.some(p=>p.startsWith('Nome técnico do projeto Docker')));assert.equal(c.adminEmail,'admin@amanda.com.br');
 });
 test('HTTPS wizard accepts distinct domains and custom administrator without leaking secrets in review',async()=>{
   const output=[],password='custom$#strongPassword',c=await installInput(undefined,{out:s=>output.push(s),question:wizardQuestion({'Tipo de instalação':'1','URL do frontend HTTPS':'app.example.com','URL do backend HTTPS':'https://api.example.com','E-mail do administrador':'owner@example.com','Senha do administrador':password,'Confirmação da senha':password,'URL pública HTTPS da API Oficial':'official.example.com'})});

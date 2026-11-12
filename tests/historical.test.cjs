@@ -27,11 +27,12 @@ test('interactive credentials echo normally without showing stored defaults',asy
 });
 const plain=s=>s.replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');
 function historical(screen){const result=spawnSync('sh',['-c','clear(){ :; }\n'+original.banner+'\n'+original[screen]],{encoding:'utf8',env:{PATH:process.env.PATH,nome_titulo:'AMANDA'}});assert.equal(result.status,0,result.stderr);return result.stdout;}
-function input(changes={}){
+function input(changes={},project){
  const answers=['1','localhost','owner@example.test','acerti','db$secure','master$secure','Minha AMANDA','5511999999999','app-id','fb$secret','gh$token',SOURCE,'s','admin$secret','admin$secret','s','0'];
  for(const[k,v]of Object.entries(changes))answers[+k]=v;
+ if(project)answers.splice(3,1);
  const output=[],prompts=[];let index=0;
- return {output,prompts,options:{out:s=>output.push(s),directory:'/srv/acerti',question:async(label,fallback,secret)=>{prompts.push({label,secret,screen:output.at(-1)});if(index>=answers.length)throw Error('Pergunta inesperada: '+label);const value=answers[index++];return value===undefined?fallback??'':value;}}};
+ return {output,prompts,options:{project,out:s=>output.push(s),directory:'/srv/acerti',question:async(label,fallback,secret)=>{prompts.push({label,secret,screen:output.at(-1)});if(index>=answers.length)throw Error('Pergunta inesperada: '+label);const value=answers[index++];return value===undefined?fallback??'':value;}}};
 }
 test('7a5b31d main presentation and banner are recovered verbatim except the unsafe scheduler label',()=>{
  assert.equal(plain(render('main')),historical('main').replace('Configurar Watchtower','Configurar Atualização Agendada'));
@@ -56,6 +57,13 @@ test('default interactive installation uses the historical question order and ke
  const visible=t.output.join('\n');for(const secret of ['db$secure','master$secure','fb$secret','gh$token','admin$secret','build$secret'])assert.ok(!visible.includes(secret));
  assert.ok(visible.includes('Minha AMANDA'));assert.ok(visible.includes('/srv/acerti'));assert.ok(visible.includes('[oculta]'));
  assert.ok(!/GoFlow|PgBouncer/.test(visible));
+});
+
+test('historical collector preserves the company checked before questionnaire and PostgreSQL selection',async()=>{
+ const t=input({16:'2'},'acerti'),c=await collectHistorical(t.options);
+ assert.equal(c.project,'acerti');assert.equal(c.options.pg.maxConnections,200);
+ assert.ok(!t.prompts.some(p=>p.screen?.includes('Digite o nome da sua empresa')));
+ assert.equal(c.adminEmail,'owner@example.test');assert.equal(c.adminPassword,'admin$secret');
 });
 test('official URL variants and custom IP ports survive the original form',async()=>{
  for(const url of [SOURCE,SOURCE+'/',SOURCE.replace('.git',''),SOURCE.replace('.git','')+'/']){
