@@ -493,3 +493,12 @@ test('historical administrative selection targets only the selected managed inst
   const canceled=new Menus(t.m,async()=> '0',null,{out:()=>{}});await assert.rejects(canceled.selectInstance(),/cancelada/);assert.equal(canceled.m,t.m);
  }finally{t.cleanup();}
 });
+test('deploy ownership persists through clone, migrations, update, backup, restore and lock cleanup',async()=>{
+ const base='/home/deploy',root=base+'/test_'+require('node:crypto').randomBytes(8).toString('hex');fs.mkdirSync(base,{recursive:true});fs.mkdirSync(root);const m=new Manager(root,new FakeRunner());m.deploymentOwner={uid:12345,gid:12346};
+ try{await m.lock(async()=>{await m.prepare(input());await m.build();await m.initialize();});assert.equal(m.state.deploymentOwner.uid,12345);const envFile=path.join(m.state.platform,'.env'),env=fs.readFileSync(envFile,'utf8');assert.equal(fs.statSync(envFile).uid,12345);assert.equal(fs.statSync(envFile).mode&0o777,0o600);
+ await m.lock(()=>m.execute('update'));const backup=m.state.lastBackup;assert.equal(fs.statSync(path.join(backup,'amanda.dump')).uid,12345);await new Operations(m).restore(backup,'all','RESTAURAR amanda');assert.equal(fs.readFileSync(envFile,'utf8'),env);assert.equal(fs.statSync(m.stateFile).uid,12345);assert.ok(!fs.existsSync(path.join(m.private,'operation.lock')));assert.equal(m.runner.calls.filter(isSeed).length,1);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('deploy migration plan validates backup and inventories mounts without changing the existing installation',async()=>{
+ const t=await fixture();try{await t.m.initialize();await t.m.backup();const before=fs.readFileSync(t.m.stateFile,'utf8');t.runner.calls=[];const plan=await require('../docker/installer/deploy.cjs').migrationPlan(t.m);assert.equal(plan.source,t.root);assert.equal(plan.destination,'/home/deploy/amanda');assert.equal(plan.backupVerified,true);assert.equal(plan.automaticMigration,false);assert.equal(fs.readFileSync(t.m.stateFile,'utf8'),before);assert.ok(!t.runner.calls.some(c=>c.args.includes('stop')||c.args.includes('up')||isSeed(c)));fs.appendFileSync(path.join(t.m.state.lastBackup,'amanda.dump'),'invalid');await assert.rejects(require('../docker/installer/deploy.cjs').migrationPlan(t.m),/Integridade/);}finally{t.cleanup();}
+});

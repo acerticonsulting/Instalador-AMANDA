@@ -89,7 +89,7 @@ class Runner {
   }
   emit(text) {
     const safe = this.mask(text); this.output.write(safe);
-    if (this.logFile) { fs.mkdirSync(path.dirname(this.logFile), { recursive: true, mode: 0o700 }); fs.appendFileSync(this.logFile, safe, { mode: 0o600 }); }
+    if (this.logFile) { fs.mkdirSync(path.dirname(this.logFile), { recursive: true, mode: 0o700 });const fd=fs.openSync(this.logFile,fs.constants.O_APPEND|fs.constants.O_CREAT|fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW,0o600);try{fs.appendFileSync(fd,safe);const owner=this.deploymentOwner?.();if(owner){if(!Number.isInteger(owner.uid)||owner.uid<=0||!Number.isInteger(owner.gid)||owner.gid<0)throw Error('Proprietário do log inválido.');fs.fchownSync(fd,owner.uid,owner.gid);fs.fchmodSync(fd,0o600);}}finally{fs.closeSync(fd);} }
   }
   async run(bin, args, options = {}) {
     const { quiet = false, label = bin, env = {}, cwd, allowFailure = false, outputFile, inputFile } = options;
@@ -132,10 +132,11 @@ class Manager {
     this.root = rootPath(root); this.private = path.join(this.root, '.amanda-installer');
     this.stateFile = path.join(this.private, 'state.json');
     this.runner = runner || new Runner(path.join(this.private, 'install.log'));
+    this.runner.deploymentOwner=()=>this.deploymentOwner||this.state?.deploymentOwner;
     this.operationScope=new AsyncLocalStorage();
   }
   write(file, value) { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n', { mode: 0o600 }); }
-  save(state) { this.write(this.stateFile + '.tmp', state); fs.renameSync(this.stateFile + '.tmp', this.stateFile); this.state = state; }
+  save(state) { if(this.deploymentOwner)state={...state,deploymentOwner:this.deploymentOwner};this.write(this.stateFile + '.tmp', state); fs.renameSync(this.stateFile + '.tmp', this.stateFile); this.state = state; }
   services(){return ['postgres','redis','backend','frontend','api_transcricao',...(this.state.profiles.includes('official')?['api_oficial']:[]),...(this.state.profiles.includes('whatsmeow')?['wuzapi']:[]),...(this.state.profiles.includes('rabbit')?['rabbitmq']:[])];}
   databases(){return ['amanda',...(this.state.profiles.includes('official')?['api_oficial']:[])];}
   async resources(){const info=JSON.parse((await this.docker(['info','--format','{{json .}}'],{quiet:true})).stdout);return {memory:info.MemTotal,cpus:info.NCPU};}
@@ -461,7 +462,7 @@ class Manager {
   }
   async lock(fn) {
     if(this.operationScope.getStore()===this)return fn();
-    return require('./operation-lock.cjs').withLock(this,()=>this.operationScope.run(this,fn));
+    return require('./operation-lock.cjs').withLock(this,async()=>{try{return await this.operationScope.run(this,fn);}finally{require('./deploy.cjs').ownership(this);}});
   }
   async unlock() {
     return require('./operation-lock.cjs').withLock(this,null,true);

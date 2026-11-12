@@ -173,9 +173,9 @@ class Operations {
     m.runner.emit('Portainer: https://localhost:'+port+' — concluir cadastro administrativo pelo navegador.\n');}
   async ghcr(username,token){await this.ready();if(!/^[a-zA-Z0-9-]+$/.test(username)||!token||/[\r\n]/.test(token))throw Error('Credencial GHCR inválida.');const m=this.m;m.runner.secret(token);const dir=path.join(m.private,'docker-auth'),file=path.join(m.private,'registry-input');fs.mkdirSync(dir,{recursive:true,mode:0o700});m.write(file,token);
     try{await m.docker(['--config',dir,'login','ghcr.io','--username',username,'--password-stdin'],{inputFile:file,label:'Autenticando no GHCR com credencial privada'});const config=path.join(dir,'config.json');if(fs.existsSync(config))fs.chmodSync(config,0o600);}finally{fs.unlinkSync(file);}}
-  async instance(config){const m=this.m,c=normalizeConfig(config);if(c.project===m.state?.project)throw Error('Use nome diferente para a nova instância.');const nested=new Manager(path.join(m.root,'instances',c.project));await nested.lock(async()=>{await nested.doctor();await nested.prepare(c);await nested.build();await nested.initialize();});return nested;}
+  async instance(config){const m=this.m,c=normalizeConfig(config);if(c.project===m.state?.project)throw Error('Use nome diferente para a nova instância.');if(process.env.AMANDA_DEPLOY_LAYOUT==='1')return require('./deploy.cjs').install(m,c);const nested=new Manager(path.join(m.root,'instances',c.project));await nested.lock(async()=>{await nested.doctor();await nested.prepare(c);await nested.build();await nested.initialize();});return nested;}
 }
 for(const name of ['services','configure','identity','enableService','settings','databases','restore','rollback','importDatabase','uninstall','schedule','portainer','ghcr','instance']){
-  const action=Operations.prototype[name];Operations.prototype[name]=function(...args){return this.m.lock(()=>action.apply(this,args));};
+  const action=Operations.prototype[name];Operations.prototype[name]=function(...args){if(name==='instance'&&process.env.AMANDA_DEPLOY_LAYOUT==='1')return action.apply(this,args);return this.m.lock(()=>action.apply(this,args));};
 }
 module.exports={Operations};

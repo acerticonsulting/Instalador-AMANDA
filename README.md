@@ -18,7 +18,7 @@ Na pasta onde deseja guardar o instalador:
 
 ```sh
 docker run --rm --name "amanda_download_$$" -v "$PWD:/workspace" -w /workspace alpine/git clone https://github.com/acerticonsulting/Instalador-AMANDA.git Instalador-AMANDA
-sh Instalador-AMANDA/instalador_single.sh install --dir "$HOME/amanda"
+sh Instalador-AMANDA/instalador_single.sh install
 ```
 
 Ou execute `sh ./instalador_single.sh` dentro do clone para abrir o menu principal.
@@ -28,6 +28,34 @@ A preparação da imagem pode baixar ferramentas; instalar a plataforma exige a
 confirmação final. Use sempre o mesmo diretório absoluto nas operações seguintes.
 
 ## Instalação com a interface histórica
+
+Novas instalações usam `/home/deploy/{empresa}`: `amanda` fica em
+`/home/deploy/amanda` e `acerti` em `/home/deploy/acerti`. O caminho exibido no
+resumo acompanha o identificador informado. O usuário de sistema `deploy` é
+criado após a confirmação, quando necessário, com shell sem login; contas
+existentes mantêm senha, grupos, shell e configuração. Não são concedidos sudo
+nem acesso ao grupo Docker. A aplicação continua executando em containers.
+
+O helper administrativo roda em container, com montagem restrita do cadastro
+Linux e da base deploy. Os diretórios exclusivos ficam com modo 700; `.env`,
+estado e credenciais mantêm seus modos privados e pertencem a deploy. O gerenciador
+continua precisando de autorização administrativa para acessar o daemon.
+Criar contas no host exige um daemon com essa autoridade; Docker rootless continua
+utilizável para instalações já preparadas selecionadas explicitamente por `--dir`.
+
+Instalações registradas nos caminhos históricos são detectadas e preservadas;
+use `--dir /caminho/existente` para selecionar explicitamente outra instalação.
+Esse parâmetro também mantém o destino explícito em homologação isolada. Nenhuma
+instalação é movida ou tem sua propriedade convertida automaticamente.
+Para avaliar uma migração separada:
+
+```sh
+sh instalador_single.sh migration-plan --dir /root/amanda
+```
+
+O comando confere fonte, serviços, montagens, volumes e eventual backup com hashes,
+sem copiar ou mover dados. Siga o [procedimento de migração](MIGRACAO_DEPLOY.md)
+somente com autorização específica e backup validado.
 
 `install` e a opção 1 usam as perguntas extraídas do commit
 `7a5b31da3ce48fb50fe451fbcbe840f725fa8838`: modo IP/local ou domínio, backend

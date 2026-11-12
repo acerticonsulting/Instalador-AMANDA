@@ -42,18 +42,25 @@ stop preserva volumes. update gera backup e não executa seeds.
 adopt verifica uma instalação oficial existente antes de registrá-la.
 Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em containers.`); return;
   }
-  const manager = new Manager(process.env.AMANDA_INSTALL_DIR || '/opt/amanda');
+  const deploy=require('./deploy.cjs'),automatic=process.env.AMANDA_DEPLOY_LAYOUT==='1';
+  let manager = new Manager(process.env.AMANDA_INSTALL_DIR || deploy.BASE);
+  const directory=context=>automatic?c=>deploy.companyDirectory(c.project):context?.parent?c=>path.join(context.parent,'instances',c.project):manager.root;
   if (action === 'menu') {
     if(!process.stdin.isTTY)throw Error('O menu requer terminal interativo. Para instalar sem interação use install --config /arquivo.json.');
-    return new Menus(manager,ask,context=>installInput(configFile,{directory:context?.parent?c=>path.join(context.parent,'instances',c.project):manager.root,getResources:()=>manager.resources()}),{initial,install:(m,input)=>m.lock(async()=>{await m.doctor();await m.prepare(input);await m.build();await m.initialize();})}).run();
+    return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context),getResources:()=>manager.resources()}),{initial,install:(m,input)=>deploy.install(m,input)}).run();
+  }
+  if(automatic&&!['menu','install','wizard','doctor','instances'].includes(action)){
+    const selection=new Menus(manager,ask,null);await selection.selectInstance();manager=selection.m;
+    if(!fs.existsSync(manager.stateFile))throw Error('Selecione a instalação existente com --dir /home/deploy/empresa (ou seu caminho histórico).');
   }
   if (action === 'doctor') return manager.doctor();
+  if(action==='migration-plan')return manager.lock(async()=>console.log(JSON.stringify(await deploy.migrationPlan(manager),null,2)));
   if (action === 'unlock') { await manager.doctor(); return manager.unlock(); }
-  if(['configure','instances','urls','services','official','ssl','push','postgres','optional-service','rollback','schedule-backup','wuzapi-start','native-unavailable','channels-unavailable','external-unavailable','helper-unavailable'].includes(action))return new Menus(manager,ask,context=>installInput(configFile,{directory:context?.parent?c=>path.join(context.parent,'instances',c.project):manager.root})).dispatch(action);
+  if(['configure','instances','urls','services','official','ssl','push','postgres','optional-service','rollback','schedule-backup','wuzapi-start','native-unavailable','channels-unavailable','external-unavailable','helper-unavailable'].includes(action))return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context)})).dispatch(action);
   if (action === 'install'||action==='wizard') {
     if(fs.existsSync(manager.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem repetir a configuração ou seeds.');
-    const input = await (action==='wizard'?advancedInput:installInput)(configFile,{directory:manager.root,getResources:()=>manager.resources()});
-    return manager.lock(async () => { await manager.doctor(); await manager.prepare(input); await manager.build(); await manager.initialize(); });
+    const input = await (action==='wizard'?advancedInput:installInput)(configFile,{directory:directory(),getResources:()=>manager.resources()});
+    return deploy.install(manager,input);
   }
   if (action === 'adopt') {
     const url = configFile ? configInput(configFile).sourceUrl : await ask('Link da plataforma existente (obrigatório)');

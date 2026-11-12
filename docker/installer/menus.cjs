@@ -6,8 +6,8 @@ const TOOLS=require('./historical.cjs').labels("tools").map(([id,label])=>[id,la
 const API=require('./historical.cjs').labels("api").map(([id,label])=>[id,label,({"1":"start","2":"update","3":"ps","4":"restart","5":"stop","6":"logs","7":"sync","8":"ssl","9":"rm"})[id]]);
 class Menus{
   async selectInstance(){
-    const {Manager}=require('./manager.cjs'),base=this.baseRoot,children=path.join(base,'instances');
-    const roots=[...(fs.existsSync(path.join(base,'.amanda-installer/state.json'))?[base]:[]),...(fs.existsSync(children)?fs.readdirSync(children).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&!fs.lstatSync(path.join(children,n)).isSymbolicLink()&&fs.existsSync(path.join(children,n,'.amanda-installer/state.json'))).sort().map(n=>path.join(children,n)):[])];
+    const {Manager}=require('./manager.cjs'),base=this.baseRoot,children=process.env.AMANDA_DEPLOY_LAYOUT==='1'?require('./deploy.cjs').BASE:path.join(base,'instances');
+    const roots=[...new Set([...(fs.existsSync(path.join(base,'.amanda-installer/state.json'))?[base]:[]),...(fs.existsSync(children)?fs.readdirSync(children).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&!fs.lstatSync(path.join(children,n)).isSymbolicLink()&&fs.existsSync(path.join(children,n,'.amanda-installer/state.json'))).sort().map(n=>path.join(children,n)):[])])];
     if(!roots.length)return;
     if(roots.length===1){if(roots[0]!==this.m.root)this.m=new Manager(roots[0]);this.m.load();return;}
     this.out(this.ui.banner('SELECIONAR INSTÂNCIA'));roots.forEach((root,i)=>this.out(this.ui.item(String(i+1),path.basename(root))));
@@ -66,7 +66,7 @@ class Menus{
   async instances(){const choices=[['1','Nova instância isolada','new'],['2','Selecionar instância neste diretório','select'],['3','Adotar Compose oficial neste diretório','adopt']];const a=await this.choose('INSTÂNCIAS',choices);if(!a)return;
     if(a==='new'){const c=await this.input({parent:this.m.root});this.m=await new Operations(this.m).instance(c);}
     else if(a==='adopt'){const source=await this.ask('Link da plataforma (obrigatório)');await this.m.lock(async()=>{await this.m.doctor();await this.m.adopt(source);});}
-    else{const base=path.join(this.baseRoot,'instances');if(!fs.existsSync(base))throw Error('Sem instâncias filhas. Para outro diretório, execute novamente com --dir.');const dirs=fs.readdirSync(base).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&fs.existsSync(path.join(base,n,'.amanda-installer/state.json')));dirs.forEach((n,i)=>this.out('['+(i+1)+'] '+n));this.out('[P] Instância principal: '+this.baseRoot);const selection=await this.ask('Selecione a instância');if(selection.toUpperCase()==='P'){const{Manager}=require('./manager.cjs');this.m=new Manager(this.baseRoot);this.m.load();return;}const n=Number(selection);if(!dirs[n-1])throw Error('Instância inválida.');const{Manager}=require('./manager.cjs');this.m=new Manager(path.join(base,dirs[n-1]));this.m.load();}
+    else{const base=process.env.AMANDA_DEPLOY_LAYOUT==='1'?require('./deploy.cjs').BASE:path.join(this.baseRoot,'instances');if(!fs.existsSync(base))throw Error('Sem instâncias filhas. Para outro diretório, execute novamente com --dir.');const dirs=fs.readdirSync(base).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&fs.existsSync(path.join(base,n,'.amanda-installer/state.json')));dirs.forEach((n,i)=>this.out('['+(i+1)+'] '+n));this.out('[P] Instância principal: '+this.baseRoot);const selection=await this.ask('Selecione a instância');if(selection.toUpperCase()==='P'){const{Manager}=require('./manager.cjs');this.m=new Manager(this.baseRoot);this.m.load();return;}const n=Number(selection);if(!dirs[n-1])throw Error('Instância inválida.');const{Manager}=require('./manager.cjs');this.m=new Manager(path.join(base,dirs[n-1]));this.m.load();}
   }
   async automation(){while(true){const a=await this.choose('GHCR / AGENDAMENTO DOCKER',[['1','Autenticar no GHCR','ghcr'],['2','Agendar atualização com backup/migrations (substitui Watchtower)','schedule-update'],['3','Agendar backup diário','schedule-backup'],['4','Atualizar agora com backup','update']]);if(!a)return;await this.dispatch(a);await this.ask('Pressione ENTER para continuar');}}
   async dispatch(action,locked=false){
@@ -76,7 +76,7 @@ class Menus{
     if(action?.startsWith('restore-'))return this.restore(action.slice(8));
     if(action?.startsWith('import-')){m.load();this.out('Copie um backup confiável de um único banco para '+path.join(m.root,'imports')+'. O banco selecionado será substituído.');const file=await this.ask('Caminho absoluto do arquivo dentro de imports');return ops.importDatabase(file,action.slice(7),await this.ask('Digite IMPORTAR '+m.state.project));}
     switch(action){
-      case'install':if(fs.existsSync(m.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem responder novamente nem repetir seeds.');return this.install?this.install(m,await this.input()):null;
+      case'install':if(fs.existsSync(m.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem responder novamente nem repetir seeds.');if(this.install){const installed=await this.install(m,await this.input());if(installed?.root)this.m=installed;return installed;}return null;
       case'urls':return this.urls();case'services':return this.services();case'official':return this.official();case'configure':return this.configure();case'instances':return this.instances();case'automation':return this.automation();
       case'tools':while(true){const a=await this.choose('FERRAMENTAS ADICIONAIS',TOOLS);if(!a)return;await this.dispatch(a);await this.ask('Pressione ENTER para continuar');}
       case'restore':return this.restore();case'rollback':return this.restore('all',true);

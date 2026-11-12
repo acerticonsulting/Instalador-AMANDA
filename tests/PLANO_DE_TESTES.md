@@ -1,5 +1,17 @@
 # Plano de testes do instalador AMANDA
 
+## Conta deploy e diretórios por empresa
+
+Novas regressões cobrem slugs e traversal, conta ausente/existente, ausência de
+grupos privilegiados, empresas amanda/acerti, permissões privadas, symlinks,
+detecção do caminho histórico e montagens do bootstrap. O ciclo simulado completo
+confere propriedade após clone/build/migrations, atualização, backup/restore e
+liberação do lock, sem repetir seed. O plano de migração valida hashes e preserva
+o estado, rejeitando backup corrompido. A integração da imagem usa useradd real
+sobre um cadastro Linux fictício em temporário, nunca /etc do host. Coexistência,
+retomada, autenticação e contratos Docker anteriores permanecem na suíte.
+Homologação operacional em VPS descartável e migração real exigem alvo autorizado.
+
 ## Bloqueio de operações
 
 Oito regressões novas usam flock real dentro do container de testes: primeira

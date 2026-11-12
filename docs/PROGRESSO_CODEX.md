@@ -1,4 +1,27 @@
-# Correção do bloqueio de operações
+# Estrutura deploy — tarefa atual
+
+Objetivo: novas empresas em `/home/deploy/{empresa}`, com conta deploy e arquivos
+privados, mantendo a origem de instalações existentes. Alterados: bootstrap,
+deploy.cjs, cli/manager/menus/operations/wizard/historical, imagem, testes,
+README e MIGRACAO_DEPLOY.md. Conta criada por helper em container com shadow;
+não se adicionam grupos sudo/docker. Conta existente não tem senha/grupos/shell
+alterados. Propriedade é inventariada por empresa, sem seguir links, e persistida
+no estado para operações posteriores. Flags --dir/AMANDA_INSTALL_DIR preservam
+destinos explícitos. Sem indicação explícita, detecta-se a instalação histórica
+para administração; novas empresas no fluxo automático continuam na base deploy.
+
+Migração separada: `migration-plan --dir /origem` inspeciona stack/montagens e
+verifica o backup existente com os contratos atuais. Não move ou copia a VPS.
+Procedimento de cópia, validação e recuperação está em MIGRACAO_DEPLOY.md e exige
+autorização operacional específica. Nenhuma instalação real foi migrada.
+
+Testes: 110 regressões e suíte completa aprovadas; imagem construída e oito
+integrações aprovadas, incluindo useradd real em cadastro descartável. O ajuste
+final de modos privados é validado novamente no hook e na imagem antes da entrega.
+Pendências externas: homologar conta/montagens em Linux descartável com daemon
+administrativo; não foi fornecido alvo completo de VPS nem autorizada migração.
+
+# Correção anterior do bloqueio de operações
 
 Objetivo: recuperar locks comprovadamente abandonados e preservar exclusão mútua,
 sem alterar interface nem dados. Arquivos: manager.cjs, operation-lock.cjs,

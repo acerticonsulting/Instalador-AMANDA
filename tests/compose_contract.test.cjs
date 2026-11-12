@@ -40,3 +40,9 @@ test('built manager includes the recovered historical presentation',()=>{
 test('built manager provides kernel operation locking without host dependencies',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'amanda-image-lock-'));try{const m=new Manager(root,new Runner(null,{write(){}}));await m.lock(()=>m.lock(async()=>{}));assert.ok(!fs.existsSync(path.join(root,'.amanda-installer/operation.lock')));}finally{fs.rmSync(root,{recursive:true});}
 });
+test('built manager provisions deploy in a disposable Linux account database',()=>{
+ const {BASE,provision}=require('../docker/installer/deploy.cjs'),host=fs.mkdtempSync(path.join(os.tmpdir(),'deploy-account-'));
+ try{fs.mkdirSync(host+'/etc');fs.mkdirSync(host+BASE,{recursive:true});for(const[file,value]of Object.entries({passwd:'root:x:0:0:root:/root:/bin/sh\n',group:'root:x:0:\n',shadow:'root:!:20000:0:99999:7:::\n',gshadow:'root:!::\n','login.defs':'SYS_UID_MIN 100\nSYS_UID_MAX 999\nSYS_GID_MIN 100\nSYS_GID_MAX 999\nUSERGROUPS_ENAB yes\n'}))fs.writeFileSync(host+'/etc/'+file,value);
+ const owner=provision('amanda',{host});assert.ok(owner.uid>0);const before=fs.readFileSync(host+'/etc/passwd','utf8');provision('acerti',{host});assert.equal(fs.readFileSync(host+'/etc/passwd','utf8'),before);assert.equal(fs.statSync(host+BASE+'/amanda').uid,owner.uid);assert.equal(fs.statSync(host+BASE+'/acerti').mode&0o777,0o700);assert.ok(!fs.readFileSync(host+'/etc/group','utf8').includes('docker'));assert.ok(!fs.readFileSync(host+'/etc/group','utf8').includes('sudo'));
+ }finally{fs.rmSync(host,{recursive:true});}
+});
