@@ -27,6 +27,44 @@ precisar dele para acessar Docker. O instalador não altera grupos/permissões d
 A preparação da imagem pode baixar ferramentas; instalar a plataforma exige a
 confirmação final. Use sempre o mesmo diretório absoluto nas operações seguintes.
 
+### Conferir qual revisão será executada
+
+`git pull` atualiza a branch selecionada. A mensagem `[new branch]` apenas
+informa que uma referência remota foi baixada: não integra essa branch à `main`.
+O bootstrap corrigido consulta Git dentro da imagem de ferramentas, com o clone
+montado somente para leitura, e informa branch, commit e alterações locais ao
+iniciar o gerenciador. Arquivos sem metadados Git são identificados como revisão
+não informada. O banner e as cores permanecem iguais. Depois da seleção da empresa,
+o diagnóstico mostra o diretório exato e a revisão da plataforma registrada no estado.
+
+Para homologar a correção antes da integração, dentro do clone do instalador:
+
+```sh
+docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo fetch origin &&
+docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo switch fix/retomada-diretorio-existente &&
+docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only origin fix/retomada-diretorio-existente
+```
+
+Após aprovação e merge do [PR do instalador](https://github.com/acerticonsulting/Instalador-AMANDA/pull/1),
+use a mesma sequência com `main` no lugar da branch de correção. Se Git recusar
+por alterações locais ou divergência, preserve-as e revise o diagnóstico;
+não use reset forçado. A integração do
+[PR da plataforma](https://github.com/acerticonsulting/AMANDA/pull/1) também é necessária
+para que o build obtido de `main` deixe de depender de Hineken.
+
+Depois de verificar a revisão, a retomada usa o diretório original:
+
+```sh
+sh instalador_single.sh resume --dir /home/deploy/amanda
+```
+
+Em preparação antiga reconhecida e sem recursos preexistentes, a retomada
+interativa pede somente e-mail ou senha administrativa ausentes, com confirmação
+da nova senha. Campos já salvos e demais configurações são preservados. JSON
+corrompido, credenciais internas ausentes ou recursos sem origem comprovada
+continuam bloqueados; não são reconstruídos por suposição. Retomada não interativa
+com acesso administrativo incompleto informa os campos faltantes sem usar senhas padrão.
+
 ## Instalação com a interface histórica
 
 Novas instalações usam `/home/deploy/{empresa}`: `amanda` fica em
@@ -237,10 +275,7 @@ Não altere portas internas Docker. `options.databasePassword`, `masterPassword`
 omiti-los usa geração criptográfica. Cifrões, aspas e caracteres reservados são
 serializados com segurança; a senha Prisma recebe codificação URI separada.
 
-`sourceToken` autentica a leitura da plataforma; `buildToken` é o segredo BuildKit
-do conector privado. Não coloque tokens em URLs Git. Build sem acesso ao conector
-falha sem declarar instalação concluída. Proteja/remova o JSON após configurar;
-não publique segredos nem a pasta privada.
+`sourceToken` autentica somente a leitura da própria plataforma AMANDA. O backend usa Baileys público e não solicita token de terceiros. `buildToken` de configurações antigas é aceito para compatibilidade e ignorado. Não coloque tokens em URLs Git. Proteja/remova o JSON após configurar; não publique segredos nem a pasta privada.
 
 ## Configurar depois de instalar
 
@@ -302,11 +337,12 @@ Não há restauração de bancos opcionais desabilitados. Backups com seleção 
 volumes ou revisão incompatíveis exigem recuperação isolada com o contrato original.
 Falhas de migration mantêm estado para retomada; voltar imagem não reverte schema.
 Falha durante seed não permite repetição automática: preserve os dados e investigue.
-Falha na preparação antes de registrar recursos não autoriza apagar estado/volumes
-para forçar seed; revise o erro e utilize um diretório novo quando necessário.
+Falha na preparação não autoriza apagar estado ou volumes para forçar seed.
+Use o reconhecimento inicial ou `resume` no mesmo diretório. Configuração salva
+validada é reutilizada; estado insuficiente ou conflitante recebe diagnóstico.
 
 Configurações ficam em `platform/.env`, `.env.backend`, `.env.oficial` quando usado,
-e `.secrets/github_token`. Estado, histórico, logs filtrados, acesso inicial e
+e arquivos legados `.secrets/github_token` preservados, sem uso no build. Estado, histórico, logs filtrados, acesso inicial e
 backups ficam em `.amanda-installer/`, com arquivos privados em modo 600.
 Não mova o diretório nem altere nomes de volumes para atualizar.
 Receitas de `legacy/` estão bloqueadas antes do código histórico.
@@ -337,3 +373,52 @@ Meta/WhatsApp, SMTP do provedor, OAuth, push e pagamentos continuam sujeitos a
 homologação em ambiente descartável e contas de teste.
 A [matriz de configuração](docs/CONFIGURACAO_E_COMPATIBILIDADE.md) identifica cada
 consumidor e compara a experiência com o instalador original.
+
+### Retomar build interrompido
+
+Após disponibilizar a correção na main da AMANDA, execute o comando resume no mesmo diretório da empresa. Na fase build, antes de qualquer seed, o gerenciador busca origin/main e aceita apenas avanço fast-forward de um checkout limpo. Mantém .env, credencial de origem, estado e volumes. Falha de rede ou histórico divergente interrompe a retomada sem reset. Fases posteriores não atualizam o código automaticamente.
+
+O comando legado build-token apenas informa que a credencial não é necessária. A opção histórica de credenciais mantém sua posição no menu e configura somente o acesso à AMANDA.
+
+### Reconhecimento antes do questionário
+
+Ao escolher instalar, o gerenciador pede primeiro o nome técnico da empresa e
+verifica `/home/deploy/{empresa}` antes das perguntas administrativas, URLs e
+PostgreSQL. Essa empresa fica fixa nos dois assistentes. `--dir` mantém o caminho
+explicitamente escolhido; não há migração automática entre `/root/amanda` e
+`/home/deploy/amanda`.
+
+| Diretório | Comportamento |
+|---|---|
+| Inexistente ou vazio | Instalação nova, com conta deploy criada/reutilizada. |
+| Somente temporários privados conhecidos | Verifica nomes, tipos, proprietário, permissões e integridade; reutiliza escolhas salvas quando comprovadas. |
+| Estado válido não concluído | Oferece retomar, diagnóstico sem segredos ou voltar; não reprovisiona. |
+| Estado válido concluído | Oferece gerenciamento/atualização; não repete instalação ou seed. |
+| Origem desconhecida, estado inválido ou links inseguros | Bloqueia antes de gravar configuração e explica o conflito. |
+
+As escolhas confirmadas ficam em `.amanda-installer/setup.json`, privado (600),
+com empresa, origem, caminho e checksum. A configuração é preparada em
+`.amanda-installer/setup-files/`; um manifesto de hashes é registrado antes de
+publicá-la. Um arquivo de destino existente só é aceito quando tem exatamente o
+conteúdo esperado. Diferenças são preservadas e bloqueiam a continuação; não são
+resolvidas por sobrescrita. Senhas e chaves já geradas não são regeneradas.
+Esses arquivos contêm segredos: não os publique nem altere seus modos privados.
+
+Estados antigos de preparação sem esse registro só avançam quando ambiente,
+acesso administrativo, empresa, origem Git e Compose são coerentes e o Docker
+comprova ausência dos recursos que seriam inicializados. Informação ausente,
+clone incompleto sem fonte verificável, corrupção ou recursos sem prova de origem
+exigem diagnóstico; nenhum dado é removido para contornar a proteção.
+
+Para a empresa do exemplo, depois de atualizar o código do instalador:
+
+```sh
+sh instalador_single.sh resume --dir /home/deploy/amanda
+```
+
+Também é possível escolher instalar e informar `amanda`: o estado existente é
+reconhecido antes do restante do questionário. Um `unlock --dir /root/amanda`
+atua somente naquele diretório e não desbloqueia `/home/deploy/amanda`.
+Falhas de build reutilizam configuração/código e cache de imagens; migrations
+retomam seus checkpoints. Seed iniciado e não concluído continua bloqueado para
+evitar repetição indiscriminada. Não remova diretórios, estado ou volumes.

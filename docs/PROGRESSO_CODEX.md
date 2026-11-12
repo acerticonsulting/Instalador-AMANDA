@@ -1,3 +1,129 @@
+# Preparação da integração à main — 12/11/2026
+
+Objetivo: entregar a correção por PR e explicar por que baixar a branch não muda
+o instalador executado na main. Em 12/11/2026, o usuário autorizou integrar os
+dois PRs e definiu como preferência permanente commit, push e integração à main
+após as validações exigidas. A autorização está registrada nos dois AGENTS.md.
+
+Revisões analisadas: official/main 8d748f1; fix/retomada-diretorio-existente
+8704c51 (43ce96f, 52c4618 e registro de push). Os 18 arquivos do diff foram
+revisados: classificação, fluxo CLI/menus/assistentes, preparo recuperável,
+credenciais, locks, bootstrap, documentos e regressões. Main é ancestral, sem
+commits exclusivos ou conflitos a resolver. O erro da VPS é coerente com executar
+a main antiga depois de git pull: a branch foi baixada, mas não integrada.
+
+Complementações: revision.cjs e bootstrap informam branch/commit/alterações locais
+com Git apenas em containers, clone somente leitura e sem nova dependência no
+host; CLI/menu mostram diretório e revisão da plataforma registrada. Retomada
+antiga validada solicita apenas e-mail/senha administrativos ausentes depois da
+prova de recursos vazios; preserva o restante e não adota defaults. Erros de JSON
+privado não expõem conteúdo. Testes usam uma cópia exata de deploy.cjs da main
+8d748f1 (blob de407108a2e8bb50a97640ef730f9c81fb3f206c).
+
+Arquivos desta complementação: cli/deploy/manager/revision, instalador_single.sh,
+README, testes deploy/Docker-only/compose, fixture da main, driver de integração
+e PLANO_DE_TESTES. Reutilizadas as funções existentes; sem remover proteções ou
+provisionar novamente uma instalação parcial já reconhecida.
+
+Validação: 136 testes Node aprovados, 83 scripts e cinco suítes locais aprovados.
+Imagem do gerenciador construída; 11 contratos da imagem e uma reprodução de
+fluxo aprovados. O controle da main reproduz a mensagem antiga imediatamente
+após perfil PostgreSQL 1; o menu corrigido retoma /home/deploy/amanda, conserva
+os mesmos bytes do ambiente e executa seed uma vez. Docker de aplicação é
+simulado nesse fluxo. Os contratos reais de ferramentas não têm rede nem socket
+do daemon; useradd usa cadastro descartável. Nenhuma VPS foi operada.
+
+PR do instalador: https://github.com/acerticonsulting/Instalador-AMANDA/pull/1
+A main da plataforma ainda usa Hineken, portanto também foi preparado o PR
+https://github.com/acerticonsulting/AMANDA/pull/1 com a correção já validada em
+Docker anteriormente. Homologação real com WhatsApp permanece pendente.
+
+Entrega organizada em Pull Requests dos dois repositórios, com integração
+autorizada pelo usuário. Próximo passo operacional: atualizar a main na VPS e
+retomar no diretório original; nenhuma operação foi realizada no servidor. A VPS
+pode usar a branch de correção explicitamente na homologação. Depois do merge,
+atualizar main e retomar no mesmo diretório, sem excluir estado ou volumes.
+
+# Histórico anterior
+# Recuperação de diretório existente — 12/11/2026
+
+Objetivo: reconhecer /home/deploy/{empresa} antes do questionário e retomar
+instalações interrompidas, preservando arquivos, credenciais, imagens e volumes.
+
+Causa comprovada: prepare grava state.json, fonte e ambiente antes do build.
+Uma nova escolha de Instalar repetia o questionário e chamava provision, que
+rejeitava qualquer estado/fonte existente, inclusive o checkpoint legítimo da
+falha anterior. O perfil PostgreSQL apenas precedia essa chamada; não era a
+causa. Locks de /root/amanda e /home/deploy/amanda têm escopos diferentes.
+
+Alterados: directory-state.cjs (novo); deploy, manager, cli, menus, historical,
+wizard; bootstrap; README; testes deploy/Docker-only/históricos/contratos da
+imagem e PLANO_DE_TESTES.
+
+Concluído: inspeção somente leitura distingue ausente, vazio, temporários
+conhecidos, parcial, concluído e desconhecido. Verifica identidade da empresa,
+origem, caminhos reais, links/hardlinks, proprietário/grupo, modos privados e
+checksums. Empresa identificada antes das demais perguntas e mantida nos dois
+assistentes. Parcial oferece retomada/diagnóstico; concluída oferece gestão.
+A retomada não chama provision nem apaga estado. A conta deploy do host é lida
+por montagem somente leitura; provisionamento novo mantém o helper Docker.
+
+Preparação: escolhas aprovadas são salvas antes de doctor; novos ambientes são
+montados em área privada, com manifesto antes da publicação exclusiva. Arquivo
+existente diferente nunca é substituído. Reentrada mantém chaves e senhas. A
+cópia nova do exemplo recebe proprietário do processo que a criou; não há
+chown recursivo sobre diretório desconhecido. Estado antigo sem draft só avança
+com configuração coerente, Git validado e ausência comprovada de recursos.
+
+Validação: suíte completa (83 scripts, cinco suítes, 131 testes Node) aprovada.
+O hook revalida o conteúdo preparado para commit.
+Imagem do gerenciador construída; dez contratos isolados aprovados, incluindo
+useradd em cadastro descartável, caminhos lógicos no helper, gerador real e
+parser Compose real após interrupção, sem regenerar credenciais. Novas regressões
+cobrem preparação/clone/build/migrations, falha de doctor, arquivos divergentes,
+seleção antecipada, PostgreSQL, duas empresas e gerenciamento de concluídas.
+Concorrência e recuperação após SIGINT/SIGTERM continuam cobertas.
+
+Limites: nenhuma VPS foi acessada; não foi fornecido endereço/acesso operacional
+para leitura --plataforma. Os testes não iniciam aplicações, bancos ou volumes
+reais. Estado insuficiente/corrompido, permissões inseguras e seed incompleto
+continuam bloqueados com diagnóstico, sem exclusões ou reinicialização.
+
+Próximo passo: revisar/publicar o commit somente quando autorizado, atualizar
+o instalador na VPS e executar resume --dir /home/deploy/amanda. O conserto
+anterior do Baileys precisa estar na main da plataforma para o fetch obtê-lo.
+
+# Histórico das tarefas anteriores
+# Remoção do conector privado — 12/11/2026
+
+Objetivo: clonar somente acerticonsulting/AMANDA main e construir a plataforma
+corrigida com dependências públicas, sem solicitar acesso ao Hineken.
+Alterados: cli/historical/wizard/manager/menus, testes Docker-only/históricos,
+README, CONFIGURACAO_E_COMPATIBILIDADE e PLANO_DE_TESTES.
+
+Implementado: retirada das perguntas de token do conector; buildToken antigo
+aceito e ignorado; comando legado build-token apenas informa que é dispensável.
+Credencial de origem da AMANDA, posições dos menus, Docker-only e layout deploy
+mantidos. Arquivos antigos de segredo não são removidos nem enviados ao build.
+Resume na fase build anterior ao seed busca main e aceita apenas fast-forward
+limpo. Sem reset, limpeza de volumes ou sobrescrita de .env; erro de rede ou
+histórico mantém o checkpoint. Fases posteriores não atualizam código sozinhas.
+
+Validação: cinco suítes locais, 83 scripts e 112 testes Node aprovados; regressão cobre
+recusa de histórico divergente/checkout alterado antes de build ou seed. O teste de interrupção aguarda a liberação observável do flock para evitar corrida com os filhos do proprietário; a proteção de produção não mudou. O hook
+valida novamente o conteúdo preparado para commit. Testes usam comandos
+simulados; nenhuma VPS ou instalação existente foi alterada.
+Na plataforma: npm ci, TypeScript e imagem Docker aprovados; 5 testes Baileys
+sem rede e 2 integrações reais isoladas (saúde PostgreSQL, Socket.IO, Bull/Redis)
+aprovados. Sem uso de conta WhatsApp; QR apenas simulado.
+
+Pendências: publicar ambos os commits somente quando autorizado e homologar
+WhatsApp real com conta de teste autorizada. A retomada obterá a correção apenas
+quando ela estiver disponível na main da AMANDA. Para retomar depois disso:
+sh instalador_single.sh resume --dir /home/deploy/{empresa}
+Não apagar estado nem volumes, não repetir seeds.
+
+# Histórico anterior
 # Estrutura deploy — tarefa atual
 
 Objetivo: novas empresas em `/home/deploy/{empresa}`, com conta deploy e arquivos

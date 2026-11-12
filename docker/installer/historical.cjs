@@ -10,7 +10,7 @@ function render(screen,key='',values={}){
   return result.stdout;
 }
 function labels(screen){return [...render(screen,'',{AMANDA_UI_TTY:'0'}).replace(/\x1b\[[0-9;]*[A-Za-z]/g,'').matchAll(/\[([0-9]+)\] ([^\n]+)/g)].filter(m=>m[1]!=='0').map(m=>[m[1],m[2]]);}
-async function collectHistorical({question,out=console.log,directory=process.env.AMANDA_DEPLOY_LAYOUT==='1'?c=>require('./deploy.cjs').companyDirectory(c.project):process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE}={}){
+async function collectHistorical({question,out=console.log,project,directory=process.env.AMANDA_DEPLOY_LAYOUT==='1'?c=>require('./deploy.cjs').companyDirectory(c.project):process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE}={}){
   let c={sourceUrl:SOURCE,project:'amanda',companyName:'AMANDA',options:{backendEnv:{}}};
   const text=s=>out(String(s).replace(/[\x00-\x08\x0b-\x1f\x7f]/g,''));
   const extra=async(...args)=>{const value=await question(...args);if(value==null||[':cancelar',':sair'].includes(value))throw Error('Instalação cancelada antes de criar recursos.');return value;};
@@ -36,7 +36,7 @@ async function collectHistorical({question,out=console.log,directory=process.env
   }
   // Ordem original de questoes_variaveis_base, inclusive token antes do repositório.
   c.adminEmail=await read('email_deploy','admin@amanda.com.br',email);
-  c.project=await read('input_empresa','amanda',v=>normalizeConfig({sourceUrl:SOURCE,project:v}).project);
+  c.project=project||await read('input_empresa','amanda',v=>normalizeConfig({sourceUrl:SOURCE,project:v}).project);
   c.companyName=c.project;
   const db=await read('senha_deploy','',v=>{if(v)validateOptions({databasePassword:v});return v;},true);if(db)c.options.databasePassword=db;
   const master=await read('senha_master','',v=>{if(v)validateOptions({masterPassword:v});return v;},true);if(master)c.options.masterPassword=master;
@@ -58,7 +58,6 @@ async function collectHistorical({question,out=console.log,directory=process.env
   c.adminPassword=await extra('Senha do administrador',undefined,true);
   if(!c.adminPassword||/[\x00-\x1f\x7f]/.test(c.adminPassword)||c.adminPassword.length>256)throw Error('Senha administrativa vazia/inválida.');
   if(await extra('Confirmação da senha',undefined,true)!==c.adminPassword)throw Error('Confirmação diferente.');
-  c.buildToken=await extra('Token de leitura do conector privado (ENTER se já disponível)',undefined,true)||'';
   c=normalizeConfig(c);
   out(render('question','confirmacao').split(' >> Os dados estão corretos?')[0]);
   out(render('summary','',{subdominio_backend:c.backendUrl,subdominio_frontend:c.frontendUrl,email_deploy:c.adminEmail,empresa:c.project,nome_titulo:c.options.appName,numero_suporte:c.options.supportPhone,facebook_app_id:c.options.backendEnv.FACEBOOK_APP_ID,repo_url:c.sourceUrl,proxy:c.edge?'Caddy (Docker)':'none',backend_port:back,frontend_port:front,PORT_WUZAPI:'8090',versao_instalacao:'main',commit_instalacao:'Revisão oficial obtida após confirmação'}));

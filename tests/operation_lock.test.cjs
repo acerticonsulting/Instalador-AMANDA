@@ -21,6 +21,9 @@ for(const signal of ['SIGINT','SIGTERM'])test('interrupted owner '+signal+' is r
  const child=spawn(process.execPath,['-e',code],{env:{...process.env,AMANDA_MANAGER_CONTAINER:''},stdio:['ignore','pipe','pipe']});
  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Child timeout'));},5000);child.stdout.once('data',()=>{clearTimeout(timer);resolve();});child.once('error',reject);});
  await new Promise(resolve=>{child.once('close',resolve);child.kill(signal);});
+ // The owner's flock/cat children release their kernel lock asynchronously.
+ // Await that observable release instead of racing it after the owner exits.
+ await new Promise((resolve,reject)=>{const guard=spawn('flock',['-w','2',t.file+'.guard','true']);guard.once('error',reject);guard.once('close',code=>code===0?resolve():reject(Error('Guard did not release after interrupted owner')));});
  await t.m.lock(async()=>{});assert.ok(!fs.existsSync(t.file));assert.equal(fs.readFileSync(path.join(t.m.root,'preserved-data'),'utf8'),'keep');
  }finally{t.cleanup();}
 });

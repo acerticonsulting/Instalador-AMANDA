@@ -27,7 +27,7 @@ class Menus{
     if(branch!=='main')throw Error('Canal indisponível neste instalador: somente main possui contrato oficial validado. Nenhuma atualização executada.');
     return this.m.execute('update');
   }
-  constructor(manager,ask,installInput,{out=console.log,initial,install}={}){this.m=manager;this.baseRoot=manager.root;this.ask=ask;this.input=installInput;this.out=out;this.initial=initial;this.install=install;this.ui=createUI();}
+  constructor(manager,ask,installInput,{out=console.log,initial,install,startInstall}={}){this.m=manager;this.baseRoot=manager.root;this.ask=ask;this.input=installInput;this.out=out;this.initial=initial;this.install=install;this.startInstall=startInstall;this.ui=createUI();}
   async choose(title,items,before){const historical=items===MAIN?'main':items===TOOLS?'tools':items===API?'api':title==='STATUS E REINÍCIO'?'status':null;if(historical)this.out(require('./historical.cjs').render(historical,'',{emp:this.m.state?.project||'Instância atual'}));else this.out(this.ui.banner(title));if(before)await before();this.out(' Instância: '+this.m.root+'\n');if(historical==='status')for(const[id,label]of items.filter(x=>+x[0]>6))this.out(this.ui.item(id,label));if(!historical){this.out(' Selecione abaixo a opção desejada:\n');for(const[id,label]of items)this.out(this.ui.item(id,label));this.out(this.ui.item('0','Voltar / sair'));}const id=await this.ask('Selecione a opção desejada');if(id==='0')return null;const item=items.find(x=>x[0]===id);if(!item)throw Error('Opção inválida.');return item[2];}
   async form(group){const values={};const {envValues}=require('./manager.cjs');const file=this.m.state?path.join(this.m.state.platform,'.env.backend'):null,current=file&&fs.existsSync(file)?envValues(file):{};for(const[key,label,fallback,secret]of GROUPS[group]){const value=await this.ask(label+(secret&&current[key]?' (ENTER preserva o valor existente)':''),secret?undefined:(current[key]??fallback),secret);values[key]=secret&&!value&&current[key]?current[key]:value;}validateOptions(group==='identity'?values:{backendEnv:values});return values;}
   async network(ssl=false){const ops=new Operations(this.m);await ops.ready(false,true);const current=ops.current();
@@ -59,12 +59,15 @@ class Menus{
     else if(['email','facebook','integrations','google','ai'].includes(a)){await ops.ready(false,true);await ops.configure({backendEnv:await this.form(a)});}else await this.dispatch(a);
     await this.ask('Pressione ENTER para continuar');
   }}
-  async token(){this.m.load();await this.m.identifyManager();const kind=await this.choose('CREDENCIAIS GITHUB',[['1','Conector privado — segredo BuildKit','build'],['2','Leitura da plataforma — Git askpass','source'],['3','Configurar ambos separadamente','both']]);if(!kind)return;
-    for(const role of(kind==='both'?['build','source']:[kind])){const token=await this.ask(role==='build'?'Novo token do conector (somente BuildKit)':'Novo token de leitura da plataforma',undefined,true);if(!token||/[\r\n\0]/.test(token))throw Error('Token inválido.');this.m.runner.secret(token);this.m.write(role==='build'?path.join(this.m.state.platform,'.secrets/github_token'):path.join(this.m.private,'source-token'),token);}
-    this.out('Credenciais selecionadas atualizadas fora do Git.');
+  async token(){this.m.load();await this.m.identifyManager();
+    this.out('O backend usa dependências públicas; somente o acesso à própria AMANDA pode exigir credencial.');
+    const token=await this.ask('Novo token de leitura da plataforma',undefined,true);
+    if(!token||/[\r\n\0]/.test(token))throw Error('Token inválido.');
+    this.m.runner.secret(token);this.m.write(path.join(this.m.private,'source-token'),token);
+    this.out('Credencial da plataforma atualizada fora do Git.');
   }
   async instances(){const choices=[['1','Nova instância isolada','new'],['2','Selecionar instância neste diretório','select'],['3','Adotar Compose oficial neste diretório','adopt']];const a=await this.choose('INSTÂNCIAS',choices);if(!a)return;
-    if(a==='new'){const c=await this.input({parent:this.m.root});this.m=await new Operations(this.m).instance(c);}
+    if(a==='new'){if(this.startInstall){this.m=await this.startInstall(this.m,{parent:this.m.root});return;}const c=await this.input({parent:this.m.root});this.m=await new Operations(this.m).instance(c);}
     else if(a==='adopt'){const source=await this.ask('Link da plataforma (obrigatório)');await this.m.lock(async()=>{await this.m.doctor();await this.m.adopt(source);});}
     else{const base=process.env.AMANDA_DEPLOY_LAYOUT==='1'?require('./deploy.cjs').BASE:path.join(this.baseRoot,'instances');if(!fs.existsSync(base))throw Error('Sem instâncias filhas. Para outro diretório, execute novamente com --dir.');const dirs=fs.readdirSync(base).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&fs.existsSync(path.join(base,n,'.amanda-installer/state.json')));dirs.forEach((n,i)=>this.out('['+(i+1)+'] '+n));this.out('[P] Instância principal: '+this.baseRoot);const selection=await this.ask('Selecione a instância');if(selection.toUpperCase()==='P'){const{Manager}=require('./manager.cjs');this.m=new Manager(this.baseRoot);this.m.load();return;}const n=Number(selection);if(!dirs[n-1])throw Error('Instância inválida.');const{Manager}=require('./manager.cjs');this.m=new Manager(path.join(base,dirs[n-1]));this.m.load();}
   }
@@ -76,7 +79,7 @@ class Menus{
     if(action?.startsWith('restore-'))return this.restore(action.slice(8));
     if(action?.startsWith('import-')){m.load();this.out('Copie um backup confiável de um único banco para '+path.join(m.root,'imports')+'. O banco selecionado será substituído.');const file=await this.ask('Caminho absoluto do arquivo dentro de imports');return ops.importDatabase(file,action.slice(7),await this.ask('Digite IMPORTAR '+m.state.project));}
     switch(action){
-      case'install':if(fs.existsSync(m.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem responder novamente nem repetir seeds.');if(this.install){const installed=await this.install(m,await this.input());if(installed?.root)this.m=installed;return installed;}return null;
+      case'install':if(this.startInstall){const installed=await this.startInstall(m);if(installed?.root)this.m=installed;return installed;}if(fs.existsSync(m.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem responder novamente nem repetir seeds.');if(this.install){const installed=await this.install(m,await this.input());if(installed?.root)this.m=installed;return installed;}return null;
       case'urls':return this.urls();case'services':return this.services();case'official':return this.official();case'configure':return this.configure();case'instances':return this.instances();case'automation':return this.automation();
       case'tools':while(true){const a=await this.choose('FERRAMENTAS ADICIONAIS',TOOLS);if(!a)return;await this.dispatch(a);await this.ask('Pressione ENTER para continuar');}
       case'restore':return this.restore();case'rollback':return this.restore('all',true);
@@ -101,7 +104,7 @@ class Menus{
       case'databases':return ops.databases();
       case'schedule-backup':case'schedule-update':return ops.schedule(action==='schedule-backup'?'backup':'update',Number(await this.ask('Hora diária em UTC (0–23)','3')));
       case'ghcr':return ops.ghcr(await this.ask('Usuário GitHub / GHCR'),await this.ask('Token de leitura GHCR',undefined,true));
-      case'new-instance':this.m=await ops.instance(await this.input({parent:m.root}));return;
+      case'new-instance':if(this.startInstall){this.m=await this.startInstall(m,{parent:m.root});return;}this.m=await ops.instance(await this.input({parent:m.root}));return;
       case'update':return this.update();
       default:if(['logs','backup','doctor','resume','start','stop','restart'].includes(action))return m.execute(action);throw Error('Ação sem implementação: '+action);
     }

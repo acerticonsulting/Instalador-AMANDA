@@ -1,3 +1,54 @@
+# Integração da correção à main — 12/11/2026
+
+136 testes Node, 83 scripts e cinco suítes locais. O driver de integração executa
+11 contratos da imagem e uma reprodução de menu em outro container descartável.
+A fixture deploy-main-8d748f1.cjs é o arquivo exato da main analisada, usado
+somente como controle de regressão; não é um caminho ativo do instalador.
+
+- Reproduz o erro da main depois de escolher PostgreSQL 1; usa Menus.dispatch,
+  startInstallation e resume em /home/deploy/amanda na implementação corrigida.
+  Confere ausência de segundo provisionamento/questionário, ambiente inalterado
+  e seed único. Comandos Docker de aplicação são simulados.
+- Bootstrap transmite revisão obtida por Git em container; CLI empacotada mostra
+  branch, commit e main da plataforma sem alterar a apresentação histórica.
+- Preparação antiga pede só e-mail/senha ausentes e preserva campos existentes.
+  Sem interação, recusa faltantes; JSON privado inválido não expõe segredos.
+- Os cenários anteriores de diretório, identidade, isolamento, conta deploy,
+  permissões, concorrência e retomada de build/migrations continuam na suíte.
+
+A árvore candidata à integração é conferida contra official/main por merge-tree;
+a referência main real não é alterada pelos testes. VPS não fornecida para
+validação operacional de leitura; nenhuma operação de produção é executada.
+# Reconhecimento de diretórios e preparação recuperável — 12/11/2026
+
+A suíte passa a 131 testes Node, além dos quatro grupos Shell; 83 scripts têm
+sintaxe verificada. A imagem é validada por dez contratos sem rede/socket Docker.
+
+- deploy.test: ausente/vazio/temporários; estado parcial/concluído; origem,
+  empresa, caminho, modos, UID/GID, symlinks/hardlinks e arquivos desconhecidos;
+  checksum; diagnóstico sem segredos; seleção antes das perguntas; CLI real
+  bloqueando diretório desconhecido ou reconhecendo concluído sem daemon.
+- Docker-only: falhas de doctor, clone, configuração, build e migrations;
+  reuso de credenciais/URLs/VAPID; manifesto divergente preservado; recuperação
+  de configuração antiga somente com recursos ausentes; seed executado uma vez.
+- Assistentes: empresa já verificada não é perguntada novamente; perfil
+  PostgreSQL e escolhas administrativas mantidos. Banner, cores e eco preservados.
+- Lock/deploy anteriores: duas empresas, conta deploy, permissões, concorrência,
+  SIGINT/SIGTERM e bloqueios abandonados. Não há desbloqueio cruzado de raízes.
+- Contratos de imagem: useradd em cadastro isolado, módulo classificador
+  empacotado, tradução /host para caminho lógico, gerador Node real e Compose
+  real; retomada de preparação conserva os mesmos bytes do ambiente publicado.
+
+Não são executados instaladores, migrations, seeds ou exclusões em VPS real.
+Homologação operacional depende de alvo e acesso autorizados; nenhum foi fornecido.
+# Dependências públicas e retomada — 12/11/2026
+
+O assistente histórico e o adicional não perguntam token de conector. Regressões
+verificam buildToken legado ignorado, credencial da própria AMANDA preservada,
+retomada anterior ao seed por fetch main/fast-forward, preservação de .env e
+recusa de checkout alterado/histórico divergente sem reset, seed ou build.
+A suíte Docker-only passa a 112 testes no total com os demais grupos Node.
+Nenhuma conta WhatsApp ou instalação real é acessada por esses testes.
 # Plano de testes do instalador AMANDA
 
 ## Conta deploy e diretórios por empresa

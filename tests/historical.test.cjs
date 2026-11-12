@@ -27,11 +27,12 @@ test('interactive credentials echo normally without showing stored defaults',asy
 });
 const plain=s=>s.replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');
 function historical(screen){const result=spawnSync('sh',['-c','clear(){ :; }\n'+original.banner+'\n'+original[screen]],{encoding:'utf8',env:{PATH:process.env.PATH,nome_titulo:'AMANDA'}});assert.equal(result.status,0,result.stderr);return result.stdout;}
-function input(changes={}){
- const answers=['1','localhost','owner@example.test','acerti','db$secure','master$secure','Minha AMANDA','5511999999999','app-id','fb$secret','gh$token',SOURCE,'s','admin$secret','admin$secret','build$secret','s','0'];
+function input(changes={},project){
+ const answers=['1','localhost','owner@example.test','acerti','db$secure','master$secure','Minha AMANDA','5511999999999','app-id','fb$secret','gh$token',SOURCE,'s','admin$secret','admin$secret','s','0'];
  for(const[k,v]of Object.entries(changes))answers[+k]=v;
+ if(project)answers.splice(3,1);
  const output=[],prompts=[];let index=0;
- return {output,prompts,options:{out:s=>output.push(s),directory:'/srv/acerti',question:async(label,fallback,secret)=>{prompts.push({label,secret,screen:output.at(-1)});if(index>=answers.length)throw Error('Pergunta inesperada: '+label);const value=answers[index++];return value===undefined?fallback??'':value;}}};
+ return {output,prompts,options:{project,out:s=>output.push(s),directory:'/srv/acerti',question:async(label,fallback,secret)=>{prompts.push({label,secret,screen:output.at(-1)});if(index>=answers.length)throw Error('Pergunta inesperada: '+label);const value=answers[index++];return value===undefined?fallback??'':value;}}};
 }
 test('7a5b31d main presentation and banner are recovered verbatim except the unsafe scheduler label',()=>{
  assert.equal(plain(render('main')),historical('main').replace('Configurar Watchtower','Configurar Atualização Agendada'));
@@ -51,10 +52,18 @@ test('default interactive installation uses the historical question order and ke
  assert.equal(c.project,'acerti');assert.equal(c.adminEmail,'owner@example.test');assert.equal(c.options.databasePassword,'db$secure');assert.equal(c.options.masterPassword,'master$secure');assert.equal(c.options.appName,'Minha AMANDA');assert.equal(c.sourceToken,'gh$token');assert.equal(c.sourceUrl,SOURCE);assert.equal(c.public,false);assert.equal(c.backendUrl,'http://localhost:8080');
  const labels=['Selecione como deseja','Insira o IP','Digite o seu melhor email','Digite o nome da sua empresa','senha do Banco','senha para o MASTER','Titulo da Aplicação','telefone para suporte','FACEBOOK_APP_ID','FACEBOOK_APP_SECRET','TOKEN de acesso pessoal','URL do repositório','Usar as portas padrão'];
  labels.forEach((label,i)=>assert.ok(t.prompts[i].screen.includes(label),label));
- for(const i of [4,5,9,10,13,14,15])assert.equal(t.prompts[i].secret,true);
+ for(const i of [4,5,9,10,13,14])assert.equal(t.prompts[i].secret,true);
+ assert.ok(!t.prompts.some(p=>/conector|BuildKit/.test(p.label)));assert.equal(c.buildToken,undefined);
  const visible=t.output.join('\n');for(const secret of ['db$secure','master$secure','fb$secret','gh$token','admin$secret','build$secret'])assert.ok(!visible.includes(secret));
  assert.ok(visible.includes('Minha AMANDA'));assert.ok(visible.includes('/srv/acerti'));assert.ok(visible.includes('[oculta]'));
  assert.ok(!/GoFlow|PgBouncer/.test(visible));
+});
+
+test('historical collector preserves the company checked before questionnaire and PostgreSQL selection',async()=>{
+ const t=input({16:'2'},'acerti'),c=await collectHistorical(t.options);
+ assert.equal(c.project,'acerti');assert.equal(c.options.pg.maxConnections,200);
+ assert.ok(!t.prompts.some(p=>p.screen?.includes('Digite o nome da sua empresa')));
+ assert.equal(c.adminEmail,'owner@example.test');assert.equal(c.adminPassword,'admin$secret');
 });
 test('official URL variants and custom IP ports survive the original form',async()=>{
  for(const url of [SOURCE,SOURCE+'/',SOURCE.replace('.git',''),SOURCE.replace('.git','')+'/']){
@@ -80,7 +89,7 @@ test('historical HTTPS questions ask backend before frontend and preserve custom
  const c=await collectHistorical(t.options);assert.equal(c.edge,true);assert.equal(c.backendUrl,'https://api.example.test');assert.equal(c.frontendUrl,'https://app.example.test');assert.equal(c.options.backendPort,8810);assert.equal(c.options.frontendPort,3310);
 });
 test('historical cancellation and EOF never invoke platform provisioning',async()=>{
- for(const changes of [{0:':cancelar'},{11:null},{13:':cancelar'},{15:':cancelar'},{16:'n'},{17:null}]){const t=input(changes);await assert.rejects(collectHistorical(t.options),/cancelada antes de criar recursos/);}
+ for(const changes of [{0:':cancelar'},{11:null},{13:':cancelar'},{15:':cancelar'},{15:'n'},{16:null}]){const t=input(changes);await assert.rejects(collectHistorical(t.options),/cancelada antes de criar recursos/);}
  const t=input({14:'different'});await assert.rejects(collectHistorical(t.options),/Confirmação diferente/);
 });
 test('historical form retries unauthorized repositories and does not echo supplied credentials',async()=>{
@@ -115,7 +124,7 @@ test('unavailable administrative recipes report failure and never claim a comple
  assert.equal(messages.length,0);
 });
 test('historical performance choices map to bounded PostgreSQL profiles in containers',async()=>{
- for(const profile of ['0','1','2','3']){const t=input({17:profile}),c=await collectHistorical(t.options);if(profile==='0')assert.equal(c.options.pg,undefined);else{assert.equal(c.options.pg.maxConnections,Number(profile)*100);assert.equal(c.options.pg.sharedBuffers,{'1':'128MB','2':'256MB','3':'512MB'}[profile]);}assert.ok(t.output.at(-1).includes('PostgreSQL em container'));assert.ok(!t.output.at(-1).includes('Nginx'));}
+ for(const profile of ['0','1','2','3']){const t=input({16:profile}),c=await collectHistorical(t.options);if(profile==='0')assert.equal(c.options.pg,undefined);else{assert.equal(c.options.pg.maxConnections,Number(profile)*100);assert.equal(c.options.pg.sharedBuffers,{'1':'128MB','2':'256MB','3':'512MB'}[profile]);}assert.ok(t.output.at(-1).includes('PostgreSQL em container'));assert.ok(!t.output.at(-1).includes('Nginx'));}
 });
 test('real color terminals retain menu dispatch while rendering the original lilac highlights',()=>{
  const script="Object.defineProperty(process.stdout,'isTTY',{value:true});const {MAIN,TOOLS}=require('./docker/installer/menus.cjs');const {render}=require('./docker/installer/historical.cjs');process.stdout.write(JSON.stringify({main:MAIN.map(x=>x[0]),tools:TOOLS.map(x=>x[0]),screen:render('main')}));";

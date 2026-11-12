@@ -42,6 +42,7 @@ class FakeRunner {
       if(args.includes('clone')) {
         const dir=args.at(-1); fs.mkdirSync(path.join(dir,'.git/info'),{recursive:true});fs.mkdirSync(path.join(dir,'.secrets'));fs.mkdirSync(path.join(dir,'docker'));
         fs.writeFileSync(path.join(dir,'docker-compose.yml'),'# official test fixture\n');fs.writeFileSync(path.join(dir,'docker/ensure-transcription-key.cjs'),'');fs.writeFileSync(path.join(dir,'.secrets/github_token'),'');
+        fs.writeFileSync(path.join(dir,'.env.example'),defaultEnv);
       }
       if(args.includes('get-url'))stdout=options.cwd?.includes('/addons/')?(this.addonRemote||this.remote):this.remote;
       if(args.includes('status'))stdout=this.dirty?' M docker-compose.yml\n':'';
@@ -50,7 +51,7 @@ class FakeRunner {
         if(args.includes('merge')&&this.invalidateAddonOnMerge)this.addonValid=false;
         if(args.includes('checkout')&&this.invalidateAddonOnMerge)this.addonValid=true;
       }
-    } else if(bin===process.execPath && args[0].endsWith('configure.cjs')) fs.writeFileSync(path.join(options.cwd,'.env'),defaultEnv);
+    } else if(bin===process.execPath && args[0].endsWith('configure.cjs')) fs.writeFileSync(path.join(options.cwd,'.env'),defaultEnv,{mode:0o600});
     else if(bin==='docker') {
       if(args[0]==='info')stdout=JSON.stringify({OSType:'linux',ServerVersion:'27.5.1',Architecture:'x86_64',MemTotal:8*1024**3,NCPU:4});
       else if(args[0]==='volume'){if(args[1]==='inspect'&&this.volumeAbsent)return {stdout:'',stderr:'',code:1};stdout=this.existing.join('\n');}
@@ -80,6 +81,114 @@ class FakeRunner {
   }
 }
 async function fixture() { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());return {...t,runner,m}; }
+
+test('preparation interrupted before configuration resumes saved choices without another clone or questionnaire',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  r.fail=c=>c.bin===process.execPath&&c.args[0].endsWith('configure.cjs');
+  const config=input({sourceToken:'synthetic-source',adminPassword:'selected-password',options:{pg:{maxConnections:100,sharedBuffers:'128MB'}}});
+  await assert.rejects(m.prepare(config));assert.equal(m.state.phase,'preparing');assert.ok(fs.existsSync(path.join(m.private,'setup.json')));
+  r.fail=null;await m.execute('resume');assert.equal(m.state.phase,'ready');assert.equal(r.calls.filter(c=>c.bin==='git'&&c.args.includes('clone')).length,1);assert.equal(r.calls.filter(isSeed).length,1);
+  assert.equal(fs.readFileSync(path.join(m.private,'source-token'),'utf8'),'synthetic-source');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(m.private,'admin-access.json'))).password,'selected-password');assert.equal(envValues(path.join(m.state.platform,'.env')).PG_MAX_CONNECTIONS,'100');
+ }finally{t.cleanup();}
+});
+
+test('source acquisition failure resumes saved company without creating a second deployment',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  r.fail=c=>c.bin==='git'&&c.args.includes('clone');await assert.rejects(m.prepare(input({adminPassword:'saved-choice'})));assert.ok(!fs.existsSync(m.state.platform));
+  r.fail=null;await require('../docker/installer/deploy.cjs').startInstallation(m,{automatic:false,question:async()=> '1',collect:async()=>{throw Error('must not repeat questions');},out(){}});
+  assert.equal(m.state.phase,'ready');assert.equal(r.calls.filter(isSeed).length,1);assert.equal(JSON.parse(fs.readFileSync(path.join(m.private,'admin-access.json'))).password,'saved-choice');assert.ok(!r.calls.some(c=>c.args.includes('--provision')));
+ }finally{t.cleanup();}
+});
+
+test('failed Docker preflight retains approved configuration before preparation starts',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  const deploy=require('../docker/installer/deploy.cjs');r.fail=c=>c.bin==='docker'&&c.args[0]==='info';await assert.rejects(deploy.install(m,input({adminPassword:'approved-choice'})));assert.ok(!fs.existsSync(m.stateFile));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(m.private,'setup.json'))).config.adminPassword,'approved-choice');r.fail=null;
+  await deploy.startInstallation(m,{automatic:false,config:input(),collect:async()=>{throw Error('must not repeat questionnaire');},out(){}});
+  assert.equal(m.state.phase,'ready');assert.equal(JSON.parse(fs.readFileSync(path.join(m.private,'admin-access.json'))).password,'approved-choice');
+ }finally{t.cleanup();}
+});
+test('failure after configuration publication reuses exact credentials, URLs and push keys on resume',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  r.fail=c=>c.bin==='docker'&&c.args.includes('config');
+  await assert.rejects(m.prepare(input({adminPassword:'kept-password',options:{pushEmail:'owner@example.test'}})));
+  const env=fs.readFileSync(path.join(m.state.platform,'.env'),'utf8'),backend=fs.readFileSync(path.join(m.state.platform,'.env.backend'),'utf8'),account=fs.readFileSync(path.join(m.private,'admin-access.json'),'utf8');
+  assert.equal(m.state.configurationReady,true);r.fail=null;await m.execute('resume');
+  assert.equal(fs.readFileSync(path.join(m.state.platform,'.env'),'utf8'),env);assert.equal(fs.readFileSync(path.join(m.state.platform,'.env.backend'),'utf8'),backend);assert.equal(fs.readFileSync(path.join(m.private,'admin-access.json'),'utf8'),account);
+  assert.equal(r.calls.filter(c=>c.bin===process.execPath&&c.args[0].endsWith('configure.cjs')).length,1);assert.equal(r.calls.filter(isSeed).length,1);
+ }finally{t.cleanup();}
+});
+test('changed configuration after interrupted preparation is preserved and blocks publication and seeds',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  r.fail=c=>c.bin==='docker'&&c.args.includes('config');await assert.rejects(m.prepare(input()));r.fail=null;
+  const file=path.join(m.state.platform,'.env');fs.appendFileSync(file,'CUSTOM=keep\n');const before=fs.readFileSync(file,'utf8');
+  await assert.rejects(m.execute('resume'),/nenhum arquivo foi sobrescrito/);assert.equal(fs.readFileSync(file,'utf8'),before);assert.equal(r.calls.filter(isSeed).length,0);
+ }finally{t.cleanup();}
+});
+test('install recognizes a failed build and resumes existing configuration without reprovisioning',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
+  const deploy=require('../docker/installer/deploy.cjs');r.fail=c=>c.bin==='docker'&&c.args.includes('build');await assert.rejects(deploy.install(m,input({adminPassword:'keep-me'})));
+  const before=fs.readFileSync(path.join(m.state.platform,'.env'),'utf8');r.fail=null;
+  await deploy.startInstallation(m,{automatic:false,config:input(),collect:async()=>{throw Error('must not collect');},out(){}});
+  assert.equal(m.state.phase,'ready');assert.equal(fs.readFileSync(path.join(m.state.platform,'.env'),'utf8'),before);assert.equal(r.calls.filter(isSeed).length,1);assert.equal(r.calls.filter(c=>c.bin==='git'&&c.args.includes('clone')).length,1);assert.ok(!r.calls.some(c=>c.args.includes('--provision')||c.args.includes('down')));
+ }finally{t.cleanup();}
+});
+test('first-install migration failure resumes claimed resources without reasserting an empty project',async()=>{
+ const t=await fixture();try{
+  t.runner.fail=c=>c.args.includes('run')&&c.args.includes('migrate');await assert.rejects(t.m.initialize());assert.equal(t.m.state.phase,'migrations');assert.equal(t.m.state.resourcesClaimed,true);
+  const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');t.runner.fail=null;t.runner.existing=['amanda_postgres_data'];await t.m.execute('resume');assert.equal(t.m.state.phase,'ready');assert.equal(t.runner.calls.filter(isSeed).length,1);assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+ }finally{t.cleanup();}
+});
+
+test('older prepared state without draft resumes only with consistent private config and proven empty resources',async()=>{
+ for(const occupied of [false,true]){const t=await fixture();try{
+  fs.unlinkSync(path.join(t.m.private,'setup.json'));fs.rmSync(path.join(t.m.private,'setup-files'),{recursive:true});
+  const state={...t.m.state,phase:'preparing'};for(const key of ['freshResourcesVerified','configurationFiles','configurationReady','adminFingerprint','naming'])delete state[key];t.m.save(state);
+  writeEnv(path.join(t.m.state.platform,'.env'),{MASTER_KEY:'fixture-master',TOKEN_API_OFICIAL:'fixture-official'});
+  const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');if(occupied)t.runner.existing=['amanda_postgres_data'];
+  if(occupied){await assert.rejects(t.m.execute('resume'),/volumes já existem/);assert.equal(t.runner.calls.filter(isSeed).length,0);assert.equal(t.m.state.phase,'preparing');}
+  else{await t.m.execute('resume');assert.equal(t.m.state.phase,'ready');assert.equal(t.runner.calls.filter(isSeed).length,1);}
+  assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+ }finally{t.cleanup();}}
+});
+
+test('legacy recovery asks only missing admin fields after resource proof and preserves saved settings',async()=>{
+ for(const missing of ['email','password']){const t=await fixture();try{
+  fs.unlinkSync(path.join(t.m.private,'setup.json'));fs.rmSync(path.join(t.m.private,'setup-files'),{recursive:true});
+  const state={...t.m.state,phase:'preparing'};for(const key of ['freshResourcesVerified','configurationFiles','configurationReady','adminFingerprint'])delete state[key];t.m.save(state);
+  writeEnv(path.join(t.m.state.platform,'.env'),{MASTER_KEY:'fixture-master',TOKEN_API_OFICIAL:'fixture-official'});
+  const file=path.join(t.m.private,'admin-access.json'),admin=JSON.parse(fs.readFileSync(file));admin.email='kept@example.test';admin.password='kept-secret';admin.initialSettings={preserved:'yes'};delete admin[missing];fs.writeFileSync(file,JSON.stringify(admin));
+  const env=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),prompts=[];
+  t.m.recoveryQuestion=async label=>{prompts.push(label);return label.includes('E-mail')?'new@example.test':'new-secret';};await t.m.execute('resume');
+  const saved=JSON.parse(fs.readFileSync(file));assert.equal(saved.email,missing==='email'?'new@example.test':'kept@example.test');assert.equal(saved.password,missing==='password'?'new-secret':'kept-secret');assert.deepEqual(saved.initialSettings,{preserved:'yes'});assert.equal(prompts.length,missing==='email'?1:2);assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),env);assert.equal(t.runner.calls.filter(isSeed).length,1);
+ }finally{t.cleanup();}}
+});
+
+test('legacy recovery refuses noninteractive missing credentials and redacts corrupt admin JSON errors',async()=>{
+ for(const corrupt of [false,true]){const t=await fixture();try{
+  fs.unlinkSync(path.join(t.m.private,'setup.json'));fs.rmSync(path.join(t.m.private,'setup-files'),{recursive:true});
+  const state={...t.m.state,phase:'preparing'};for(const key of ['freshResourcesVerified','configurationFiles','configurationReady','adminFingerprint'])delete state[key];t.m.save(state);
+  writeEnv(path.join(t.m.state.platform,'.env'),{MASTER_KEY:'fixture-master',TOKEN_API_OFICIAL:'fixture-official'});
+  const file=path.join(t.m.private,'admin-access.json'),before=corrupt?'{"password":"private-do-not-print",BROKEN}':JSON.stringify({email:'kept@example.test'});fs.writeFileSync(file,before);
+  await assert.rejects(t.m.execute('resume'),error=>{assert.ok(!error.message.includes('private-do-not-print'));return /terminal interativo|Arquivo privado de acesso inválido/.test(error.message);});
+  assert.equal(fs.readFileSync(file,'utf8'),before);assert.equal(t.runner.calls.filter(isSeed).length,0);
+ }finally{t.cleanup();}}
+});
+
+test('integration: old main fails after PostgreSQL choice; corrected principal menu resumes /home/deploy/amanda',async()=>{
+ const root='/home/deploy/amanda';assert.ok(!fs.existsSync(root),'isolated test directory must not preexist');
+ const r=new FakeRunner(),m=new Manager(root,r),answers=['1','localhost','owner@example.test','amanda','db-choice','master-choice','AMANDA','5511999999999','','','source-choice',SOURCE,'s','admin-choice','admin-choice','s','1'],output=[];
+ try{
+  const config=await require('../docker/installer/historical.cjs').collectHistorical({question:async()=>answers.shift(),out:s=>output.push(s),directory:root});
+  assert.equal(answers.length,0);assert.equal(config.options.pg.maxConnections,100);await m.prepare(config);
+  const before=fs.readFileSync(path.join(m.state.platform,'.env'),'utf8');
+  assert.throws(()=>require('./fixtures/deploy-main-8d748f1.cjs').provision('amanda',{host:'',run(){throw Error('must not provision');}}),/Diretório da empresa já contém arquivos\. Use --dir e resume\/adopt/);
+  const prompts=[],question=async label=>{prompts.push(label);return label==='Nome técnico da empresa'?'amanda':'1';};
+  const deploy=require('../docker/installer/deploy.cjs'),menu=new Menus(m,question,null,{out(){},startInstall:target=>deploy.startInstallation(target,{automatic:true,question,out(){},collect:async()=>{throw Error('full questionnaire repeated');}})});
+  await menu.dispatch('install');assert.equal(m.state.phase,'ready');assert.deepEqual(prompts,['Nome técnico da empresa','Selecione a opção']);assert.equal(fs.readFileSync(path.join(m.state.platform,'.env'),'utf8'),before);assert.equal(r.calls.filter(isSeed).length,1);assert.ok(!r.calls.some(c=>c.args.includes('--provision')));assert.equal(envValues(path.join(m.state.platform,'.env')).PG_MAX_CONNECTIONS,'100');
+ }finally{assert.equal(root,'/home/deploy/amanda');fs.rmSync(root,{recursive:true,force:true});}
+});
 test('company names are normalized separately from commercial titles',()=>{
   assert.equal(normalizeConfig(input({project:' ÁCERTI Filial-2 '})).project,'acerti_filial_2');
   for(const project of ['../x','a;id','a/b','_x','💜','a.b'])assert.throws(()=>normalizeConfig(input({project})));
@@ -312,7 +421,7 @@ test('preexisting containers and nonempty directories are not overwritten',async
 test('separate source/build tokens stay in protected files, never URLs or Compose context changes',async()=>{
   const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{
     await m.prepare(input({sourceToken:'synthetic-source-token',buildToken:'synthetic-build-token',adminPassword:"custom$#'value"}));
-    assert.equal(fs.readFileSync(path.join(m.state.platform,'.secrets/github_token'),'utf8'),'synthetic-build-token');
+    assert.equal(fs.readFileSync(path.join(m.state.platform,'.secrets/github_token'),'utf8'),'');
     const clone=r.calls.find(c=>c.args.includes('clone'));assert.ok(clone.args.includes(SOURCE));assert.ok(!JSON.stringify(clone.args).includes('synthetic-'));
     assert.equal(fs.statSync(path.join(m.private,'admin-access.json')).mode&0o777,0o600);
     assert.ok(!fs.readFileSync(path.join(m.state.platform,'.env'),'utf8').includes("custom$#'value"));
@@ -327,6 +436,32 @@ test('initial seed only runs after migrations and an empty user table; all servi
     const seed=t.runner.calls.find(isSeed);assert.equal(seed.options.env.AMANDA_ADMIN_EMAIL,'admin@amanda.com.br');assert.equal(seed.options.env.AMANDA_ADMIN_PASSWORD,'adminamanda');
     const start=t.runner.calls.find(c=>c.args.includes('up')&&c.args.includes('backend'));for(const name of CORE)assert.ok(start.args.includes(name));
     assert.ok(t.runner.calls.some(c=>c.args.some(a=>String(a).includes('/auth/me'))));
+  }finally{t.cleanup();}
+});
+
+test('interrupted build refreshes only official main without replacing configuration, volumes or source credentials',async()=>{
+  const t=await fixture();try{
+    const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');
+    t.runner.calls=[];await t.m.refreshInterruptedBuild();
+    assert.ok(t.runner.calls.some(c=>c.bin==='git'&&c.args.includes('fetch')&&c.args.includes('main')));
+    assert.ok(t.runner.calls.some(c=>c.bin==='git'&&c.args.includes('--ff-only')));
+    assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+    assert.ok(!t.runner.calls.some(c=>isSeed(c)||c.args.includes('down')||c.args.includes('reset')||c.args.includes('volume')));
+    t.m.state.seedAttempted=true;t.runner.calls=[];await t.m.refreshInterruptedBuild();assert.equal(t.runner.calls.length,0);
+  }finally{t.cleanup();}
+});
+
+test('failed official fast-forward leaves interrupted build and private configuration resumable',async()=>{
+  const t=await fixture();try{
+    const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');
+    t.runner.calls=[];t.runner.fail=c=>c.bin==='git'&&c.args.includes('merge-base');
+    await assert.rejects(t.m.refreshInterruptedBuild());
+    assert.equal(t.m.state.phase,'build');assert.equal(t.m.state.seedAttempted,false);
+    assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+    assert.ok(!t.runner.calls.some(c=>isSeed(c)||c.args.includes('reset')||c.args.includes('--ff-only')||c.args.includes('build')));
+    t.runner.fail=null;t.runner.calls=[];t.runner.dirty=true;
+    await assert.rejects(t.m.refreshInterruptedBuild(),/alterações locais/);
+    assert.ok(!t.runner.calls.some(c=>c.args.includes('fetch')));
   }finally{t.cleanup();}
 });
 test('existing users cause initialization to refuse seeds',async()=>{
@@ -444,6 +579,12 @@ test('eleven-stage wizard configures localhost and reviews all public choices',a
   assert.equal(c.frontendUrl,'http://localhost:3000');assert.equal(c.backendUrl,'http://localhost:8080');assert.equal(c.adminEmail,'admin@amanda.com.br');assert.equal(c.companyName,'AMANDA');assert.equal(c.options.pg.sharedBuffers,'128MB');
   for(let i=1;i<=11;i++)assert.ok(output.some(s=>s.includes('[ETAPA '+String(i).padStart(2,'0')+'/11]')));
   assert.ok(output.join('').includes('/srv/local'));assert.ok(prompts.find(a=>a[0].startsWith('MASTER_KEY'))[2]);
+});
+
+test('wizard keeps the preflight company fixed while retaining PostgreSQL and administrative choices',async()=>{
+ const prompts=[],q=wizardQuestion({'Nome técnico do projeto Docker':'other','Perfil PostgreSQL':'2'});
+ const c=await installInput(undefined,{project:'acerti',out(){},question:(...args)=>{prompts.push(args[0]);return q(...args);}});
+ assert.equal(c.project,'acerti');assert.equal(c.options.pg.maxConnections,200);assert.ok(!prompts.some(p=>p.startsWith('Nome técnico do projeto Docker')));assert.equal(c.adminEmail,'admin@amanda.com.br');
 });
 test('HTTPS wizard accepts distinct domains and custom administrator without leaking secrets in review',async()=>{
   const output=[],password='custom$#strongPassword',c=await installInput(undefined,{out:s=>output.push(s),question:wizardQuestion({'Tipo de instalação':'1','URL do frontend HTTPS':'app.example.com','URL do backend HTTPS':'https://api.example.com','E-mail do administrador':'owner@example.com','Senha do administrador':password,'Confirmação da senha':password,'URL pública HTTPS da API Oficial':'official.example.com'})});
