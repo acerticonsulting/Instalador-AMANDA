@@ -1,3 +1,19 @@
+# Preservação do terminal no Docker — 12/11/2026
+
+Base: main 31fa043. Reproduzido o erro de terminal interativo quando stdin é
+TTY, mas stdout passa por pipe: o menu shell aceita a opção, enquanto o bootstrap
+envia apenas -i ao Docker. A decisão agora usa stdin, igual ao menu, enviando -it
+nesse caso e mantendo -i para entradas não interativas.
+
+Regressão anterior falhou com -i; teste corrigido e controle não interativo cobertos.
+Integração opt-in com Docker real: sem TTY a CLI reproduz o erro e retorna 1;
+com o argumento do bootstrap corrigido retorna 0. A CLI recebe menu --initial 0,
+sem executar instalação. O socket do controlador serve apenas para containers de
+ferramentas descartáveis; containers internos não montam dados/socket da plataforma.
+A VPS relatada não foi acessada; a causa remota exata não foi inspecionada.
+Validação local aprovada: 142 testes Node, dois opt-in ignorados na suíte padrão,
+84 scripts Shell e cinco suítes; os dois casos opt-in passaram com Docker real.
+
 # Entrada do menu em terminal — 12/11/2026
 
 Objetivo: tratar a saída Opção inválida ao iniciar instalador_single.sh.

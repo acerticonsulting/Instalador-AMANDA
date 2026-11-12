@@ -31,6 +31,9 @@ No menu inicial, linhas vazias são ignoradas e espaços/retorno de carro de tex
 colado são removidos das extremidades da opção. Uma opção inválida pede nova
 entrada, sem encerrar o instalador. Enter sozinho não inicia instalação.
 O arquivo também é versionado como executável para execução direta em Linux.
+O terminal de entrada é preservado no container mesmo quando a saída passa por
+um pipe ou coletor de logs. Isso evita a mensagem de terminal interativo após
+selecionar uma opção no menu. Entradas sem terminal continuam sem alocação de TTY.
 Se você já executou `chmod +x` na versão anterior, essa alteração de modo pode
 bloquear o pull do mesmo arquivo. Preserve a alteração antes de atualizar com
 `git stash push -m "antes-da-correcao-menu" -- instalador_single.sh` e use
