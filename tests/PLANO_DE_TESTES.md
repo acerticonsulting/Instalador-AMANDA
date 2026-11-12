@@ -1,3 +1,24 @@
+# Integração da correção à main — 12/11/2026
+
+136 testes Node, 83 scripts e cinco suítes locais. O driver de integração executa
+11 contratos da imagem e uma reprodução de menu em outro container descartável.
+A fixture deploy-main-8d748f1.cjs é o arquivo exato da main analisada, usado
+somente como controle de regressão; não é um caminho ativo do instalador.
+
+- Reproduz o erro da main depois de escolher PostgreSQL 1; usa Menus.dispatch,
+  startInstallation e resume em /home/deploy/amanda na implementação corrigida.
+  Confere ausência de segundo provisionamento/questionário, ambiente inalterado
+  e seed único. Comandos Docker de aplicação são simulados.
+- Bootstrap transmite revisão obtida por Git em container; CLI empacotada mostra
+  branch, commit e main da plataforma sem alterar a apresentação histórica.
+- Preparação antiga pede só e-mail/senha ausentes e preserva campos existentes.
+  Sem interação, recusa faltantes; JSON privado inválido não expõe segredos.
+- Os cenários anteriores de diretório, identidade, isolamento, conta deploy,
+  permissões, concorrência e retomada de build/migrations continuam na suíte.
+
+A árvore candidata à integração é conferida contra official/main por merge-tree;
+a referência main real não é alterada pelos testes. VPS não fornecida para
+validação operacional de leitura; nenhuma operação de produção é executada.
 # Reconhecimento de diretórios e preparação recuperável — 12/11/2026
 
 A suíte passa a 131 testes Node, além dos quatro grupos Shell; 83 scripts têm

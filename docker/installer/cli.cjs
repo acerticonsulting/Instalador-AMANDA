@@ -29,6 +29,7 @@ async function installInput(configFile,options={}) {
 async function main() {
   const args = process.argv.slice(2); let action = args.shift() || 'menu', configFile,initial;
   while (args.length) { const flag=args.shift();if(!args.length)throw Error('Argumentos inválidos.');if(flag==='--config')configFile=args.shift();else if(flag==='--initial')initial=args.shift();else throw Error('Argumentos inválidos.'); }
+  console.log(require('./revision.cjs').revisionLine());
   if (action === 'help') {
     console.log(`AMANDA — gerenciador inteiramente em containers
 Uso: sh instalador_single.sh [comando] --dir /pasta/da/instalacao [--config /arquivo.json]
@@ -64,6 +65,7 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
     return manager.lock(async () => { await manager.doctor(); await manager.adopt(url); });
   }
   if(action==='resume'){
+    manager.recoveryQuestion=process.stdin.isTTY?ask:undefined;
     let project;try{project=JSON.parse(fs.readFileSync(manager.stateFile,'utf8')).project;}catch{throw Error('Estado ausente ou inválido em '+manager.root+'. Nenhum arquivo foi alterado.');}
     const info=deploy.inspectInstallation(manager.root,project);if(info.kind==='unknown')throw Error(require('./directory-state.cjs').conflict(info));
   }

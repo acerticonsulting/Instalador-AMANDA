@@ -27,6 +27,44 @@ precisar dele para acessar Docker. O instalador não altera grupos/permissões d
 A preparação da imagem pode baixar ferramentas; instalar a plataforma exige a
 confirmação final. Use sempre o mesmo diretório absoluto nas operações seguintes.
 
+### Conferir qual revisão será executada
+
+`git pull` atualiza a branch selecionada. A mensagem `[new branch]` apenas
+informa que uma referência remota foi baixada: não integra essa branch à `main`.
+O bootstrap corrigido consulta Git dentro da imagem de ferramentas, com o clone
+montado somente para leitura, e informa branch, commit e alterações locais ao
+iniciar o gerenciador. Arquivos sem metadados Git são identificados como revisão
+não informada. O banner e as cores permanecem iguais. Depois da seleção da empresa,
+o diagnóstico mostra o diretório exato e a revisão da plataforma registrada no estado.
+
+Para homologar a correção antes da integração, dentro do clone do instalador:
+
+```sh
+docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo fetch origin &&
+docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo switch fix/retomada-diretorio-existente &&
+docker run --rm -v "$PWD:/repo" -w /repo alpine/git -c safe.directory=/repo pull --ff-only origin fix/retomada-diretorio-existente
+```
+
+Após aprovação e merge do [PR do instalador](https://github.com/acerticonsulting/Instalador-AMANDA/pull/1),
+use a mesma sequência com `main` no lugar da branch de correção. Se Git recusar
+por alterações locais ou divergência, preserve-as e revise o diagnóstico;
+não use reset forçado. A integração do
+[PR da plataforma](https://github.com/acerticonsulting/AMANDA/pull/1) também é necessária
+para que o build obtido de `main` deixe de depender de Hineken.
+
+Depois de verificar a revisão, a retomada usa o diretório original:
+
+```sh
+sh instalador_single.sh resume --dir /home/deploy/amanda
+```
+
+Em preparação antiga reconhecida e sem recursos preexistentes, a retomada
+interativa pede somente e-mail ou senha administrativa ausentes, com confirmação
+da nova senha. Campos já salvos e demais configurações são preservados. JSON
+corrompido, credenciais internas ausentes ou recursos sem origem comprovada
+continuam bloqueados; não são reconstruídos por suposição. Retomada não interativa
+com acesso administrativo incompleto informa os campos faltantes sem usar senhas padrão.
+
 ## Instalação com a interface histórica
 
 Novas instalações usam `/home/deploy/{empresa}`: `amanda` fica em

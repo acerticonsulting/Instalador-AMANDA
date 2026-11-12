@@ -37,6 +37,11 @@ test('built manager includes the recovered historical presentation',()=>{
  const output=execFileSync('sh',['/opt/amanda-installer/historical.sh','--main'],{encoding:'utf8'});
  assert.ok(output.includes('MULTICANAL v1.0.0'));assert.ok(output.includes('[8] Menu de Ferramentas Adicionais'));assert.ok(output.includes('[11] Instalar ou Gerenciar API Oficial'));
 });
+
+test('built CLI identifies installer revision and selected platform without changing the banner',()=>{
+ const output=execFileSync(process.execPath,['/opt/amanda-installer/cli.cjs','help'],{encoding:'utf8',env:{...process.env,AMANDA_INSTALLER_BRANCH:'fix/retomada-diretorio-existente',AMANDA_INSTALLER_COMMIT:'a'.repeat(40),AMANDA_INSTALLER_DIRTY:'clean'}});
+ assert.ok(output.includes('branch fix/retomada-diretorio-existente; commit aaaaaaaaaaaa'));assert.ok(output.includes('Plataforma selecionada: main'));assert.ok(output.includes('gerenciador inteiramente em containers'));
+});
 test('built manager provides kernel operation locking without host dependencies',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'amanda-image-lock-'));try{const m=new Manager(root,new Runner(null,{write(){}}));await m.lock(()=>m.lock(async()=>{}));assert.ok(!fs.existsSync(path.join(root,'.amanda-installer/operation.lock')));}finally{fs.rmSync(root,{recursive:true});}
 });

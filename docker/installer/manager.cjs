@@ -156,7 +156,7 @@ class Manager {
       if (fs.existsSync(p)) for (const [k,v] of Object.entries(envValues(p))) if (/SECRET|TOKEN|KEY|PASS/.test(k)) this.runner.secret(v);
     }
     for (const p of [path.join(this.state.platform,'.secrets/github_token'),path.join(this.private,'source-token')]) if (fs.existsSync(p)) this.runner.secret(fs.readFileSync(p,'utf8').trim());
-    const account = path.join(this.private,'admin-access.json'); if (fs.existsSync(account)){const a=JSON.parse(fs.readFileSync(account,'utf8'));this.runner.secret(a.password);for(const[k,v]of Object.entries(a.initialSettings||{}))if(/key|token|pass|secret/i.test(k))this.runner.secret(v);}
+    const account = path.join(this.private,'admin-access.json'); if (fs.existsSync(account)){let a;try{a=JSON.parse(fs.readFileSync(account,'utf8'));if(!a||typeof a!=='object'||Array.isArray(a))throw Error();}catch{throw Error('Arquivo privado de acesso inválido; conteúdo preservado para diagnóstico.');}this.runner.secret(a.password);for(const[k,v]of Object.entries(a.initialSettings||{}))if(/key|token|pass|secret/i.test(k))this.runner.secret(v);}
   }
   temporaryName(task) { return (this.state?.project || 'amanda')+'_'+task.replace(/[^a-z0-9_]/g,'_')+'_'+crypto.randomUUID().replace(/-/g,''); }
   docker(args, options={}) {
@@ -317,16 +317,29 @@ class Manager {
     const info=require('./deploy.cjs').inspectInstallation(this.root,this.state.project);
     if(info.kind!=='partial'||info.phase!=='preparing'||this.state.seedAttempted||this.state.initialized)throw Error('Preparação interrompida sem checkpoint seguro para recuperação.');
     const envFile=path.join(this.state.platform,'.env'),adminFile=path.join(this.private,'admin-access.json');
-    if(!fs.existsSync(envFile)||!fs.existsSync(adminFile))throw Error('Preparação interrompida sem configuração salva suficiente. Código, credenciais e estado foram preservados; consulte o diagnóstico.');
-    const env=envValues(envFile);let admin;try{admin=JSON.parse(fs.readFileSync(adminFile,'utf8'));}catch{throw Error('Arquivo privado de acesso inválido; conteúdo preservado para diagnóstico.');}
+    if(!fs.existsSync(envFile))throw Error('Preparação interrompida sem configuração salva suficiente. Código, credenciais e estado foram preservados; consulte o diagnóstico.');
+    const originalAdmin=fs.existsSync(adminFile)?fs.readFileSync(adminFile,'utf8'):null;
+    const env=envValues(envFile);let admin;try{admin=originalAdmin===null?{}:JSON.parse(originalAdmin);if(!admin||typeof admin!=='object'||Array.isArray(admin))throw Error();}catch{throw Error('Arquivo privado de acesso inválido; conteúdo preservado para diagnóstico.');}
     if(env.COMPOSE_PROJECT_NAME!==this.state.project||env.FRONTEND_URL!==this.state.frontendUrl||env.BACKEND_URL!==this.state.backendUrl||['DB_PASS','JWT_SECRET','JWT_REFRESH_SECRET','MASTER_KEY','TRANSCRIBE_API_KEY','TOKEN_API_OFICIAL'].some(k=>!env[k]))throw Error('Preparação interrompida com configuração incompleta ou de outra empresa; nenhum arquivo foi substituído.');
-    normalizeConfig({sourceUrl:SOURCE,project:this.state.project,frontendUrl:env.FRONTEND_URL,backendUrl:env.BACKEND_URL,edge:this.state.profiles.includes('edge'),public:env.BIND_ADDRESS==='0.0.0.0',adminEmail:admin.email,adminPassword:admin.password});
     await this.validateSource(true);
     if(fs.existsSync(path.join(this.private,'compose-names.json')))this.state.naming='company-v1';
     const config=await this.configuration();
     if(env.PG_MAX_CONNECTIONS||env.PG_SHARED_BUFFERS)validatePg({maxConnections:Number(env.PG_MAX_CONNECTIONS),sharedBuffers:env.PG_SHARED_BUFFERS},(await this.resources()).memory);
     // Existing resources cannot be assumed fresh just because preparation stopped.
     await this.assertFreshResources();await require('./preflight.cjs').assertPorts(this,config);
+    const missing=['email','password'].filter(key=>admin[key]===undefined||admin[key]==='');
+    if(missing.length&&!this.recoveryQuestion)throw Error('Configuração administrativa incompleta: '+missing.join(', ')+'. Retome em terminal interativo para informar somente os campos faltantes.');
+    for(const key of missing){
+      const value=await this.recoveryQuestion(key==='email'?'E-mail administrativo ausente':'Senha administrativa ausente',undefined,key==='password');
+      if(value==null||[':cancelar',':sair'].includes(value))throw Error('Retomada cancelada; configuração existente preservada.');
+      if(key==='password'&&await this.recoveryQuestion('Confirmação da senha administrativa ausente',undefined,true)!==value)throw Error('Confirmação diferente; configuração existente preservada.');
+      admin[key]=value;
+    }
+    normalizeConfig({sourceUrl:SOURCE,project:this.state.project,frontendUrl:env.FRONTEND_URL,backendUrl:env.BACKEND_URL,edge:this.state.profiles.includes('edge'),public:env.BIND_ADDRESS==='0.0.0.0',adminEmail:admin.email,adminPassword:admin.password});
+    if(missing.length){
+      if((fs.existsSync(adminFile)?fs.readFileSync(adminFile,'utf8'):null)!==originalAdmin)throw Error('A configuração administrativa mudou durante a retomada; nenhum valor foi substituído.');
+      this.runner.secret(admin.password);this.write(adminFile,admin);
+    }
     this.save({...this.state,phase:'build',freshResourcesVerified:true,configurationReady:true});
   }
   async refreshInterruptedBuild() {

@@ -57,8 +57,9 @@ async function startInstallation(manager,{question,collect,config,directory=mana
  out(`Empresa: ${project}\nDiretório: ${root}`);
  if(['partial','complete'].includes(info.kind)){
    const target=root===manager.root?manager:new Manager(root);
-   const resume=()=>target.lock(async()=>{const current=inspect(root,project);if(current.kind==='unknown')throw Error(conflict(current));if(current.kind!=='partial')throw Error('O estado mudou durante a seleção; consulte novamente o diagnóstico.');await target.execute('resume');return target;});
-   out(info.kind==='partial'?`Foi encontrada uma instalação AMANDA não concluída.\nÚltima etapa registrada: ${info.phase}`:'Foi encontrada uma instalação AMANDA concluída. Nenhuma nova instalação será executada.');
+   const resume=()=>target.lock(async()=>{const current=inspect(root,project);if(current.kind==='unknown')throw Error(conflict(current));if(current.kind!=='partial')throw Error('O estado mudou durante a seleção; consulte novamente o diagnóstico.');target.recoveryQuestion=config?undefined:question;await target.execute('resume');return target;});
+   out(info.kind==='partial'?`Instalação AMANDA encontrada.\nEstado: instalação não concluída\nÚltima etapa registrada: ${info.phase}`:'Foi encontrada uma instalação AMANDA concluída. Nenhuma nova instalação será executada.');
+   out('Plataforma: main; revisão registrada: '+(/^[a-f0-9]{40,64}$/.test(info.state.revision||'')?info.state.revision.slice(0,12):'não informada'));
    if(info.kind==='complete'&&config){out('Use menu, status ou update com --dir '+root+'.');return target;}
    if(config)return resume();
    while(true){

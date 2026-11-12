@@ -60,11 +60,23 @@ case "$endpoint" in unix://*) socket=${endpoint#unix://} ;; *) printf '%s\n' 'Se
 image=amanda-installer:local
 printf '%s\n' 'Preparando ferramentas em container. Na primeira execução, o download pode demorar; nenhuma aplicação será instalada antes da configuração.'
 bootstrap=amanda_bootstrap_$$
+
+# Read the checkout revision in the existing tools image, never with host Git.
+installer_branch=unknown installer_commit=unknown installer_dirty=unknown
+if [ -d "$installer_dir/.git" ] || [ -f "$installer_dir/.git" ]; then
+  installer_branch=$(docker run --rm --name "${bootstrap}_revision_branch" --network none --mount "type=bind,source=$installer_dir,target=/source,readonly" --entrypoint git docker:27.5.1-cli -c safe.directory=/source -C /source rev-parse --abbrev-ref HEAD 2>/dev/null) || installer_branch=unknown
+  installer_commit=$(docker run --rm --name "${bootstrap}_revision_commit" --network none --mount "type=bind,source=$installer_dir,target=/source,readonly" --entrypoint git docker:27.5.1-cli -c safe.directory=/source -C /source rev-parse HEAD 2>/dev/null) || installer_commit=unknown
+  if installer_changes=$(docker run --rm --name "${bootstrap}_revision_status" --network none --mount "type=bind,source=$installer_dir,target=/source,readonly" --entrypoint git docker:27.5.1-cli -c safe.directory=/source -C /source status --porcelain --untracked-files=normal 2>/dev/null); then
+    installer_dirty=clean
+    if [ -n "$installer_changes" ]; then installer_dirty=dirty; fi
+  fi
+fi
 docker run --rm --name "${bootstrap}_build" --mount "type=bind,source=$socket,target=/var/run/docker.sock" --mount "type=bind,source=$installer_dir,target=$installer_dir,readonly" -e DOCKER_HOST=unix:///var/run/docker.sock -e DOCKER_BUILDKIT=1 docker:27.5.1-cli docker build -f "$installer_dir/docker/installer/Dockerfile" -t "$image" "$installer_dir"
 terminal=-i
 if [ -t 0 ] && [ -t 1 ]; then terminal=-it; fi
 set -- run --rm --init --name "$bootstrap" "$terminal" --mount "type=bind,source=$socket,target=/var/run/docker.sock" -e "AMANDA_MANAGER_CONTAINER=$bootstrap" -e TERM -e COLORTERM -e NO_COLOR -e WT_SESSION -e DOCKER_HOST=unix:///var/run/docker.sock -e "AMANDA_DOCKER_SOCKET=$socket" -e "AMANDA_DEPLOY_LAYOUT=$deploy_layout" -e "AMANDA_INSTALL_DIR=$target" -e "AMANDA_MANAGER_IMAGE=$image"
 set -- "$@" --mount type=bind,source=/etc/passwd,target=/run/amanda-host-passwd,readonly
+set -- "$@" -e "AMANDA_INSTALLER_BRANCH=$installer_branch" -e "AMANDA_INSTALLER_COMMIT=$installer_commit" -e "AMANDA_INSTALLER_DIRTY=$installer_dirty"
 case "$action" in help|doctor) ;; *) set -- "$@" -v "$target:$target" ;; esac
 if [ "$deploy_layout" = 1 ] && [ "$target" != /home/deploy ]; then set -- "$@" -v /home/deploy:/home/deploy; fi
 if [ -n "$config" ]; then

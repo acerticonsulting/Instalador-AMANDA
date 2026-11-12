@@ -152,6 +152,43 @@ test('older prepared state without draft resumes only with consistent private co
   assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
  }finally{t.cleanup();}}
 });
+
+test('legacy recovery asks only missing admin fields after resource proof and preserves saved settings',async()=>{
+ for(const missing of ['email','password']){const t=await fixture();try{
+  fs.unlinkSync(path.join(t.m.private,'setup.json'));fs.rmSync(path.join(t.m.private,'setup-files'),{recursive:true});
+  const state={...t.m.state,phase:'preparing'};for(const key of ['freshResourcesVerified','configurationFiles','configurationReady','adminFingerprint'])delete state[key];t.m.save(state);
+  writeEnv(path.join(t.m.state.platform,'.env'),{MASTER_KEY:'fixture-master',TOKEN_API_OFICIAL:'fixture-official'});
+  const file=path.join(t.m.private,'admin-access.json'),admin=JSON.parse(fs.readFileSync(file));admin.email='kept@example.test';admin.password='kept-secret';admin.initialSettings={preserved:'yes'};delete admin[missing];fs.writeFileSync(file,JSON.stringify(admin));
+  const env=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),prompts=[];
+  t.m.recoveryQuestion=async label=>{prompts.push(label);return label.includes('E-mail')?'new@example.test':'new-secret';};await t.m.execute('resume');
+  const saved=JSON.parse(fs.readFileSync(file));assert.equal(saved.email,missing==='email'?'new@example.test':'kept@example.test');assert.equal(saved.password,missing==='password'?'new-secret':'kept-secret');assert.deepEqual(saved.initialSettings,{preserved:'yes'});assert.equal(prompts.length,missing==='email'?1:2);assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),env);assert.equal(t.runner.calls.filter(isSeed).length,1);
+ }finally{t.cleanup();}}
+});
+
+test('legacy recovery refuses noninteractive missing credentials and redacts corrupt admin JSON errors',async()=>{
+ for(const corrupt of [false,true]){const t=await fixture();try{
+  fs.unlinkSync(path.join(t.m.private,'setup.json'));fs.rmSync(path.join(t.m.private,'setup-files'),{recursive:true});
+  const state={...t.m.state,phase:'preparing'};for(const key of ['freshResourcesVerified','configurationFiles','configurationReady','adminFingerprint'])delete state[key];t.m.save(state);
+  writeEnv(path.join(t.m.state.platform,'.env'),{MASTER_KEY:'fixture-master',TOKEN_API_OFICIAL:'fixture-official'});
+  const file=path.join(t.m.private,'admin-access.json'),before=corrupt?'{"password":"private-do-not-print",BROKEN}':JSON.stringify({email:'kept@example.test'});fs.writeFileSync(file,before);
+  await assert.rejects(t.m.execute('resume'),error=>{assert.ok(!error.message.includes('private-do-not-print'));return /terminal interativo|Arquivo privado de acesso inválido/.test(error.message);});
+  assert.equal(fs.readFileSync(file,'utf8'),before);assert.equal(t.runner.calls.filter(isSeed).length,0);
+ }finally{t.cleanup();}}
+});
+
+test('integration: old main fails after PostgreSQL choice; corrected principal menu resumes /home/deploy/amanda',async()=>{
+ const root='/home/deploy/amanda';assert.ok(!fs.existsSync(root),'isolated test directory must not preexist');
+ const r=new FakeRunner(),m=new Manager(root,r),answers=['1','localhost','owner@example.test','amanda','db-choice','master-choice','AMANDA','5511999999999','','','source-choice',SOURCE,'s','admin-choice','admin-choice','s','1'],output=[];
+ try{
+  const config=await require('../docker/installer/historical.cjs').collectHistorical({question:async()=>answers.shift(),out:s=>output.push(s),directory:root});
+  assert.equal(answers.length,0);assert.equal(config.options.pg.maxConnections,100);await m.prepare(config);
+  const before=fs.readFileSync(path.join(m.state.platform,'.env'),'utf8');
+  assert.throws(()=>require('./fixtures/deploy-main-8d748f1.cjs').provision('amanda',{host:'',run(){throw Error('must not provision');}}),/Diretório da empresa já contém arquivos\. Use --dir e resume\/adopt/);
+  const prompts=[],question=async label=>{prompts.push(label);return label==='Nome técnico da empresa'?'amanda':'1';};
+  const deploy=require('../docker/installer/deploy.cjs'),menu=new Menus(m,question,null,{out(){},startInstall:target=>deploy.startInstallation(target,{automatic:true,question,out(){},collect:async()=>{throw Error('full questionnaire repeated');}})});
+  await menu.dispatch('install');assert.equal(m.state.phase,'ready');assert.deepEqual(prompts,['Nome técnico da empresa','Selecione a opção']);assert.equal(fs.readFileSync(path.join(m.state.platform,'.env'),'utf8'),before);assert.equal(r.calls.filter(isSeed).length,1);assert.ok(!r.calls.some(c=>c.args.includes('--provision')));assert.equal(envValues(path.join(m.state.platform,'.env')).PG_MAX_CONNECTIONS,'100');
+ }finally{assert.equal(root,'/home/deploy/amanda');fs.rmSync(root,{recursive:true,force:true});}
+});
 test('company names are normalized separately from commercial titles',()=>{
   assert.equal(normalizeConfig(input({project:' ÁCERTI Filial-2 '})).project,'acerti_filial_2');
   for(const project of ['../x','a;id','a/b','_x','💜','a.b'])assert.throws(()=>normalizeConfig(input({project})));

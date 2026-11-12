@@ -3,6 +3,7 @@ const {BASE,companyDirectory,account,provision,ownership,installationManager}=re
 const {inspectDirectory,setupRecord}=require('../docker/installer/directory-state.cjs');
 const {startInstallation}=require('../docker/installer/deploy.cjs');
 const {Manager,SOURCE,normalizeConfig}=require('../docker/installer/manager.cjs');
+const {revisionLine}=require('../docker/installer/revision.cjs');
 function fixture(passwd='root:x:0:0:root:/root:/bin/sh\n'){const root=fs.mkdtempSync(path.join(os.tmpdir(),'deploy-test-'));fs.mkdirSync(root+'/etc');fs.mkdirSync(root+BASE,{recursive:true});fs.writeFileSync(root+'/etc/passwd',passwd);return {root,cleanup:()=>fs.rmSync(root,{recursive:true,force:true})};}
 test('company paths are isolated and reject traversal, metacharacters and invalid slugs',()=>{assert.equal(companyDirectory('amanda'),BASE+'/amanda');assert.equal(companyDirectory('acerti'),BASE+'/acerti');for(const value of ['../root','a/b','/root','a;id','a b','',null])assert.throws(()=>companyDirectory(value));assert.throws(()=>account('deploy:x:0:0::/home/deploy:/bin/sh'));});
 test('missing deploy account is created with no sudo/docker membership and private company directory',()=>{const t=fixture();try{let args;const owner=provision('amanda',{host:t.root,run:(cmd,a)=>{assert.equal(cmd,'useradd');args=a;fs.appendFileSync(t.root+'/etc/passwd','deploy:!:12345:12345::/home/deploy:/usr/sbin/nologin\n');}});assert.equal(owner.uid,12345);assert.ok(args.includes('--system'));assert.ok(!args.includes('--groups'));assert.equal(fs.statSync(t.root+BASE+'/amanda').uid,12345);assert.equal(fs.statSync(t.root+BASE+'/amanda').mode&0o777,0o700);}finally{t.cleanup();}});
@@ -104,4 +105,30 @@ test('actual noninteractive CLI diagnoses unknown or complete directories before
   if(complete){assert.ok(result.stdout.includes('concluída'));assert.ok(!fs.existsSync(root+'/.amanda-installer/install.log'));}
   else{assert.ok(result.stderr.includes('Nenhum arquivo foi alterado'));assert.deepEqual(fs.readdirSync(root),['unknown']);}
  }finally{t.cleanup();}}
+});
+
+test('revision diagnostic reports the executed branch and commit without guessing main',()=>{
+ const line=revisionLine({AMANDA_INSTALLER_BRANCH:'fix/retomada-diretorio-existente',AMANDA_INSTALLER_COMMIT:'a'.repeat(40),AMANDA_INSTALLER_DIRTY:'dirty'});
+ assert.ok(line.includes('fix/retomada-diretorio-existente'));assert.ok(line.includes('aaaaaaaaaaaa'));assert.ok(line.includes('arquivos locais alterados'));assert.ok(line.includes('Plataforma selecionada: main'));
+ assert.ok(revisionLine({}).includes('não informado'));assert.ok(!revisionLine({AMANDA_INSTALLER_BRANCH:'bad\nbranch',AMANDA_INSTALLER_COMMIT:'not-a-sha'}).includes('bad\nbranch'));
+});
+
+test('bootstrap passes revision read by container Git into the manager without changing the checkout',()=>{
+ const t=fixture();try{
+  const bin=t.root+'/bin',script=t.root+'/instalador_single.sh',log=t.root+'/calls';fs.mkdirSync(bin);fs.mkdirSync(t.root+'/.git');fs.copyFileSync(path.resolve(__dirname,'../instalador_single.sh'),script);
+  fs.writeFileSync(bin+'/docker',`#!/bin/sh
+case "$1" in
+info) echo linux ;;
+context) echo unix:///var/run/docker.sock ;;
+run) case "$*" in
+*"rev-parse --abbrev-ref HEAD"*) echo fix/retomada-diretorio-existente ;;
+*"rev-parse HEAD"*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
+*"status --porcelain"*) : ;;
+*) printf '%s\\n' "$@" >> "$TEST_LOG" ;;
+esac ;;
+esac
+`,{mode:0o755});
+  const run=require('node:child_process').spawnSync('sh',[script,'status'],{encoding:'utf8',env:{...process.env,PATH:bin+':'+process.env.PATH,TEST_LOG:log,AMANDA_INSTALL_DIR:t.root+'/company'}});
+  assert.equal(run.status,0,run.stderr);const calls=fs.readFileSync(log,'utf8');assert.ok(calls.includes('AMANDA_INSTALLER_BRANCH=fix/retomada-diretorio-existente'));assert.ok(calls.includes('AMANDA_INSTALLER_COMMIT='+'a'.repeat(40)));assert.ok(calls.includes('AMANDA_INSTALLER_DIRTY=clean'));assert.ok(fs.existsSync(t.root+'/.git'));
+ }finally{t.cleanup();}
 });

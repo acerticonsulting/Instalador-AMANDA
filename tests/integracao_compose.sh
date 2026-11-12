@@ -23,3 +23,7 @@ MSYS_NO_PATHCONV=1 docker run --rm --name "amanda_contract_compose_$$" --network
   --mount "type=bind,source=$mount_source,target=/platform,readonly" \
   -e AMANDA_PLATFORM_SOURCE=/platform --entrypoint node "$image" \
   --test /suite/tests/compose_contract.test.cjs
+MSYS_NO_PATHCONV=1 docker run --rm --name "amanda_contract_resume_$$" --network none \
+  --mount "type=bind,source=$mount_root,target=/suite,readonly" \
+  -w /suite --entrypoint node "$image" \
+  --test --test-name-pattern '^integration: old main' /suite/tests/docker_only.test.cjs
