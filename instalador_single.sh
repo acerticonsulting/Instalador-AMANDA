@@ -88,6 +88,7 @@ terminal=-i
 if [ -t 0 ]; then terminal=-it; fi
 set -- run --rm --init --name "$bootstrap" "$terminal" --mount "type=bind,source=$socket,target=/var/run/docker.sock" -e "AMANDA_MANAGER_CONTAINER=$bootstrap" -e TERM -e COLORTERM -e NO_COLOR -e WT_SESSION -e DOCKER_HOST=unix:///var/run/docker.sock -e "AMANDA_DOCKER_SOCKET=$socket" -e "AMANDA_DEPLOY_LAYOUT=$deploy_layout" -e "AMANDA_INSTALL_DIR=$target" -e "AMANDA_MANAGER_IMAGE=$image"
 set -- "$@" --mount type=bind,source=/etc/passwd,target=/run/amanda-host-passwd,readonly
+set -- "$@" -e AMANDA_HTTPS_TIMEOUT_MS -e AMANDA_HTTPS_EXPECTED_ADDRESSES
 set -- "$@" -e "AMANDA_INSTALLER_BRANCH=$installer_branch" -e "AMANDA_INSTALLER_COMMIT=$installer_commit" -e "AMANDA_INSTALLER_DIRTY=$installer_dirty"
 case "$action" in help|doctor) ;; *) set -- "$@" -v "$target:$target" ;; esac
 if [ "$deploy_layout" = 1 ] && [ "$target" != /home/deploy ]; then set -- "$@" -v /home/deploy:/home/deploy; fi

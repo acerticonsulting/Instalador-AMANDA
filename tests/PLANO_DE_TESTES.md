@@ -1,3 +1,12 @@
+# HTTPS e retomada — 13/11/2026
+
+155 testes Node executados, dois opt-in ignorados. https_check_tests.cjs cobre
+DNS A/AAAA, destino explícito, códigos TLS permanentes, conexão, porta 80,
+HTTP separado, backoff, timeout e ACME. docker_only.test.cjs cobre retomada de
+https-pending e starting legado sem build/up/migrations/seed ou alteração de .env.
+Sem emissões públicas nos testes. Consulta externa manual somente leitura pode
+diagnosticar o certificado público; não comprova a saúde interna da VPS.
+
 # Terminal do bootstrap ao container — 12/11/2026
 
 A regressão local cobre stdin interativo com stdout em pipe (Docker recebe -it)
