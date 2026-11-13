@@ -32,7 +32,7 @@ test('correct backend without losing frontend and recheck before proceeding',asy
 });
 test('advanced CDN exception requires reason and exact confirmation; cancellation and back work',async()=>{
  const r=report();r.records.forEach(h=>h.resolvers.forEach(a=>a.A=['198.51.100.1']));
- const answers=['5','CDN externa configurada no provedor','CONTINUAR DNS PENDENTE'];
+ const answers=['5','198.51.100.1','CDN externa configurada no provedor com desafios encaminhados','CONFIRMAR PROXY AUTORIZADO'];
  const result=await interactive(urls,{out(){},probe:async()=>r,question:async()=>answers.shift()});assert.equal(result.domainPreflight.status,'exception');assert.match(result.domainPreflight.reason,/CDN/);
  await assert.rejects(interactive(urls,{out(){},probe:async()=>r,question:async()=>':cancelar'}),/cancelada/);
  assert.equal((await interactive(urls,{out(){},probe:async()=>r,question:async()=>':voltar'})).back,true);
@@ -59,4 +59,21 @@ test('preflight retry count is bounded and localhost cannot enter HTTPS prefligh
  let n=0;const r=report();r.records[0].resolvers.forEach(a=>a.A=[]);
  await assert.rejects(interactive(urls,{out(){},probe:async()=>{n++;return r;},question:async()=> '1'}),/Limite/);assert.equal(n,12);
  assert.throws(()=>pair('http://localhost:3000','http://127.0.0.1:8080'));
+});
+test('actual reported VPS addresses reject the two old-server A records',()=>{
+ const r=report();r.publicSources=[{family:4,values:['157.173.200.50','157.173.200.50']},{family:6,values:['2605:a140:2372:3218::1','2605:a140:2372:3218::1']}];
+ r.records[0].hostname='api.homolog3.appamanda.com.br';r.records[1].hostname='homolog3.appamanda.com.br';r.records.forEach(h=>h.resolvers.forEach(a=>a.A=['209.145.62.30']));
+ const v=evaluate(r);assert.equal(v.ok,false);assert.ok(v.hosts.every(h=>h.status==='incompatible'));assert.ok(v.expected.includes('157.173.200.50'));
+});
+test('legacy pending-DNS confirmation cannot bypass a proven direct mismatch',async()=>{
+ const r=report();r.records.forEach(h=>h.resolvers.forEach(a=>a.A=['198.51.100.1']));const answers=['5','CONTINUAR DNS PENDENTE','0'];
+ await assert.rejects(interactive(urls,{out(){},probe:async()=>r,question:async()=>answers.shift()}),/cancelada/);
+});
+test('managed Caddy ports allowed only on resume with matching project and service labels',async()=>{
+ const {probe}=require('../docker/installer/domain-preflight.cjs');
+ for(const service of ['edge','backend','unknown']){const r=report();r.ports.forEach(p=>{p.status='occupied-or-unavailable';p.code='EADDRINUSE';});
+ const manager={state:{project:'amanda'},docker:async args=>({stdout:args[0]==='run'?JSON.stringify(r):JSON.stringify({Names:'amanda_caddy',Ports:'0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp',Labels:service==='unknown'?'':'com.docker.compose.project=amanda,com.docker.compose.service='+service})})};
+ const existing=await probe(manager,urls,{existing:true});assert.equal(evaluate(existing).portsOk,service==='edge');
+ const fresh=await probe(manager,urls);assert.equal(evaluate(fresh).portsOk,false);
+ }
 });

@@ -17,6 +17,9 @@ test('DNS missing, wrong IPv4 and wrong AAAA remain distinct',async()=>{
 test('HTTP application errors are separate from TLS',async()=>{
  const r=await inspectHttps(targets,{}, {dns,request:async()=>({status:503})});assert.equal(r.results[0].failures[0].kind,'HTTP');
 });
+test('staging certificate can never qualify as public production HTTPS',async()=>{
+ const r=await inspectHttps(targets,{}, {dns,request:async()=>({status:200,issuer:'(STAGING) Fake LE Intermediate'})});assert.equal(r.ok,false);assert.equal(r.results[0].failures[0].code,'STAGING_CERTIFICATE');
+});
 test('port 80 blockage is reported without invalidating an already valid HTTPS certificate',async()=>{
  const r=await inspectHttps(targets,{connectivity:true},{dns,tcp:async()=> 'ECONNREFUSED',request:async()=>({status:200})});assert.equal(r.ok,true);assert.equal(r.results[0].checks[0].httpPort80,'ECONNREFUSED');
 });

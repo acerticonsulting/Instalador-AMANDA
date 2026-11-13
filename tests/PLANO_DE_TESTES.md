@@ -1,3 +1,10 @@
+# Bloqueio DNS incorreto — 13/11/2026
+
+Regressão com IPs do diagnóstico VPS, recusa da exceção DNS PENDENTE, proxy com
+destinos explícitos, portas próprias/terceiros por labels, fresh install antes de
+provision/build, resume starting sem alterações em .env/build/up/migrate/seed,
+e certificado de staging rejeitado. DNS é mockado; nenhum desafio ACME disparado.
+
 # Diagnóstico ACME — 13/11/2026
 
 edge_diagnostics_tests.cjs testa respostas HTTP-01 404/403, falha ALPN, CAA,

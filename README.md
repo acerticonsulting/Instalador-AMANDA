@@ -19,11 +19,15 @@ dados administrativos. O diagnóstico consulta A/AAAA/CNAME por três resolvedor
 compara os IPs com o destino público observado e verifica conflitos locais em
 80/443 dentro de um container de ferramentas. Portas livres não comprovam entrada
 pública. Falhas de consulta/IP desconhecido são inconclusivas. É possível corrigir
-uma URL, repetir ou cancelar sem perder a outra. A opção avançada DNS pendente/CDN
-exige motivo e confirmação explícita, registrados após a confirmação final; não
-permite ignorar portas ocupadas ou hostnames inválidos. A confiança TLS permanece
-obrigatória após o deploy. Modos local/IP, retomada e JSON não interativo mantêm
-seus fluxos existentes. Nenhuma dependência adicional é instalada no host.
+uma URL, repetir ou cancelar sem perder a outra. DNS direto incompatível ou
+inconclusivo bloqueia a instalação; a antiga confirmação DNS PENDENTE foi removida.
+Proxy/CDN exige IPs autorizados compatíveis com todos os resolvedores, motivo,
+declaração de encaminhamento ACME e confirmação explícita, registrados após a
+confirmação final. Portas ocupadas por terceiros e hostnames inválidos não têm
+bypass. Antes do provisionamento/build, inclusive por JSON, há nova checagem;
+registros salvos não substituem uma consulta atual. Local/IP não exigem DNS.
+A retomada revalida DNS e reconhece as portas do próprio Caddy pelos labels de
+projeto/serviço Compose, sem recriá-lo. TLS continua obrigatório após o deploy.
 
 ### HTTPS pendente e retomada
 
@@ -58,8 +62,8 @@ das sondagens em curso). `AMANDA_HTTPS_EXPECTED_ADDRESSES`, opcional, recebe IPs
 permitidos separados por vírgula; use apenas conhecendo o destino/proxy esperado.
 Sem essa opção os IPs resolvidos são informados, sem presumir o IP público da VPS.
 
-Na primeira instalação, HTTP interno aprovado e TLS pendente ficam registrados
-como `https-pending`. `resume` nesse estado, ou no estado legado `starting` com
+Na primeira instalação, HTTP interno aprovado e TLS pendente ficam registrados,
+preservando `starting` se esse for o estado atual. `resume` em `https-pending` ou `starting` com
 seed concluído, verifica os serviços e HTTPS, depois valida login e conclui.
 Não repete clone, build, migrations, seed ou criação de recursos. Se um serviço
 estiver parado, a retomada informa a falha; não o recria automaticamente.

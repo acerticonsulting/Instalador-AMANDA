@@ -34,9 +34,9 @@ async function scanDomains(urls){
     }));return{hostname,resolvers};
   }));return{publicSources,ports,records,inbound:'not-verified'};
 }
-function evaluate(report){
-  const expected=report.publicSources.filter(s=>s.values.length>=2&&s.values.every(v=>v&&v===s.values[0])).map(s=>s.values[0]);
-  const portsOk=report.ports.every(p=>p.status==='free-local');
+function evaluate(report,authorizedProxy){
+  const expected=authorizedProxy||report.publicSources.filter(s=>s.values.length>=2&&s.values.every(v=>v&&v===s.values[0])).map(s=>s.values[0]);
+  const portsOk=report.ports.every(p=>['free-local','managed-caddy'].includes(p.status));
   const hosts=report.records.map(row=>{
     const answers=row.resolvers.map(r=>[...r.A,...r.AAAA].sort());
     const divergent=answers.some(a=>JSON.stringify(a)!==JSON.stringify(answers[0]));
@@ -59,7 +59,8 @@ async function interactive(config,{question,out=console.log,probe}){
     for(const port of report.ports)out(`Porta ${port.port}: ${port.status}${port.code?' ('+port.code+')':''}`);
     out('Acessibilidade de entrada pela internet: pendente. TLS será validado após o deploy.');
     if(verdict.ok)return{...urls,domainPreflight:{status:'compatible',checkedAt:new Date().toISOString(),report}};
-    out('[1] Verificar novamente\n[2] Corrigir backend\n[3] Corrigir frontend\n[4] Diagnóstico detalhado\n[5] Avançado: proxy/CDN ou DNS pendente\n[0] Cancelar');
+    if(verdict.hosts.some(h=>h.status==='incompatible'))out('ERRO DE DNS — DESTINO INCORRETO. Corrija os registros; publicação direta bloqueada.');
+    out('[1] Verificar novamente\n[2] Corrigir backend\n[3] Corrigir frontend\n[4] Diagnóstico detalhado\n[5] Declarar proxy/CDN autorizado\n[0] Cancelar');
     const action=await question('Como deseja continuar','0');
     if(action==null||['0',':cancelar',':sair'].includes(action))throw Error('Instalação cancelada antes de criar recursos.');
     if(action===':voltar')return{back:true,...urls};
@@ -72,20 +73,41 @@ async function interactive(config,{question,out=console.log,probe}){
     }else if(action==='4')out(JSON.stringify(report,null,2));
     else if(action==='5'){
       if(!verdict.portsOk){out('Portas locais indisponíveis não permitem exceção. Resolva o conflito antes de continuar.');continue;}
-      const reason=await question('Motivo técnico (proxy/CDN ou DNS pendente)');
+      const ips=await question('IPs do proxy/CDN autorizado, separados por vírgula (não use para DNS direto incorreto)');
+      if(ips==null||[':cancelar',':sair'].includes(ips))throw Error('Instalação cancelada antes de criar recursos.');
+      if(ips===':voltar')continue;
+      const proxyAddresses=ips.split(',').map(v=>v.trim());
+      if(!proxyAddresses.length||proxyAddresses.some(v=>!require('node:net').isIP(v))||!evaluate(report,proxyAddresses).ok){out('A topologia declarada não corresponde aos registros de todos os resolvedores.');continue;}
+      const reason=await question('Responsável/motivo e encaminhamento HTTP-01 ou TLS-ALPN até esta VPS');
       if(reason==null||[':cancelar',':sair'].includes(reason))throw Error('Instalação cancelada antes de criar recursos.');
       if(reason===':voltar')continue;
       if(reason.trim().length<10||reason.length>500||/[\x00-\x1f\x7f]/.test(reason)){out('Informe motivo técnico entre 10 e 500 caracteres.');continue;}
-      if(await question('HTTPS continua obrigatório. Digite CONTINUAR DNS PENDENTE','')==='CONTINUAR DNS PENDENTE')return{...urls,domainPreflight:{status:'exception',reason,checkedAt:new Date().toISOString(),report}};
+      if(await question('Confirme autorização e encaminhamento do proxy. Digite CONFIRMAR PROXY AUTORIZADO','')==='CONFIRMAR PROXY AUTORIZADO')return{...urls,domainPreflight:{status:'exception',topology:'proxy',proxyAddresses,reason,checkedAt:new Date().toISOString(),report}};
     }
     if(checks>=12)throw Error('Limite de 12 verificações atingido. Instalação cancelada antes de criar recursos.');
   }
 }
-function checker(manager){return(config,options)=>interactive(config,{...options,probe:async urls=>{
+async function probe(manager,urls,{existing=false}={}){
   const result=await manager.docker(['run','--rm','--network','host','--entrypoint','node',process.env.AMANDA_MANAGER_IMAGE||'amanda-installer:local','-e',`(${scanDomains.toString()})(${JSON.stringify([urls.backendUrl,urls.frontendUrl])}).then(r=>console.log(JSON.stringify(r))).catch(()=>process.exit(1))`],{quiet:true,label:'Pré-validação DNS dentro do Docker'});
   const report=JSON.parse(result.stdout);
-  const published=(await manager.docker(['ps','--format','{{.Ports}}'],{quiet:true})).stdout;
-  for(const port of report.ports)if(new RegExp(':'+port.port+'->').test(published))port.status='published-by-container';
+  const raw=(await manager.docker(['ps','--format','{{json .}}'],{quiet:true})).stdout;
+  const publishers=raw.trim().split(/\r?\n/).filter(Boolean).map(v=>JSON.parse(v));
+  for(const port of report.ports){const owners=publishers.filter(p=>new RegExp(':'+port.port+'->').test(p.Ports||''));
+    if(owners.length){port.owners=owners.map(p=>p.Names);const labels=p=>new Map(String(p.Labels||'').split(',').map(v=>v.split('=')));
+      port.status=existing&&owners.every(p=>labels(p).get('com.docker.compose.project')===manager.state?.project&&labels(p).get('com.docker.compose.service')==='edge')?'managed-caddy':owners.some(p=>labels(p).get('com.docker.compose.project')===manager.state?.project)?'other-amanda-service':'unknown-service';}
+    else if(port.status!=='free-local')port.status='unavailable-unknown-owner';
+  }
   return report;
-}});}
-module.exports={pair,scanDomains,evaluate,interactive,checker};
+}
+function checker(manager){return(config,options)=>interactive(config,{...options,probe:urls=>probe(manager,urls)});}
+async function assertDns(manager,config,{existing=false}={}){
+  if(!config.edge&&!config.profiles?.includes('edge'))return;
+  const urls=pair(config.frontendUrl,config.backendUrl),report=await probe(manager,urls,{existing});
+  const saved=config.domainPreflight;
+  const proxy=saved?.topology==='proxy'&&saved.status==='exception'&&typeof saved.reason==='string'&&saved.reason.length>=10&&Array.isArray(saved.proxyAddresses)&&saved.proxyAddresses.length&&saved.proxyAddresses.every(v=>require('node:net').isIP(v))?saved.proxyAddresses:undefined;
+  const verdict=evaluate(report,proxy);
+  manager.runner.emit('Pré-validação DNS: '+JSON.stringify(verdict)+'\n');
+  if(!verdict.ok)throw Error('DNS/portas incompatíveis ou inconclusivos. Esperado: '+(verdict.expected.join(', ')||'IP público inconclusivo')+'; encontrado: '+verdict.hosts.map(h=>h.hostname+'='+h.addresses.join(',')+' ('+h.status+')').join('; ')+'. Corrija e verifique novamente. Dados e containers preservados.');
+  return verdict;
+}
+module.exports={pair,scanDomains,evaluate,interactive,checker,probe,assertDns};

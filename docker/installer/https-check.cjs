@@ -36,6 +36,7 @@ async function inspectHttps(targets, options = {}, adapters = {}) {
       try {
         const check = await request(target.url, address, family);
         row.checks.push({ address, family, ...check });
+        if(/staging|fake le/i.test(check.issuer||''))row.failures.push({kind:'TLS',code:'STAGING_CERTIFICATE',address,family});
         if (target.exact ? check.status !== 200 : check.status < 200 || check.status >= 500)
           row.failures.push({ kind: 'HTTP', code: 'HTTP_' + check.status, address, family });
       } catch (e) {

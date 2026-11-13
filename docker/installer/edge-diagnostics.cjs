@@ -19,7 +19,8 @@ async function diagnoseEdge(manager){
   const report={readOnly:true,hostProcesses:'Não inspecionados. Na VPS: ss -ltnp para 80/443.',firewall:'Não verificado; porta Docker publicada não comprova entrada pública.'};
   async function attempt(label,fn){try{return await fn();}catch{return{unavailable:label};}}
   report.publishers=await attempt('docker ps',async()=> (await manager.docker(['ps','--format','{{json .}}'],{quiet:true})).stdout.trim().split(/\r?\n/).filter(Boolean).map(l=>{const r=JSON.parse(l);return{name:r.Names,ports:r.Ports};}));
-  report.hostNetwork=await attempt('DNS/IP na rede do host Docker',async()=>JSON.parse((await manager.docker(['run','--rm','--network','host','--entrypoint','node',process.env.AMANDA_MANAGER_IMAGE||'amanda-installer:local','-e',`(${require('./domain-preflight.cjs').scanDomains.toString()})(${JSON.stringify([manager.state.frontendUrl,manager.state.backendUrl])}).then(r=>console.log(JSON.stringify(r))).catch(()=>process.exit(1))`],{quiet:true})).stdout));
+  report.hostNetwork=await attempt('DNS/IP na rede do host Docker',()=>require('./domain-preflight.cjs').probe(manager,manager.state,{existing:true}));
+  if(report.hostNetwork.records){const topology=manager.state.domainPreflight;report.dnsVerdict=require('./domain-preflight.cjs').evaluate(report.hostNetwork,topology?.topology==='proxy'?topology.proxyAddresses:undefined);report.topology=topology?.topology||'direct';}
   const edge=await attempt('container edge',async()=> (await manager.compose(['ps','--all','--format','json','edge'],{quiet:true})).stdout.trim().split(/\r?\n/).filter(Boolean).flatMap(l=>{const r=JSON.parse(l);return Array.isArray(r)?r:[r];}));
   report.edge=edge;
   const id=Array.isArray(edge)?edge[0]?.ID:undefined;
