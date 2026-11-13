@@ -62,7 +62,9 @@ async function awaitHttps({ probe, caddy, emit, timeoutMs = 120000, now = Date.n
     const fatalAcme = /rateLimited|rate limit|urn:ietf:params:acme:error:(?:unauthorized|rejectedIdentifier|caa)|no valid A records|challenge failed/i.test(logs);
     const issuing = /obtaining certificate|trying to solve challenge|waiting on internal rate limiter|certificate obtain|obtaining.*lock/i.test(logs);
     const transient = failures.every(f => ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR', 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE', 'EAI_AGAIN'].includes(f.code));
-    if (fatalAcme) throw Error('ACME: emissão recusada; consulte logs do Caddy (CAA, desafio, autorização ou limite de emissão).');
+    const hints=require('./edge-diagnostics.cjs').acmeHints(logs);
+    for(const hint of hints)emit(hint+'\n');
+    if (fatalAcme || hints.length) throw Error('ACME: validação recusada. '+(hints.join(' ')||'Consulte logs do Caddy (CAA, desafio, autorização ou limite de emissão).'));
     if (!issuing || !transient || now() >= deadline) {
       throw Error('HTTPS público pendente: ' + report.results.flatMap(r => r.failures.map(f => `${r.hostname} ${f.kind} ${f.code}${f.address ? ' (' + f.address + ')' : ''}`)).join('; ') + (now() >= deadline ? '; timeout da validação' : '') + '. Revise DNS A/AAAA, firewall e logs do Caddy.');
     }

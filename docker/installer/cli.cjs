@@ -33,7 +33,7 @@ async function main() {
   if (action === 'help') {
     console.log(`AMANDA — gerenciador inteiramente em containers
 Uso: sh instalador_single.sh [comando] --dir /pasta/da/instalacao [--config /arquivo.json]
-Comandos: install, update, resume, adopt, start, stop, restart, status, logs, backup, doctor, build-token, unlock
+Comandos: install, update, resume, adopt, start, stop, restart, status, logs, backup, doctor, https-diagnose, build-token, unlock
 Administração: configure, instances, official, urls, services, ssl, postgres
 Compatibilidade: scripts históricos encaminham para operações em Docker; receitas nativas ficam indisponíveis.
 O assistente histórico é o padrão. wizard mantém o assistente adicional de 11 etapas.
@@ -45,6 +45,7 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
   }
   const deploy=require('./deploy.cjs'),automatic=process.env.AMANDA_DEPLOY_LAYOUT==='1';
   let manager = new Manager(process.env.AMANDA_INSTALL_DIR || deploy.BASE);
+  if(action==='https-diagnose'){manager.load();return require('./edge-diagnostics.cjs').diagnoseEdge(manager);}
   const directory=(context,m=manager)=>automatic?c=>deploy.companyDirectory(c.project):context?.parent?c=>path.join(context.parent,'instances',c.project):m.root;
   const startInstall=(m,context)=>deploy.startInstallation(m,{question:ask,config:configFile?configInput(configFile):undefined,directory:directory(context,m),automatic,collect:options=>(action==='wizard'?advancedInput:installInput)(undefined,{question:ask,...options,getResources:()=>m.resources()}),manage:target=>new Menus(target,ask,null,{startInstall}).run()});
   if (action === 'menu') {
