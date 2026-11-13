@@ -528,6 +528,9 @@ class Manager {
     if (action === 'resume') {
       await this.validateSource(true);
       await require('./domain-preflight.cjs').assertDns(this,this.state,{existing:true});
+      if(this.state.initialized&&this.state.phase==='ready'){
+        await this.verifyHealth();this.runner.emit('Instalação já concluída; saúde e HTTPS revalidados, sem reinstalação.\n');return;
+      }
       if(!this.state.initialized&&this.state.seedSucceeded&&['starting','https-pending'].includes(this.state.phase)){
         await this.verifyHealth(); await this.verifyLogin();
         this.save({...this.state,initialized:true,phase:'ready',revision:await this.revision()});

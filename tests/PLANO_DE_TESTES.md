@@ -1,3 +1,12 @@
+# HTTPS pendente/rede/firewall — 13/11/2026
+
+199 testes aprovados, dois opt-in ignorados, 85 scripts e cinco suítes.
+Mocks do script de firewall verificam apenas consultas e preservação da porta
+SSH não padrão. Testes distinguem EPROTO após TCP conectado de falha de rede;
+menu pending permite repetir sem reinstalar e resume em ready é idempotente,
+sem alterar estado/.env ou reaplicar inicialização. Regras reais não são alteradas.
+Firewall do provedor/SSH da VPS exigem diagnóstico no ambiente remoto.
+
 # Compatibilidade do estado — 13/11/2026
 
 state_compatibility_tests.cjs compara fixture do validador antigo com o atual,

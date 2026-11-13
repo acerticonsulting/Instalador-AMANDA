@@ -11,6 +11,7 @@ const installInput=(file,options={})=>rawInstallInput(file,{checkDomains:async()
 require('./domain_preflight_tests.cjs');
 require('./edge_diagnostics_tests.cjs');
 require('./state_compatibility_tests.cjs');
+require('./firewall_readonly_tests.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');
@@ -163,6 +164,20 @@ test('menu recognizes persisted HTTPS pending without asking installation questi
  const before=fs.readFileSync(t.m.stateFile),output=[];t.runner.calls=[];
  await require('../docker/installer/deploy.cjs').startInstallation(t.m,{automatic:false,project:'amanda',question:async()=> '0',out:s=>output.push(s),collect:async()=>assert.fail('no new questionnaire')});
  assert.match(output.join('\n'),/Instalação AMANDA encontrada/);assert.match(output.join('\n'),/https-pending/);assert.deepEqual(fs.readFileSync(t.m.stateFile),before);assert.equal(t.runner.calls.length,0);
+ }finally{t.cleanup();}
+});
+test('resume completed installation is idempotent and does not rebuild or reapply login settings',async()=>{
+ const t=await fixture();try{await t.m.initialize();const state=fs.readFileSync(t.m.stateFile),env=fs.readFileSync(path.join(t.m.state.platform,'.env'));t.runner.calls=[];
+ await t.m.execute('resume');await t.m.execute('resume');assert.deepEqual(fs.readFileSync(t.m.stateFile),state);assert.deepEqual(fs.readFileSync(path.join(t.m.state.platform,'.env')),env);
+ assert.ok(!t.runner.calls.some(c=>['build','up','migrate','seed','clone'].some(a=>c.args.includes(a))));
+ }finally{t.cleanup();}
+});
+test('HTTPS pending menu keeps failures recoverable and offers certificate retry without reinstalling',async()=>{
+ const t=await fixture();try{await t.m.initialize();t.m.save({...t.m.state,phase:'https-pending',initialized:false,profiles:[...t.m.state.profiles,'edge'],infrastructureReady:true,internalHttpReady:true,publicHttps:'pending'});
+ const before=fs.readFileSync(t.m.stateFile),output=[],answers=['1','3','0'];let attempts=0;
+ t.m.execute=async action=>{assert.equal(action,'resume');attempts++;throw Error('TLS pendente: fixture');};
+ await require('../docker/installer/deploy.cjs').startInstallation(t.m,{automatic:false,question:async()=>answers.shift(),out:s=>output.push(s),collect:async()=>assert.fail('no questionnaire')});
+ assert.equal(attempts,2);assert.match(output.join('\n'),/Dados e containers preservados/);assert.match(output.join('\n'),/Verificar novamente os certificados/);assert.deepEqual(fs.readFileSync(t.m.stateFile),before);
  }finally{t.cleanup();}
 });
 test('fresh install and starting resume block wrong DNS before provision build migrations or seed',async()=>{

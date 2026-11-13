@@ -3,6 +3,7 @@ async function inspectHttps(targets, options = {}, adapters = {}) {
   const dns = adapters.dns || require('node:dns').promises;
   const request = adapters.request || ((url, address, family) => new Promise((resolve, reject) => {
     const https = require('node:https');
+    let tcpConnected=false;
     const req = https.get(url, { servername: new URL(url).hostname,
       lookup: (_host, opts, cb) => opts.all ? cb(null, [{ address, family }]) : cb(null, address, family) }, res => {
       const cert = res.socket.getPeerCertificate();
@@ -10,7 +11,8 @@ async function inspectHttps(targets, options = {}, adapters = {}) {
       res.resume();
     });
     const timer = setTimeout(() => req.destroy(Object.assign(Error('Timeout HTTPS'), { code: 'ETIMEDOUT' })), 8000);
-    req.on('close', () => clearTimeout(timer)); req.on('error', reject);
+    req.on('socket',socket=>socket.once('connect',()=>{tcpConnected=true;}));
+    req.on('close', () => clearTimeout(timer)); req.on('error',error=>{error.tcpConnected=tcpConnected;reject(error);});
   }));
   const results = [];
   for (const target of targets) {
@@ -41,7 +43,10 @@ async function inspectHttps(targets, options = {}, adapters = {}) {
           row.failures.push({ kind: 'HTTP', code: 'HTTP_' + check.status, address, family });
       } catch (e) {
         const code = String(e.code || e.cause?.code || 'HTTPS_ERROR');
-        row.failures.push({ kind: /CERT|TLS|SSL|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER/.test(code) ? 'TLS' : 'REDE', code, address, family,
+        const reason=e.reason||String(e.message||'').match(/(?:tlsv1|sslv3) alert [a-z ]+/i)?.[0];
+        row.failures.push({ kind: /CERT|TLS|SSL|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|EPROTO/.test(code) ? 'TLS' : 'REDE', code, address, family,
+          ...(e.tcpConnected!==undefined?{tcp443:e.tcpConnected?'connected':'not-established'}:{}),
+          ...(reason?{reason:String(reason).replace(/[\x00-\x1f\x7f]/g,'').slice(0,120)}:{}),
           ...(e.cert?{certificate:{san:e.cert.subjectaltname,issuer:e.cert.issuer?.O,validFrom:e.cert.valid_from,validTo:e.cert.valid_to}}:{}) });
       }
     }
@@ -62,7 +67,7 @@ async function awaitHttps({ probe, caddy, emit, timeoutMs = 120000, now = Date.n
     const failures = report.results.flatMap(r => r.failures);
     const fatalAcme = /rateLimited|rate limit|urn:ietf:params:acme:error:(?:unauthorized|rejectedIdentifier|caa)|no valid A records|challenge failed/i.test(logs);
     const issuing = /obtaining certificate|trying to solve challenge|waiting on internal rate limiter|certificate obtain|obtaining.*lock/i.test(logs);
-    const transient = failures.every(f => ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR', 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE', 'EAI_AGAIN'].includes(f.code));
+    const transient = failures.every(f => ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR', 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE', 'EAI_AGAIN'].includes(f.code)||f.code==='EPROTO'&&/alert internal error|alert handshake failure/i.test(f.reason||''));
     const hints=require('./edge-diagnostics.cjs').acmeHints(logs);
     for(const hint of hints)emit(hint+'\n');
     if (fatalAcme || hints.length) throw Error('ACME: validação recusada. '+(hints.join(' ')||'Consulte logs do Caddy (CAA, desafio, autorização ou limite de emissão).'));

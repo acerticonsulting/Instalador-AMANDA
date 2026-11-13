@@ -1,3 +1,32 @@
+# HTTPS pendente, rede e firewall — 13/11/2026
+
+Base conferida: 59b927a. Reconhecimento https-pending confirmado pelo usuário;
+directory-state.cjs não alterado. Consulta atual externa: ambos os hosts ainda
+resolvem A=209.145.62.30, sem AAAA/CNAME; retornam certificado dos hosts antigos.
+Teste externo com destino explicitamente 157.173.200.50 e SNI homolog3/API:
+TCP 80 e TCP 443 conectados, handshake EPROTO, sem HTTPS válido. Isso não prova
+liberação para todas as origens/IPv6 nem caracteriza o firewall da VPS/provedor.
+SSH no IP correto bloqueado por host key desconhecida; verificação estrita mantida.
+IP público/interface atuais, SSH real, regras e Caddy ativos da VPS não acessados.
+
+https-check.cjs registra TCP estabelecido separadamente e classifica EPROTO como
+TLS, retendo alerta OpenSSL disponível; espera limitada apenas com emissão ativa
+e erro transitório reconhecido. edge-diagnostics.cjs inclui estado/empresa e
+camadas host/provedor/SSH explicitamente não verificadas. Novo script somente
+leitura tools/diagnosticar_firewall.sh consulta ferramentas já presentes e porta
+da sessão administrativa, sem alterar regras, instalar pacotes ou assumir SSH 22.
+deploy.cjs oferece opções próprias para https-pending, mantém o menu recuperável
+na falha e reaproveita resume. manager.cjs torna resume em ready idempotente,
+sem reaplicar login/personalização, clone, build, migrations ou seeds.
+
+Validação: 199 testes Node aprovados, dois opt-in ignorados, 85 scripts/cinco
+suítes, imagem https-pending-network construída. Mocks de firewall provam lista
+estrita de consultas/SSH não padrão; testes de menu, handshake e resume repetido.
+Não houve emissão ACME forçada, reinstalação, mudança de firewall/DNS ou volumes.
+Pendente: administrador confirmar topologia autorizada e DNS correto, executar
+diagnóstico no host para regras/SSH/Caddy atuais, depois resume. Instalação remota
+continua não homologada; não se declara ready por testes locais.
+
 # Compatibilidade de reconhecimento e diagnóstico — 13/11/2026
 
 Comparação solicitada 882f0d5 → b48de8c: directory-state.cjs tem o mesmo blob
