@@ -1,3 +1,11 @@
+# URLs durante HTTPS pendente — 13/11/2026
+
+Testes em docker_only.test.cjs cobrem frontend/backend/ambos, DNS pendente sem
+alteração de .env/up, correção e resume sem rebuild/seed, confirmação/cancelamento,
+rollback de bytes e serviços, rollback falho bloqueado, administração não liberada,
+estados parciais indevidos e menu com credenciais preservadas. DNS/Docker simulados;
+nenhuma alteração real de domínios, containers ou volumes.
+
 # HTTPS pendente/rede/firewall — 13/11/2026
 
 199 testes aprovados, dois opt-in ignorados, 85 scripts e cinco suítes.

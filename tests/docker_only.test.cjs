@@ -90,6 +90,38 @@ class FakeRunner {
   }
 }
 async function fixture() { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());return {...t,runner,m}; }
+async function pendingUrlFixture(){const t=await fixture();await t.m.initialize();const urls={frontendUrl:'https://front.example.test',backendUrl:'https://api.example.test'};writeEnv(path.join(t.m.state.platform,'.env'),{FRONTEND_URL:urls.frontendUrl,BACKEND_URL:urls.backendUrl,FRONTEND_HOST:'front.example.test',BACKEND_HOST:'api.example.test',ALLOWED_ORIGINS:urls.frontendUrl});t.m.save({...t.m.state,...urls,phase:'https-pending',initialized:false,profiles:[...t.m.state.profiles,'edge'],infrastructureReady:true,internalHttpReady:true,publicHttps:'pending'});t.runner.calls=[];return t;}
+for(const change of [{frontendUrl:'https://newfront.example.test'},{backendUrl:'https://newapi.example.test'},{frontendUrl:'https://newfront.example.test',backendUrl:'https://newapi.example.test'}])test('pending URL change applies only affected services '+Object.keys(change),async()=>{
+ const t=await pendingUrlFixture();try{const before=envValues(path.join(t.m.state.platform,'.env'));let confirmed=false;await new Operations(t.m).configure({network:change,confirmNetwork:async p=>{confirmed=true;assert.equal(p.dnsValid,true);return p.expected;}});
+ const after=envValues(path.join(t.m.state.platform,'.env'));assert.equal(confirmed,true);assert.equal(after.FRONTEND_URL,change.frontendUrl||before.FRONTEND_URL);assert.equal(after.BACKEND_URL,change.backendUrl||before.BACKEND_URL);assert.equal(after.ALLOWED_ORIGINS,after.FRONTEND_URL);assert.equal(t.m.state.phase,'https-pending');assert.equal(after.DB_PASS,before.DB_PASS);assert.equal(after.JWT_SECRET,before.JWT_SECRET);
+ const up=t.runner.calls.filter(c=>c.args.includes('up'));assert.equal(up.length,1);assert.ok(up[0].args.includes('backend'));assert.ok(up[0].args.includes('edge'));assert.equal(up[0].args.includes('frontend'),!!change.backendUrl);assert.ok(!t.runner.calls.some(c=>c.args.includes('build')||c.args.includes('migrate')||isSeed(c)||c.args.includes('down')));
+ }finally{t.cleanup();}
+});
+test('pending URL confirmation cancellation writes no config or state',async()=>{const t=await pendingUrlFixture();try{const state=fs.readFileSync(t.m.stateFile),env=fs.readFileSync(path.join(t.m.state.platform,'.env'));await new Operations(t.m).configure({network:{frontendUrl:'https://new.example.test'},confirmNetwork:async()=>''});assert.deepEqual(fs.readFileSync(t.m.stateFile),state);assert.deepEqual(fs.readFileSync(path.join(t.m.state.platform,'.env')),env);assert.ok(!t.runner.calls.some(c=>c.args.includes('up')));}finally{t.cleanup();}});
+test('wrong DNS stores proposal only; resume applies it after DNS correction without rebuilding',async()=>{
+ const t=await pendingUrlFixture();try{const original=t.runner.run.bind(t.runner);t.runner.run=async(bin,args,opts)=>args.at(-1)?.includes('async function scanDomains')?{stdout:JSON.stringify({publicSources:[],ports:[{port:80,status:'free-local'}],records:[{hostname:'new.example.test',resolvers:[{A:['192.0.2.1'],AAAA:[],errors:[]}]}]})}:original(bin,args,opts);
+ const env=fs.readFileSync(path.join(t.m.state.platform,'.env'));await new Operations(t.m).configure({network:{frontendUrl:'https://new.example.test'},confirmNetwork:async p=>{assert.equal(p.dnsValid,false);return 'SALVAR PENDENTE';}});
+ assert.deepEqual(fs.readFileSync(path.join(t.m.state.platform,'.env')),env);assert.equal(t.m.state.pendingNetwork.urls.frontendUrl,'https://new.example.test');assert.ok(!t.runner.calls.some(c=>c.args.includes('up')));
+ t.runner.run=original;t.runner.calls=[];t.runner.runtimeContainerNames=[...CORE.map(n=>'amanda_'+n),'amanda_caddy'];await t.m.execute('resume');assert.equal(t.m.state.phase,'ready');assert.equal(t.m.state.pendingNetwork,undefined);assert.equal(envValues(path.join(t.m.state.platform,'.env')).FRONTEND_URL,'https://new.example.test');assert.ok(!t.runner.calls.some(c=>c.args.includes('build')||c.args.includes('migrate')||isSeed(c)));
+ }finally{t.cleanup();}
+});
+test('failed URL apply rolls config and affected services back; rollback failure stays blocked',async()=>{
+ for(const failRollback of [false,true]){const t=await pendingUrlFixture();try{const env=fs.readFileSync(path.join(t.m.state.platform,'.env')),state=fs.readFileSync(t.m.stateFile);let n=0;t.runner.fail=c=>c.args.includes('up')&&(++n===1||failRollback);
+ await assert.rejects(new Operations(t.m).configure({network:{backendUrl:'https://newapi.example.test'}}));assert.deepEqual(fs.readFileSync(path.join(t.m.state.platform,'.env')),env);assert.equal(t.m.state.phase,'https-pending');assert.equal(n,2);if(!failRollback)assert.deepEqual(fs.readFileSync(t.m.stateFile),state);else assert.equal(t.m.state.pendingNetwork.rollbackRequired,true);
+ assert.ok(fs.readdirSync(path.join(t.m.private,'config-history')).some(n=>n.startsWith('urls-')));
+ }finally{t.cleanup();}}
+});
+test('pending exception rejects unrelated admin settings mode/ports and other partial states',async()=>{
+ const t=await pendingUrlFixture();try{const ops=new Operations(t.m);for(const config of [{backendEnv:{MAIL_HOST:'mail.example.test'}},{network:{frontendUrl:'https://new.example.test'},pg:{maxConnections:100,sharedBuffers:'128MB'}},{network:{edge:false}},{network:{options:{wuzapiPort:9999}}}])await assert.rejects(ops.configure(config));await assert.rejects(ops.services('restart','backend'));await ops.ready(false,'view');
+ t.m.save({...t.m.state,phase:'build'});await assert.rejects(ops.configure({network:{frontendUrl:'https://new.example.test'}}));
+ }finally{t.cleanup();}
+});
+test('pending URL menu action validates and confirms while preserving admin credentials',async()=>{
+ const t=await pendingUrlFixture();try{const admin=fs.readFileSync(path.join(t.m.private,'admin-access.json'));const prompts=[];
+ const menu=new Menus(t.m,async label=>{prompts.push(label);return label.includes('Nova URL')?'https://changed.example.test':label.includes('Digite APLICAR URLS')?'APLICAR URLS':'';},null,{out(){}});
+ await menu.dispatch('front-url');assert.equal(envValues(path.join(t.m.state.platform,'.env')).FRONTEND_URL,'https://changed.example.test');assert.ok(prompts.some(p=>p.includes('APLICAR URLS')));assert.deepEqual(fs.readFileSync(path.join(t.m.private,'admin-access.json')),admin);assert.equal(t.m.state.phase,'https-pending');
+ }finally{t.cleanup();}
+});
 
 test('preparation interrupted before configuration resumes saved choices without another clone or questionnaire',async()=>{
  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{

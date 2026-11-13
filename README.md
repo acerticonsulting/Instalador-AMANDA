@@ -31,6 +31,24 @@ projeto/serviço Compose, sem recriá-lo. TLS continua obrigatório após o depl
 
 ### HTTPS pendente e retomada
 
+O menu 3 permite alterar frontend/backend em `https-pending` (opções individuais
+ou URLs principais/HTTPS). Nesse estado, apenas os domínios são editáveis; portas,
+perfis, credenciais e configurações administrativas continuam protegidos.
+Após validar sintaxe e consultar DNS, o menu pede `APLICAR URLS` se compatível ou
+`SALVAR PENDENTE` para guardar a proposta. Proposta com DNS incorreto não altera
+`.env` nem containers e não provoca emissão ACME. É possível corrigir novamente
+uma URL sem perder a outra proposta. `resume` reconsulta DNS e aplica a proposta
+somente quando compatível, depois valida HTTPS/login antes de concluir.
+
+Com DNS compatível, um backup privado de `.env` e estado é guardado em
+`.amanda-installer/config-history/urls-*`. A troca de `.env` é atômica e preserva
+owner/permissões. Mudança do frontend atualiza backend/Caddy; mudança do backend
+atualiza backend/frontend/Caddy. Não há build, migrations, seeds ou operações
+sobre volumes. Erro de aplicação restaura configuração e somente serviços afetados.
+Aplicação interrompida ou rollback não confirmado bloqueia nova tentativa automática
+para diagnóstico com o histórico privado. HTTPS inválido após aplicação mantém
+os novos domínios em `https-pending`, para corrigir DNS/TLS e retomar.
+
 No estado `https-pending`, o menu oferece validação DNS/HTTPS, diagnóstico
 detalhado e nova consulta dos certificados. Falhas retornam ao menu com o estado
 preservado. As duas opções de validação mantêm os requisitos DNS/TLS; nenhuma

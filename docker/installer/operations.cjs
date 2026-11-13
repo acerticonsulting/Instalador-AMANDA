@@ -6,7 +6,7 @@ const { writeEnv,validateOptions,validatePg,INITIAL_SETTINGS,digest,vapidPrivate
 
 class Operations {
   constructor(manager){this.m=manager;}
-  async ready(restoring=false,configuring=false){const m=this.m;await m.doctor();m.load();await m.identifyManager();await m.validateSource();await m.configuration();if(configuring&&!m.state.initialized&&m.state.seedSucceeded&&m.state.phase==='starting')return;if(!m.state.initialized||(m.state.phase!=='ready'&&!(restoring&&m.state.phase==='restoring')))throw Error('Instalação incompleta. Use Retomar operação ou repita a restauração registrada.');}
+  async ready(restoring=false,configuring=false){const m=this.m;await m.doctor();m.load();await m.identifyManager();await m.validateSource();await m.configuration();if(['network','view'].includes(configuring)&&!m.state.initialized&&m.state.seedSucceeded&&m.state.phase==='https-pending')return;if(configuring&&!m.state.initialized&&m.state.seedSucceeded&&m.state.phase==='starting')return;if(!m.state.initialized||(m.state.phase!=='ready'&&!(restoring&&m.state.phase==='restoring')))throw Error('Instalação incompleta. Use Retomar operação ou repita a restauração registrada.');}
   service(name){if(![...this.m.services(),'edge'].includes(name))throw Error('Serviço inválido.');return name;}
   async services(action,name){await this.ready();if(name)this.service(name);if(!['ps','restart','stop','start','logs','rm'].includes(action))throw Error('Operação inválida.');
     const args=action==='ps'?['ps','--all']:action==='logs'?['logs','--no-color','--tail','200']:action==='start'?['up','-d','--no-deps','--wait']:action==='rm'?['rm','-s','-f']:[action];
@@ -14,8 +14,47 @@ class Operations {
     await this.m.compose(args,{label:'Gerenciamento de serviços Docker'});
   }
   current(){const m=this.m;const e=envValues(path.join(m.state.platform,'.env'));return {sourceUrl:m.state.sourceUrl,project:m.state.project,frontendUrl:e.FRONTEND_URL,backendUrl:e.BACKEND_URL,edge:m.state.profiles.includes('edge'),public:e.BIND_ADDRESS==='0.0.0.0',options:{frontendPort:+e.PORT_FRONTEND||3000,backendPort:+e.PORT_BACKEND||8080,services:{official:m.state.profiles.includes('official'),wuzapi:m.state.profiles.includes('whatsmeow'),rabbit:m.state.profiles.includes('rabbit')},officialPort:+e.PORT_APIOFICIAL||6000,wuzapiPort:+e.PORT_WUZAPI||8090,officialUrl:e.OFICIAL_HOST?`https://${e.OFICIAL_HOST}`:undefined}};}
-  async configure({ network, backendEnv={}, supportPhone, pg, pushEmail }={}){
-    await this.ready(false,true);const m=this.m,root={},backend={...backendEnv};validateOptions({backendEnv,...(supportPhone!==undefined?{supportPhone}:{})});
+  async pendingUrls(network,confirm){
+    const m=this.m;
+    if(m.state.phase!=='https-pending'||m.state.initialized||!m.state.seedSucceeded)throw Error('Alteração de URLs pendentes indisponível neste estado.');
+    if(m.state.pendingNetwork?.rollbackRequired)throw Error('Rollback de URLs exige diagnóstico antes de nova aplicação.');
+    if(!network||Object.keys(network).some(k=>!['frontendUrl','backendUrl'].includes(k)))throw Error('HTTPS pendente permite somente URLs; portas, serviços e modo de publicação são preservados.');
+    const current=this.current(),base={...current,...m.state.pendingNetwork?.urls},urls=require('./domain-preflight.cjs').pair(network.frontendUrl??base.frontendUrl,network.backendUrl??base.backendUrl);
+    normalizeConfig({...current,...urls});
+    let dnsError;
+    try{await require('./domain-preflight.cjs').assertDns(m,{...m.state,...urls},{existing:true});}catch(e){dnsError=e.message;}
+    m.runner.emit('URLs propostas: '+JSON.stringify(urls)+'\n'+(dnsError?'DNS pendente: '+dnsError:'DNS compatível; HTTPS público ainda pendente.')+'\n');
+    const expected=dnsError?'SALVAR PENDENTE':'APLICAR URLS';
+    if(confirm&&await confirm({urls,dnsValid:!dnsError,expected})!==expected)return{cancelled:true};
+    if(dnsError){m.save({...m.state,pendingNetwork:{urls},publicHttps:'pending'});m.runner.emit('URLs guardadas para validação; .env e containers permanecem inalterados. Use resume após corrigir DNS.\n');return{pending:true};}
+    const before=structuredClone(m.state),file=path.join(m.state.platform,'.env'),bytes=fs.readFileSync(file),stat=fs.statSync(file);
+    const atomicEnv=changes=>{const temp=file+'.network-'+crypto.randomUUID()+'.tmp';fs.writeFileSync(temp,bytes,{mode:0o600,flag:'wx'});try{if(changes)writeEnv(temp,changes);fs.chownSync(temp,stat.uid,stat.gid);fs.chmodSync(temp,stat.mode&0o777);fs.renameSync(temp,file);}finally{if(fs.existsSync(temp))fs.unlinkSync(temp);}};
+    const history=path.join(m.private,'config-history','urls-'+crypto.randomUUID());m.write(path.join(history,'.env'),bytes.toString());m.write(path.join(history,'state.json'),before);
+    const changes={FRONTEND_URL:urls.frontendUrl,BACKEND_URL:urls.backendUrl,FRONTEND_HOST:new URL(urls.frontendUrl).hostname,BACKEND_HOST:new URL(urls.backendUrl).hostname,ALLOWED_ORIGINS:urls.frontendUrl};
+    const affected=[];if(urls.frontendUrl!==current.frontendUrl)affected.push('backend');if(urls.backendUrl!==current.backendUrl)affected.push('backend','frontend');if(affected.length)affected.push('edge');
+    const services=[...new Set(affected)];let applied=false;
+    try{
+      // Journal before changing the env; an interrupted apply must not silently finish resume.
+      m.save({...before,pendingNetwork:{urls,applying:true,history},publicHttps:'pending'});
+      atomicEnv(changes);
+      m.state={...m.state,...urls};await m.configuration();
+      if(services.length){applied=true;await m.compose(['up','-d','--no-deps','--wait','--wait-timeout','300',...services],{label:'Aplicando somente URLs aos serviços afetados; sem build ou migrations'});}
+      const next={...m.state,phase:'https-pending',publicHttps:'pending'};delete next.pendingNetwork;m.save(next);
+      m.runner.emit('URLs aplicadas. Estado https-pending preservado; execute resume para validar HTTPS e concluir.\n');return{applied:true};
+    }catch(error){
+      atomicEnv();m.save(before);
+      if(applied&&services.length)try{await m.compose(['up','-d','--no-deps','--wait','--wait-timeout','300',...services],{label:'Restaurando somente serviços afetados para URLs anteriores'});}catch{
+        m.save({...before,pendingNetwork:{urls,rollbackRequired:true,history}});throw Error('Falha ao aplicar URLs e confirmar rollback. Configuração anterior restaurada; diagnostique serviços afetados. Backup privado: '+history);
+      }
+      throw error;
+    }
+  }
+  async configure({ network, backendEnv={}, supportPhone, pg, pushEmail, confirmNetwork }={}){
+    await this.ready(false,network?'network':true);const m=this.m,root={},backend={...backendEnv};validateOptions({backendEnv,...(supportPhone!==undefined?{supportPhone}:{})});
+    if(m.state.phase==='https-pending'){
+      if(!network||Object.keys(backendEnv).length||supportPhone!==undefined||pg||pushEmail)throw Error('HTTPS pendente permite somente alterar URLs de frontend/backend.');
+      return this.pendingUrls(network,confirmNetwork);
+    }
     if(pg&&(network||Object.keys(backendEnv).length||supportPhone!==undefined||pushEmail))throw Error('Aplique o perfil PostgreSQL separadamente das outras configurações.');
     const beforeState={...m.state};
     const previousConfig=await m.configuration(),previousEnv=envValues(path.join(m.state.platform,'.env'));

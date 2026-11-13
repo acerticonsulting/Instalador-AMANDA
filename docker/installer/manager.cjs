@@ -527,6 +527,11 @@ class Manager {
     if (action === 'update') return this.update();
     if (action === 'resume') {
       await this.validateSource(true);
+      if(this.state.phase==='https-pending'&&this.state.pendingNetwork){
+        if(this.state.pendingNetwork.applying||this.state.pendingNetwork.rollbackRequired)throw Error('Alteração de URLs interrompida ou rollback pendente; consulte config-history e diagnostique antes de retomar. Nenhum serviço foi recriado.');
+        await new(require('./operations.cjs').Operations)(this).configure({network:this.state.pendingNetwork.urls});
+        if(this.state.pendingNetwork)throw Error('Novas URLs ainda pendentes de DNS. Estado e containers preservados.');
+      }
       await require('./domain-preflight.cjs').assertDns(this,this.state,{existing:true});
       if(this.state.initialized&&this.state.phase==='ready'){
         await this.verifyHealth();this.runner.emit('Instalação já concluída; saúde e HTTPS revalidados, sem reinstalação.\n');return;

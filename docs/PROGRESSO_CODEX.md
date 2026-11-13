@@ -1,3 +1,25 @@
+# Alteração de URLs em https-pending — 13/11/2026
+
+Operations.ready agora tem escopos network/view para https-pending com seed
+concluído e initialized=false; configure rejeita outros parâmetros nesse estado.
+Menus existentes usam o escopo somente para frontend/backend/domínios e leitura.
+Não se liberam serviços, PostgreSQL, integrações ou estados build/migrations.
+pendingUrls valida sintaxe com pair e DNS com assertDns(existing), solicita
+confirmação e guarda proposta em state.pendingNetwork se DNS estiver pendente,
+sem mudar .env/containers. Correções individuais preservam a outra URL proposta.
+
+DNS compatível: backup privado .env/estado, journal de aplicação, troca atômica
+de .env preservando owner/mode, atualizações CORS/URLs/hosts e up --no-deps --wait
+somente dos serviços afetados. Erro restaura bytes e serviços anteriores; falha
+de rollback/interrupção bloqueia retomada automática. Fase permanece https-pending.
+Resume aplica proposta validada antes do DNS/TLS final, sem rebuild/migration/seed.
+Não há escrita/ação na VPS; nenhuma alteração de DNS externo ou certificados.
+Testes cobrem alterações separadas/conjuntas, DNS incorreto/corrigido, confirmação,
+rollback, restrição administrativa, menu, retomada e credenciais preservadas.
+Publicação pendente: somente commit local, sem push/merge por instrução do usuário.
+Validação: 207 testes Node aprovados, dois opt-in ignorados, 85 scripts e cinco
+suítes; imagem pending-urls-validation construída. Não validado em uma VPS real.
+
 # Continuidade: bloqueio externo DNS — 13/11/2026
 
 Base 71484c0. Usuário confirmou resume funcional, estado https-pending compatível,
