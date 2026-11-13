@@ -1,6 +1,6 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const SOURCE='https://github.com/acerticonsulting/AMANDA.git';
-const PHASES=new Set(['preparing','build','migrations','seed','starting','ready','preparing-update','migration-update']);
+const PHASES=new Set(['preparing','build','migrations','seed','starting','https-pending','ready','preparing-update','migration-update']);
 const hash=value=>crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function inspectDirectory(root,{project,owner,logicalRoot=root}={}){
   const result={root,project};
@@ -62,7 +62,15 @@ function inspectDirectory(root,{project,owner,logicalRoot=root}={}){
       return {...result,kind:'temporary',savedConfig:saved};
     }
     check(stateFile,false,true);const state=JSON.parse(fs.readFileSync(stateFile,'utf8'));
-    if(state.schema!==1||state.sourceUrl!==SOURCE||state.project!==project||!PHASES.has(state.phase)||typeof state.initialized!=='boolean'||typeof state.seedAttempted!=='boolean'||typeof state.seedSucceeded!=='boolean'||!Array.isArray(state.profiles)||state.profiles.some(p=>!['official','whatsmeow','rabbit','edge'].includes(p)))throw Error('Estado inválido ou de outra empresa.');
+    result.persisted={schema:Number.isInteger(state.schema)?state.schema:'tipo inválido',phase:typeof state.phase==='string'&&/^[a-z-]{1,40}$/.test(state.phase)?state.phase:'tipo/valor inválido',platform:[logicalRoot,path.join(logicalRoot,'platform')].includes(state.platform)?state.platform:'fora do escopo ou inválido'};
+    const invalid=field=>{throw Error('Estado inválido ou de outra empresa. Validação: '+field+'.');};
+    if(state.schema!==1)invalid('schema não suportado');
+    if(state.sourceUrl!==SOURCE)invalid('sourceUrl não oficial');
+    if(state.project!==project)invalid('project não corresponde à empresa');
+    if(!PHASES.has(state.phase))invalid('phase não suportada');
+    for(const field of ['initialized','seedAttempted','seedSucceeded'])if(typeof state[field]!=='boolean')invalid(field+' deve ser booleano');
+    if(!Array.isArray(state.profiles)||state.profiles.some(p=>!['official','whatsmeow','rabbit','edge'].includes(p)))invalid('profiles inválidos');
+    if(state.phase==='https-pending'&&(state.initialized||!state.seedAttempted||!state.seedSucceeded||state.infrastructureReady!==true||state.internalHttpReady!==true||!['pending','validated'].includes(state.publicHttps)||!state.profiles.includes('edge')))invalid('checkpoints HTTPS pendente inconsistentes');
     if(state.platform!==logicalRoot&&state.platform!==path.join(logicalRoot,'platform'))throw Error('Plataforma fora do caminho registrado.');
     if(state.initialized&&state.phase==='preparing'||state.phase==='ready'&&!state.initialized||state.seedSucceeded&&!state.seedAttempted)throw Error('Checkpoint inconsistente.');
     for(const key of ['freshResourcesVerified','resourcesClaimed','configurationReady'])if(state[key]!==undefined&&typeof state[key]!=='boolean')throw Error('Checkpoint de recursos inválido.');
@@ -78,6 +86,14 @@ function inspectDirectory(root,{project,owner,logicalRoot=root}={}){
     return {...result,kind:state.initialized&&state.phase==='ready'?'complete':'partial',phase:state.phase,state,savedConfig:saved};
   }catch(error){return reject(error.code==='ENOENT'?'Caminho ou estado incompleto.':error instanceof SyntaxError?'Estado ou configuração JSON inválidos.':error.message);}
 }
-function conflict(info){return `Diretório não vazio ou estado não reconhecido. O diretório ${info.root} contém arquivos cuja origem ou estado não pôde ser confirmado. ${info.reason||''} Nenhum arquivo foi alterado. Escolha outra empresa ou consulte o diagnóstico; não apague dados para forçar a instalação.`;}
+function conflict(info){return `Diretório não vazio ou estado não reconhecido. O diretório ${info.root} contém arquivos cuja origem ou estado não pôde ser confirmado. ${info.reason||''} Nenhum arquivo foi alterado. Use state-diagnose --dir para diagnóstico sanitizado; não apague dados para forçar a instalação.`;}
 function setupRecord(root,config){return {schema:1,sourceUrl:SOURCE,root,sha256:hash(config),config};}
-module.exports={inspectDirectory,conflict,setupRecord};
+function diagnoseDirectory(root,options){
+  const info=inspectDirectory(root,options);
+  return{title:'DIAGNÓSTICO DE INSTALAÇÃO AMANDA',root,project:options.project,
+    persisted:info.persisted||null,classification:info.kind,compatible:['partial','complete'].includes(info.kind),
+    failedValidation:info.reason||null,
+    recommendation:info.kind==='partial'?'Retomar somente a etapa pendente; DNS/TLS continuam obrigatórios.':info.kind==='complete'?'Instalação reconhecida; usar gerenciamento.':'Revisar a condição indicada; preservar arquivos e não reinstalar.',
+    migration:'Nenhuma migração ou escrita executada pelo diagnóstico.',readOnly:true};
+}
+module.exports={inspectDirectory,conflict,setupRecord,diagnoseDirectory};

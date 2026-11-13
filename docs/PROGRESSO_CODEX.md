@@ -1,3 +1,33 @@
+# Compatibilidade de reconhecimento e diagnóstico — 13/11/2026
+
+Comparação solicitada 882f0d5 → b48de8c: directory-state.cjs tem o mesmo blob
+e7f9e22aa65e47266d7b435dfd431822c92a9c60 nas duas versões; CLI e lock também
+não mudaram nessa transição. Portanto não é possível atribuir a rejeição real
+starting à mudança desse validador sem os campos reais sanitizados.
+Defeito comprovado em fixture: gerenciador gravava https-pending desde a correção
+TLS, mas PHASES não aceitava essa fase. Corrigido com exigência de seed concluído,
+initialized=false, edge habilitado e checkpoints internos/HTTPS consistentes.
+Estados schema 1 starting/build/migrations/ready permanecem compatíveis sem
+preencher campos opcionais antigos ou modificar arquivos. Migração de schema e
+backup de conversão não são necessários; nenhuma escrita de migração introduzida.
+
+Adicionado state-diagnose antes de Manager.load/reconhecimento: pasta montada RO,
+saída sanitizada com schema/fase/caminho validado e condição específica rejeitada.
+Validação de schema, sourceUrl, empresa, fase, booleanos e perfis agora informa
+o campo; caminhos, links, proprietários, permissões, arquivos privados e manifestos
+continuam protegidos. Menu reconhece https-pending como instalação parcial; resume
+continua sob lock e não refaz build/seed para esse checkpoint.
+
+Fixture congelada do validador 882f0d5 reproduz rejeição anterior e preserva a
+evidência de compatibilidade; não é código ativo de recuperação. Testes cobrem
+fases, campos opcionais/invalidade, segurança, JSON truncado, leitura idempotente,
+menu e comando sanitizado sem escrita. Estado real da VPS não foi lido; pendente
+executar state-diagnose, corrigir somente a condição comprovada, depois resume.
+Nenhum dado da plataforma, DNS ou certificado alterado.
+Validação: 195 testes Node aprovados, dois opt-in ignorados, 84 scripts e cinco
+suítes; imagem state-compat-validation construída. Resultado local não comprova
+o estado efetivo da instalação remota.
+
 # Bloqueio de DNS direto incorreto — 13/11/2026
 
 Causa informada pelo diagnóstico da VPS: IPs 157.173.200.50 e

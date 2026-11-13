@@ -10,6 +10,7 @@ const { advancedInput: rawInstallInput } = require('../docker/installer/cli.cjs'
 const installInput=(file,options={})=>rawInstallInput(file,{checkDomains:async()=>({}),...options});
 require('./domain_preflight_tests.cjs');
 require('./edge_diagnostics_tests.cjs');
+require('./state_compatibility_tests.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');
@@ -156,6 +157,13 @@ test('HTTPS pending and legacy starting resume validation without build migratio
   assert.ok(!t.runner.calls.some(c=>c.args.includes('build')||c.args.includes('up')||c.args.includes('migrate')||isSeed(c)||c.args.includes('clone')||c.args.includes('down')));
   assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
  }finally{t.cleanup();}}
+});
+test('menu recognizes persisted HTTPS pending without asking installation questions or replacing files',async()=>{
+ const t=await fixture();try{await t.m.initialize();t.m.save({...t.m.state,phase:'https-pending',initialized:false,profiles:[...t.m.state.profiles,'edge'],infrastructureReady:true,internalHttpReady:true,publicHttps:'pending'});
+ const before=fs.readFileSync(t.m.stateFile),output=[];t.runner.calls=[];
+ await require('../docker/installer/deploy.cjs').startInstallation(t.m,{automatic:false,project:'amanda',question:async()=> '0',out:s=>output.push(s),collect:async()=>assert.fail('no new questionnaire')});
+ assert.match(output.join('\n'),/Instalação AMANDA encontrada/);assert.match(output.join('\n'),/https-pending/);assert.deepEqual(fs.readFileSync(t.m.stateFile),before);assert.equal(t.runner.calls.length,0);
+ }finally{t.cleanup();}
 });
 test('fresh install and starting resume block wrong DNS before provision build migrations or seed',async()=>{
  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);const original=r.run.bind(r);
