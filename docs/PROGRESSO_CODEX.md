@@ -1,3 +1,33 @@
+# Pré-validação de domínios — 13/11/2026
+
+Referência consultada: scriptswhitelabel/instalador_single_oficial, funções
+questoes_dns_base/verificar_dns_base/instalacao_base. Mantida a ordem URLs → DNS →
+demais perguntas, sem copiar instalação de dnsutils ou alteração do host.
+domain-preflight.cjs usa Node nativo em container efêmero com rede host Linux:
+consulta A/AAAA/CNAME pelo resolvedor do sistema, Cloudflare e Google, com timeout;
+compara endereços com IPs de saída confirmados por duas fontes HTTPS e interfaces
+públicas atribuídas. IPv6 desconhecido, falha de rede ou resolvedores divergentes
+produzem resultado inconclusivo. Bind temporário em 80/443 e publicações Docker
+detectam conflitos locais; não comprovam entrada pública e não param serviços.
+
+Integrado nos assistentes histórico e wizard pela CLI, antes de dados pessoais,
+empresa, senhas e credenciais. Correção individual, diagnóstico, nova tentativa,
+voltar/cancelar e limite de 12 consultas. Exceção DNS/CDN requer motivo e frase
+explícita; conflito de portas e hostname inválido não têm bypass. Registro salvo
+no setup e estado após confirmação. Sem criação de recursos da aplicação nesta fase.
+Modos IP/local não fazem DNS público. Configuração JSON não interativa mantém
+o caminho existente; validação final HTTPS permanece obrigatória em todos os modos edge.
+
+Atualizações/URLs existentes mantêm sua validação final; pré-validação não é
+executada na retomada para não confundir portas do próprio Caddy com conflito.
+O módulo é reutilizável sem alterações administrativas automáticas.
+Testes com mocks cobrem sintaxe, DNS, CNAME, IPs, AAAA, divergência, portas,
+correções, repetição, cancelamento, exceção e ordem antes de credenciais.
+Validação completa: 169 testes Node aprovados, dois opt-in ignorados, 84 scripts
+e cinco suítes; imagem amanda-installer:domain-validation construída e scanner
+executado em rede none retornou inconclusivo sem presumir sucesso.
+Nenhuma VPS, DNS real, volume ou configuração da plataforma foi alterada.
+
 # HTTPS público e retomada — 13/11/2026
 
 Causa comprovada externamente: ambos os hosts homolog3 resolvem para

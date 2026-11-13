@@ -17,7 +17,7 @@ function publicSummary(c,directory){
     postgres:pg.maxConnections+' conexões / shared_buffers '+pg.sharedBuffers,integracoes:['Baileys','Transcrição',...(flags.official?['API Oficial']:[]),...(flags.wuzapi?['WuzAPI']:[]),...(flags.rabbit?['RabbitMQ']:[]),...(['facebook','google','ai'].filter(group=>GROUPS[group].some(([key])=>o.backendEnv?.[key])).map(g=>({facebook:'Facebook',google:'Google OAuth',ai:'OpenAI IVR'})[g])),...(o.pushEmail?['Push']:[]),...(o.initialSettings?.activePaymentGateway?['Pagamentos: '+o.initialSettings.activePaymentGateway]:[])].join(', '),smtp:o.backendEnv?.MAIL_HOST?'Habilitado (conexão '+(o.testSmtp?'será testada':'não testada')+')':'Configurar posteriormente',https:c.edge?'Caddy; certificado ainda não confirmado':'Desabilitado',servicos:selectedServices(o).concat(c.edge?['edge (Caddy)']:[]).join(', '),diretorio:typeof directory==='function'?directory(c):directory,
   };
 }
-async function collectInstallation({question,out=console.log,getResources,project,directory=process.env.AMANDA_DEPLOY_LAYOUT==='1'?c=>require('./deploy.cjs').companyDirectory(c.project):process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE}={}){
+async function collectInstallation({question,checkDomains,out=console.log,getResources,project,directory=process.env.AMANDA_DEPLOY_LAYOUT==='1'?c=>require('./deploy.cjs').companyDirectory(c.project):process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE}={}){
   const ui=createUI(),draft={sourceUrl:SOURCE,project:'amanda',companyName:'AMANDA',frontendUrl:'http://localhost:3000',backendUrl:'http://localhost:8080',edge:false,public:false,options:{appName:'AMANDA',supportPhone:'',backendEnv:{}}};
   let step=0,mode='3',resources;
   const show=s=>out(ui.text(s));
@@ -35,7 +35,9 @@ async function collectInstallation({question,out=console.log,getResources,projec
   const sections=[
     async()=>{show('COMO DESEJA INSTALAR A AMANDA?\n1. Domínios e HTTPS\n2. IP do servidor\n3. Local para desenvolvimento ou testes');mode=await choice('Tipo de instalação',mode,['1','2','3']);draft.edge=mode==='1';draft.public=mode==='2';},
     async()=>{
-      if(draft.edge){draft.frontendUrl=await read('URL do frontend HTTPS',draft.frontendUrl.startsWith('https:')?draft.frontendUrl:undefined,domain);draft.backendUrl=await read('URL do backend HTTPS',draft.backendUrl.startsWith('https:')?draft.backendUrl:undefined,domain);draft.public=false;show('Caddy publica 80/443; portas diretas dos serviços permanecem em loopback.');}
+      if(draft.edge){draft.backendUrl=await read('URL do backend HTTPS',draft.backendUrl.startsWith('https:')?draft.backendUrl:undefined,domain);draft.frontendUrl=await read('URL do frontend HTTPS',draft.frontendUrl.startsWith('https:')?draft.frontendUrl:undefined,domain);draft.public=false;
+        if(checkDomains){const result=await checkDomains(draft,{question,out});if(result.back)throw BACK;Object.assign(draft,result);}
+        show('Caddy publica 80/443; portas diretas dos serviços permanecem em loopback.');}
       else{
         const previousHost=new URL(draft.frontendUrl).hostname.replace(/^\[|\]$/g,'');
         let host='localhost';if(mode==='2')host=await read('IP do servidor (sem protocolo, porta ou caminho)',isIP(previousHost)?previousHost:undefined,v=>{if(!isIP(v))throw Error('IP do servidor inválido. Informe IPv4 ou IPv6.');return v;});

@@ -1,3 +1,13 @@
+# Pré-validação DNS — 13/11/2026
+
+domain_preflight_tests.cjs, incluído na suíte Docker-only, usa mocks sem rede
+externa. Cobre URLs, DNS compatível/incompatível/ausente/temporário, CNAME,
+IPv6, múltiplos endereços, resolvedores divergentes, IP desconhecido, portas,
+correção individual/reconsulta, cancelamento/voltar, exceção avançada e ordem
+dos dois assistentes antes de dados administrativos. Testes locais/IP existentes
+continuam ativos e TLS pós-deploy continua coberto por https_check_tests.cjs.
+Runtime do scanner testado com rede none, sem portas publicadas ou volumes reais.
+
 # HTTPS e retomada — 13/11/2026
 
 155 testes Node executados, dois opt-in ignorados. https_check_tests.cjs cobre

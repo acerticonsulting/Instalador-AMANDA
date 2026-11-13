@@ -19,7 +19,8 @@ function rootPath(value) {
   return root;
 }
 function normalizeConfig(input) {
-  const allowed = ['sourceUrl', 'project', 'companyName', 'frontendUrl', 'backendUrl', 'public', 'edge', 'adminEmail', 'adminPassword', 'sourceToken', 'buildToken','options'];
+  const allowed = ['sourceUrl', 'project', 'companyName', 'frontendUrl', 'backendUrl', 'public', 'edge', 'adminEmail', 'adminPassword', 'sourceToken', 'buildToken','options','domainPreflight'];
+  if(input.domainPreflight&&(!['compatible','exception'].includes(input.domainPreflight.status)||JSON.stringify(input.domainPreflight).length>65536))throw Error('Registro de pré-validação inválido.');
   for (const key of Object.keys(input)) if (!allowed.includes(key)) throw Error('Campo de configuração desconhecido: ' + key);
   const c = { project: 'amanda', frontendUrl: 'http://localhost:3000', backendUrl: 'http://localhost:8080', public: false, edge: false, adminEmail: 'admin@amanda.com.br', adminPassword: 'adminamanda', ...input };
   c.sourceUrl = sourceUrl(c.sourceUrl);
@@ -253,7 +254,7 @@ class Manager {
     if(!info.savedConfig)this.write(path.join(this.private,'setup.json'),setupRecord(this.root,c));
     const flags={official:true,wuzapi:true,rabbit:true,...o.services};
     const profiles=[...(flags.official?['official']:[]),...(flags.wuzapi?['whatsmeow']:[]),...(flags.rabbit?['rabbit']:[]),...(c.edge?['edge']:[])];
-    if(!resume)this.save({schema:1,sourceUrl:SOURCE,project:c.project,companyName:c.companyName,frontendUrl:c.frontendUrl,backendUrl:c.backendUrl,platform:path.join(this.root,'platform'),profiles,selectiveServices:true,retainedEdgeVolumes:c.edge,phase:'preparing',initialized:false,seedAttempted:false,seedSucceeded:false});
+    if(!resume)this.save({schema:1,sourceUrl:SOURCE,project:c.project,companyName:c.companyName,frontendUrl:c.frontendUrl,backendUrl:c.backendUrl,domainPreflight:c.domainPreflight,platform:path.join(this.root,'platform'),profiles,selectiveServices:true,retainedEdgeVolumes:c.edge,phase:'preparing',initialized:false,seedAttempted:false,seedSucceeded:false});
     const tokenFile=path.join(this.private,'source-token');
     if(c.sourceToken&&!fs.existsSync(tokenFile))this.write(tokenFile,c.sourceToken);
     const gitEnv={GIT_TERMINAL_PROMPT:'0',GIT_ASKPASS:path.join(__dirname,'source-askpass.cjs'),AMANDA_SOURCE_TOKEN_FILE:tokenFile};

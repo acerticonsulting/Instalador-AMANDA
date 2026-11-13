@@ -14,6 +14,17 @@ Docker oficial. Sockets rootless são aceitos; contextos TCP/SSH não são supor
 
 ## Obter e executar
 
+Ao escolher HTTPS no assistente, backend e frontend são verificados antes dos
+dados administrativos. O diagnóstico consulta A/AAAA/CNAME por três resolvedores,
+compara os IPs com o destino público observado e verifica conflitos locais em
+80/443 dentro de um container de ferramentas. Portas livres não comprovam entrada
+pública. Falhas de consulta/IP desconhecido são inconclusivas. É possível corrigir
+uma URL, repetir ou cancelar sem perder a outra. A opção avançada DNS pendente/CDN
+exige motivo e confirmação explícita, registrados após a confirmação final; não
+permite ignorar portas ocupadas ou hostnames inválidos. A confiança TLS permanece
+obrigatória após o deploy. Modos local/IP, retomada e JSON não interativo mantêm
+seus fluxos existentes. Nenhuma dependência adicional é instalada no host.
+
 ### HTTPS pendente e retomada
 
 A validação pública consulta A/AAAA e testa cada endereço com SNI e confiança

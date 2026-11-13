@@ -1,7 +1,8 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');const {spawnSync}=require('node:child_process');
 const {render,collectHistorical}=require('../docker/installer/historical.cjs');
-const {installInput}=require('../docker/installer/cli.cjs');
+const {installInput:rawInstallInput}=require('../docker/installer/cli.cjs');
+const installInput=(file,options={})=>rawInstallInput(file,{checkDomains:async()=>({}),...options});
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {SOURCE,normalizeConfig}=require('../docker/installer/manager.cjs');
 const original=require('./fixtures/7a5b31d-menus.json');
