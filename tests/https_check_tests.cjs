@@ -20,6 +20,10 @@ test('HTTP application errors are separate from TLS',async()=>{
 test('staging certificate can never qualify as public production HTTPS',async()=>{
  const r=await inspectHttps(targets,{}, {dns,request:async()=>({status:200,issuer:'(STAGING) Fake LE Intermediate'})});assert.equal(r.ok,false);assert.equal(r.results[0].failures[0].code,'STAGING_CERTIFICATE');
 });
+test('EPROTO after TCP connect is TLS failure, not evidence of firewall blocking 443',async()=>{
+ const r=await inspectHttps(targets,{}, {dns,request:async()=>{throw Object.assign(Error(),{code:'EPROTO',tcpConnected:true,reason:'tlsv1 alert internal error'});}});
+ assert.equal(r.ok,false);assert.equal(r.results[0].failures[0].kind,'TLS');assert.equal(r.results[0].failures[0].tcp443,'connected');assert.equal(r.results[0].failures[0].reason,'tlsv1 alert internal error');
+});
 test('port 80 blockage is reported without invalidating an already valid HTTPS certificate',async()=>{
  const r=await inspectHttps(targets,{connectivity:true},{dns,tcp:async()=> 'ECONNREFUSED',request:async()=>({status:200})});assert.equal(r.ok,true);assert.equal(r.results[0].checks[0].httpPort80,'ECONNREFUSED');
 });

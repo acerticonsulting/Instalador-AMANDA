@@ -31,6 +31,23 @@ projeto/serviço Compose, sem recriá-lo. TLS continua obrigatório após o depl
 
 ### HTTPS pendente e retomada
 
+No estado `https-pending`, o menu oferece validação DNS/HTTPS, diagnóstico
+detalhado e nova consulta dos certificados. Falhas retornam ao menu com o estado
+preservado. As duas opções de validação mantêm os requisitos DNS/TLS; nenhuma
+reinstala a plataforma. Depois de concluída, repetir `resume` apenas verifica a
+saúde e HTTPS, sem reaplicar personalização inicial ou seed.
+
+Para inspecionar firewall e acesso SSH, na própria VPS execute
+`bash tools/diagnosticar_firewall.sh`. O script consulta `ss`, UFW, firewalld,
+nftables e iptables/ip6tables quando já disponíveis. Não instala ferramentas,
+não usa sudo automaticamente e não altera regras. Mostra a porta da sessão
+SSH_CONNECTION quando identificável, sem presumir 22. Ferramenta ausente ou
+permissão negada não equivale a firewall inativo. Firewall do provedor/NAT e
+acessibilidade externa permanecem não verificados por esse script. Não aplique
+regras sem analisar SSH/portas/origens reais, obter autorização e definir reversão.
+Diagnóstico TLS agora distingue TCP 443 conectado de erro de handshake EPROTO;
+esse erro não comprova bloqueio de firewall.
+
 Se o reconhecimento da instalação falhar, use
 `sh ./instalador_single.sh state-diagnose --dir /home/deploy/amanda`.
 Esse comando não exige que o estado seja aceito por Manager.load: mostra somente

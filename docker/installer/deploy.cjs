@@ -64,9 +64,13 @@ async function startInstallation(manager,{question,collect,config,directory=mana
    out('Plataforma: main; revisão registrada: '+(/^[a-f0-9]{40,64}$/.test(info.state.revision||'')?info.state.revision.slice(0,12):'não informada'));
    if(info.kind==='complete'&&config){out('Use menu, status ou update com --dir '+root+'.');return target;}
    if(config)return resume();
+   const pendingHttps=info.kind==='partial'&&info.phase==='https-pending';
+   if(pendingHttps)out('AMANDA — INSTALAÇÃO PENDENTE\nEstado: infraestrutura instalada\nEtapa pendente: validação DNS / HTTPS. Firewall do host/provedor exige diagnóstico próprio.');
    while(true){
-     out(info.kind==='partial'?'[1] Retomar instalação\n[2] Consultar diagnóstico\n[0] Voltar':'[1] Gerenciar ou atualizar instalação\n[2] Consultar diagnóstico\n'+(automatic?'[3] Escolher outra empresa\n':'')+'[0] Voltar');
+     out(pendingHttps?'[1] Verificar DNS e HTTPS; consultar pendências de firewall\n[2] Consultar diagnóstico detalhado\n[3] Verificar novamente os certificados\n[0] Voltar':info.kind==='partial'?'[1] Retomar instalação\n[2] Consultar diagnóstico\n[0] Voltar':'[1] Gerenciar ou atualizar instalação\n[2] Consultar diagnóstico\n'+(automatic?'[3] Escolher outra empresa\n':'')+'[0] Voltar');
      const choice=await question('Selecione a opção','0');if(choice==null||choice==='0')return manager;
+     if(pendingHttps&&choice==='2'){target.load();await require('./edge-diagnostics.cjs').diagnoseEdge(target);continue;}
+     if(pendingHttps&&['1','3'].includes(choice)){try{return await resume();}catch(error){out('Validação pendente: '+target.runner.mask(error.message)+'\nDados e containers preservados; corrija a condição e verifique novamente.');continue;}}
      if(choice==='2'){out(`Diretório: ${root}\nEstado: ${info.kind}\nEtapa registrada: ${info.phase}\nSeed iniciado: ${info.state.seedAttempted?'sim':'não'}\nSeed concluído: ${info.state.seedSucceeded?'sim':'não'}\nNenhum arquivo foi alterado pelo diagnóstico.`);continue;}
      if(choice==='3'&&info.kind==='complete'&&automatic)return startInstallation(manager,{question,collect,directory,automatic,out,manage,inspect,installNew});
      if(choice!=='1')throw Error('Opção inválida.');

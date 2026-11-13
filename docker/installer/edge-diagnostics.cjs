@@ -16,7 +16,9 @@ function activeSummary(config){
   }visit(config);return{hosts:[...hosts],listeners:[...listeners],upstreams:[...upstreams]};
 }
 async function diagnoseEdge(manager){
-  const report={readOnly:true,hostProcesses:'Não inspecionados. Na VPS: ss -ltnp para 80/443.',firewall:'Não verificado; porta Docker publicada não comprova entrada pública.'};
+  const report={readOnly:true,state:manager.state.phase,project:manager.state.project,root:manager.root,
+    hostProcesses:'Não inspecionados. Na VPS: bash tools/diagnosticar_firewall.sh.',
+    firewall:{host:'Não verificado pelo container; executar diagnóstico somente leitura na VPS.',provider:'Não verificado; depende do painel/roteamento do provedor.',ssh:'Não presumir porta 22 nem alterar regras; identificar sessão/porta real antes de qualquer proposta.'}};
   async function attempt(label,fn){try{return await fn();}catch{return{unavailable:label};}}
   report.publishers=await attempt('docker ps',async()=> (await manager.docker(['ps','--format','{{json .}}'],{quiet:true})).stdout.trim().split(/\r?\n/).filter(Boolean).map(l=>{const r=JSON.parse(l);return{name:r.Names,ports:r.Ports};}));
   report.hostNetwork=await attempt('DNS/IP na rede do host Docker',()=>require('./domain-preflight.cjs').probe(manager,manager.state,{existing:true}));
