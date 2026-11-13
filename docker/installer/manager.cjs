@@ -401,7 +401,17 @@ class Manager {
     if(this.state.profiles.includes('edge')){
       const env=envValues(path.join(this.state.platform,'.env'));
       const urls=[{url:env.FRONTEND_URL,exact:true},{url:env.BACKEND_URL+'/healthz',exact:true},...(env.OFICIAL_HOST?[{url:'https://'+env.OFICIAL_HOST,exact:false}]:[])];
-      await this.compose(['exec','-T','backend','node','-e',`(${require('./diagnostics.cjs').probeHttp.toString()})(${JSON.stringify(urls)}).catch(e=>{console.error(e.message);process.exit(1)})`],{label:'Validando HTTPS público, DNS e certificados (sem enviar mensagens)'});
+      const pending = !this.state.initialized;
+      if(pending)this.save({...this.state,phase:'https-pending',infrastructureReady:true,internalHttpReady:true,publicHttps:'pending'});
+      const {inspectHttps,awaitHttps}=require('./https-check.cjs');
+      const timeout=Number(process.env.AMANDA_HTTPS_TIMEOUT_MS||120000);
+      if(!Number.isFinite(timeout)||timeout<1000||timeout>600000)throw Error('AMANDA_HTTPS_TIMEOUT_MS deve estar entre 1000 e 600000.');
+      await awaitHttps({timeoutMs:timeout,emit:s=>this.runner.emit(s),probe:async()=>{
+        const expectedAddresses=(process.env.AMANDA_HTTPS_EXPECTED_ADDRESSES||'').split(',').filter(Boolean);
+        const result=await this.compose(['exec','-T','backend','node','-e',`(${inspectHttps.toString()})(${JSON.stringify(urls)},${JSON.stringify({connectivity:true,expectedAddresses})}).then(r=>console.log(JSON.stringify(r))).catch(e=>{console.error(e.code||e.message);process.exit(1)})`],{quiet:true,label:'Verificando DNS A/AAAA e HTTPS por endereço, com confiança TLS'});
+        return JSON.parse(result.stdout.trim());
+      },caddy:async()=> (await this.compose(['logs','--no-color','--since','2m','--tail','100','edge'],{quiet:true,label:'Consultando emissão ACME sem reiniciar Caddy'})).stdout});
+      if(pending)this.save({...this.state,publicHttps:'validated'});
     }
   }
   async verifyLogin() {
@@ -515,6 +525,11 @@ class Manager {
     if (action === 'update') return this.update();
     if (action === 'resume') {
       await this.validateSource(true);
+      if(!this.state.initialized&&this.state.seedSucceeded&&['starting','https-pending'].includes(this.state.phase)){
+        await this.verifyHealth(); await this.verifyLogin();
+        this.save({...this.state,initialized:true,phase:'ready',revision:await this.revision()});
+        this.runner.emit('Instalação concluída após validar serviços, HTTPS e login; sem build, migrations ou seed adicionais.\n');return;
+      }
       await this.refreshInterruptedBuild();
       if (!this.state.initialized) { if (!this.state.freshResourcesVerified) throw Error('Preparação incompleta; não é seguro assumir banco novo.'); await this.build(); return this.initialize(); }
       if (this.state.phase === 'preparing-update') {

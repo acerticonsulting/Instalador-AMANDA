@@ -1,4 +1,5 @@
 const { test } = require('node:test');
+require('./https_check_tests.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -53,6 +54,7 @@ class FakeRunner {
       }
     } else if(bin===process.execPath && args[0].endsWith('configure.cjs')) fs.writeFileSync(path.join(options.cwd,'.env'),defaultEnv,{mode:0o600});
     else if(bin==='docker') {
+      if(args.at(-1)?.includes('async function inspectHttps'))return {stdout:JSON.stringify({ok:true,results:[]})};
       if(args[0]==='info')stdout=JSON.stringify({OSType:'linux',ServerVersion:'27.5.1',Architecture:'x86_64',MemTotal:8*1024**3,NCPU:4});
       else if(args[0]==='volume'){if(args[1]==='inspect'&&this.volumeAbsent)return {stdout:'',stderr:'',code:1};stdout=this.existing.join('\n');}
       else if(args[0]==='network')stdout=(this.existingNetworks||[]).join('\n');
@@ -139,6 +141,16 @@ test('first-install migration failure resumes claimed resources without reassert
   t.runner.fail=c=>c.args.includes('run')&&c.args.includes('migrate');await assert.rejects(t.m.initialize());assert.equal(t.m.state.phase,'migrations');assert.equal(t.m.state.resourcesClaimed,true);
   const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');t.runner.fail=null;t.runner.existing=['amanda_postgres_data'];await t.m.execute('resume');assert.equal(t.m.state.phase,'ready');assert.equal(t.runner.calls.filter(isSeed).length,1);assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
  }finally{t.cleanup();}
+});
+
+test('HTTPS pending and legacy starting resume validation without build migration up or seed',async()=>{
+ for(const phase of ['starting','https-pending']){const t=await fixture();try{
+  await t.m.initialize();t.m.save({...t.m.state,initialized:false,phase,seedSucceeded:true});
+  const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');t.runner.calls=[];
+  await t.m.execute('resume');assert.equal(t.m.state.phase,'ready');
+  assert.ok(!t.runner.calls.some(c=>c.args.includes('build')||c.args.includes('up')||c.args.includes('migrate')||isSeed(c)||c.args.includes('clone')||c.args.includes('down')));
+  assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
+ }finally{t.cleanup();}}
 });
 
 test('older prepared state without draft resumes only with consistent private config and proven empty resources',async()=>{

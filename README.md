@@ -14,6 +14,35 @@ Docker oficial. Sockets rootless são aceitos; contextos TCP/SSH não são supor
 
 ## Obter e executar
 
+### HTTPS pendente e retomada
+
+A validação pública consulta A/AAAA e testa cada endereço com SNI e confiança
+TLS obrigatória, separando DNS, conexão, TLS e HTTP. A porta 80 é diagnosticada;
+sua indisponibilidade não invalida um HTTPS já válido. Emissor e validade são
+registrados; incompatibilidade de hostname inclui os SANs recebidos. Não há
+reinício do Caddy nem reemissão forçada. Com atividade de emissão nos logs e erro
+transitório, aguarda com backoff limitado; erros definitivos encerram a espera.
+`AMANDA_HTTPS_TIMEOUT_MS` permite 1000–600000 ms (padrão 120000, além do tempo
+das sondagens em curso). `AMANDA_HTTPS_EXPECTED_ADDRESSES`, opcional, recebe IPs
+permitidos separados por vírgula; use apenas conhecendo o destino/proxy esperado.
+Sem essa opção os IPs resolvidos são informados, sem presumir o IP público da VPS.
+
+Na primeira instalação, HTTP interno aprovado e TLS pendente ficam registrados
+como `https-pending`. `resume` nesse estado, ou no estado legado `starting` com
+seed concluído, verifica os serviços e HTTPS, depois valida login e conclui.
+Não repete clone, build, migrations, seed ou criação de recursos. Se um serviço
+estiver parado, a retomada informa a falha; não o recria automaticamente.
+
+Em 13/11/2026, consulta externa dos domínios homolog3.appamanda.com.br e
+api.homolog3.appamanda.com.br retornou A=209.145.62.30, porta 80 acessível e
+certificado com SANs homolog.appamanda.com.br/homologapi.appamanda.com.br.
+Esse certificado não valida os domínios homolog3. Antes de retomar, confirme se
+o IP é a VPS desejada e qual proxy atende 443. Na VPS, consulte somente leitura:
+`docker port amanda_caddy`, `docker logs --tail 100 amanda_caddy` e
+`ss -ltnp '( sport = :443 )'`. Confira FRONTEND_HOST/BACKEND_HOST no ambiente
+do Caddy e os registros A/AAAA. A correção externa depende dessas evidências;
+não remova certificados/volumes nem desative a confiança TLS.
+
 Na pasta onde deseja guardar o instalador:
 
 ```sh

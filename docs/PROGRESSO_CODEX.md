@@ -1,3 +1,27 @@
+# HTTPS público e retomada — 13/11/2026
+
+Causa comprovada externamente: ambos os hosts homolog3 resolvem para
+209.145.62.30 e recebem certificado Let's Encrypt com SANs de homolog/homologapi,
+não homolog3/api.homolog3. Validade 09/11/2026–07/02/2027. Porta 80 acessível;
+TLS retorna ERR_TLS_CERT_ALTNAME_INVALID. Não há acesso SSH à VPS para identificar
+o proxy/listener ou corrigir DNS. Não se presume corrida de emissão.
+
+Novo https-check.cjs mantém confiança TLS, SNI e hostname, consulta A/AAAA e testa
+todos os endereços separadamente; registra código técnico, metadados e HTTP.
+Backoff limitado somente com evidência de emissão e erros transitórios; falhas
+ACME definitivas param a espera. IP esperado é opcional para não rejeitar proxies.
+manager.cjs persiste https-pending e retoma também starting legado com seed
+concluído, sem build/migrations/up/seed. Bootstrap transmite opções de timeout/IP.
+
+Validação: 155 testes Node aprovados, dois opt-in ignorados, 84 scripts e cinco
+suítes. Novos mocks cobrem SAN, expiração, cadeia, data futura, DNS ausente/IP
+divergente/AAAA inacessível, 443, diagnóstico 80, HTTP, emissão/backoff/timeout,
+ACME e retomada sem recriação com .env preservado. Imagem de ferramentas construída.
+--plataforma executado no daemon local: REPROVADO (instalação VPS não acessível
+nesse daemon e endpoints públicos rejeitados); não representa saúde remota dos
+containers. Plataforma AMANDA e volumes reais não foram alterados.
+Pendente: corrigir destino/certificado público na VPS e executar resume.
+
 # Preservação do terminal no Docker — 12/11/2026
 
 Base: main 31fa043. Reproduzido o erro de terminal interativo quando stdin é
