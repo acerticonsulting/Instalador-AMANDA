@@ -27,6 +27,26 @@ seus fluxos existentes. Nenhuma dependência adicional é instalada no host.
 
 ### HTTPS pendente e retomada
 
+Para investigar um desafio HTTP-01 com 404/403 ou TLS-ALPN-01 com `no application
+protocol`, execute `sh ./instalador_single.sh https-diagnose --dir /home/deploy/amanda`.
+O comando consulta publicações de containers, estado e volumes do Caddy, variáveis
+de domínio permitidas, hosts/listeners/upstreams da configuração ativa pela API
+administrativa local, DNS/IP na rede do host Docker e HTTPS com confiança TLS.
+Não imprime configurações completas/segredos nem logs brutos. API administrativa
+indisponível aparece como inconclusiva; não é habilitada automaticamente. As
+portas ocupadas pelo próprio Caddy são esperadas no diagnóstico pós-instalação.
+O scanner usa somente um container efêmero de ferramentas, removido ao terminar.
+
+Na VPS, complemente com `ss -ltnp '( sport = :80 or sport = :443 )'` para identificar
+processos do host. Se o IP público observado não for o destino publicado, corrija
+DNS/NAT no provedor. Se houver proxy intermediário, os desafios HTTP em 80 precisam
+chegar ao Caddy; TLS-ALPN exige encaminhamento que preserve SNI/ALPN até ele. A
+identificação do proxy e qualquer mudança de firewall/serviços exigem evidência
+da VPS. Uma resposta 404 fora de um desafio ativo não testa emissão ACME.
+Não use um caminho ACME inventado para afirmar sucesso ou force novas emissões.
+Depois da correção externa, use `resume --dir /home/deploy/amanda`; mantenha
+`amanda_caddy_data` e `amanda_caddy_config`. Não reinstale a plataforma.
+
 A validação pública consulta A/AAAA e testa cada endereço com SNI e confiança
 TLS obrigatória, separando DNS, conexão, TLS e HTTP. A porta 80 é diagnosticada;
 sua indisponibilidade não invalida um HTTPS já válido. Emissor e validade são

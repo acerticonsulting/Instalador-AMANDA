@@ -1,3 +1,10 @@
+# Diagnóstico ACME — 13/11/2026
+
+edge_diagnostics_tests.cjs testa respostas HTTP-01 404/403, falha ALPN, CAA,
+resumo sem segredos da configuração ativa, API administrativa indisponível,
+preservação de volumes e nenhum up/restart/down no diagnóstico. A espera por
+TLS não insiste em erro ALPN mesmo quando há logs de emissão. Sem emissões reais.
+
 # Pré-validação DNS — 13/11/2026
 
 domain_preflight_tests.cjs, incluído na suíte Docker-only, usa mocks sem rede

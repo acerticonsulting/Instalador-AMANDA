@@ -9,6 +9,7 @@ const { SOURCE, CORE, sourceUrl, rootPath, normalizeConfig, envValues, Runner, M
 const { advancedInput: rawInstallInput } = require('../docker/installer/cli.cjs');
 const installInput=(file,options={})=>rawInstallInput(file,{checkDomains:async()=>({}),...options});
 require('./domain_preflight_tests.cjs');
+require('./edge_diagnostics_tests.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');

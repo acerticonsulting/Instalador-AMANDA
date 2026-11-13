@@ -1,3 +1,29 @@
+# Diagnóstico do encaminhamento ACME — 13/11/2026
+
+Evidências: usuário relata HTTP-01 404 e TLS-ALPN-01 "no application protocol".
+Consulta externa em container confirma A=209.145.62.30, porta 80 acessível e
+certificado válido apenas para homolog/homologapi, sem os hosts homolog3.
+Isso comprova falha de hostname no endpoint observado e desafios não satisfeitos;
+não identifica qual proxy/processo os recebe nem comprova o IP de saída da VPS.
+SSH em modo não interativo foi recusado (Permission denied); sem alterações remotas.
+
+Compose/Caddyfile oficiais mantêm publicação 80/443 e volumes persistentes; não
+há evidência para mudar esses arquivos. Plataforma sem alterações.
+edge-diagnostics.cjs e comando https-diagnose consultam publicações Docker,
+configuração ativa Caddy resumida, hosts, portas, volumes, DNS/IP na rede host e
+HTTPS. Somente consulta e um container efêmero de diagnóstico; sem up/restart,
+reload, alteração de firewall, seeds ou reemissão. Configuração completa e logs
+brutos não são impressos. Fallback inconclusivo quando admin API estiver desligada.
+https-check.cjs agora identifica respostas erradas HTTP-01 e falta de ALPN e
+encerra espera sem tentar mascarar erros de roteamento como atraso de emissão.
+
+Testes: classificação de desafios, redação de configuração, API indisponível,
+preservação de volumes e ausência de comandos mutantes, parada da espera por
+erro ALPN. Suíte completa e build de ferramentas registrados na entrega.
+Pendente na VPS: executar https-diagnose e ss para confirmar IP/destino e donos
+de 80/443; corrigir encaminhamento/DNS apenas conforme evidência. Depois resume.
+Emissão pública válida e saúde remota ainda não comprovadas.
+
 # Pré-validação de domínios — 13/11/2026
 
 Referência consultada: scriptswhitelabel/instalador_single_oficial, funções
