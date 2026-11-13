@@ -1,3 +1,19 @@
+# Continuidade: bloqueio externo DNS — 13/11/2026
+
+Base 71484c0. Usuário confirmou resume funcional, estado https-pending compatível,
+80/443 managed-caddy, SSH22 e regras locais sem bloqueio explícito identificado.
+Nova consulta independente por sistema/1.1.1.1/8.8.8.8: ambos os hosts homolog3 e
+api.homolog3 continuam A=209.145.62.30, sem AAAA/CNAME, sem divergência observada.
+O instalador funciona como esperado; nenhuma correção de código é necessária.
+Não há conexão autorizada ao painel DNS. Para publicação direta confirmada pelo
+administrador, alterar somente A homolog3 e A api.homolog3 na zona appamanda.com.br
+para 157.173.200.50. Proxy/CDN autorizado não é determinável apenas pelo DNS;
+confirmar com o responsável antes de mudar. Não alterar homolog/homologapi.
+Firewall do provedor permanece não verificado; nenhuma regra alterada. Após
+correção, consultar os três resolvedores, validar HTTPS e executar resume sem
+reinstalar. Resume não executado nesta etapa porque DNS continua incompatível.
+Estado final remoto comprovado pelo diagnóstico do usuário: https-pending.
+
 # HTTPS pendente, rede e firewall — 13/11/2026
 
 Base conferida: 59b927a. Reconhecimento https-pending confirmado pelo usuário;
