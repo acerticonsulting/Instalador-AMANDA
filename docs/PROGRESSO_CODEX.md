@@ -13,6 +13,12 @@ Firewall do provedor permanece não verificado; nenhuma regra alterada. Após
 correção, consultar os três resolvedores, validar HTTPS e executar resume sem
 reinstalar. Resume não executado nesta etapa porque DNS continua incompatível.
 Estado final remoto comprovado pelo diagnóstico do usuário: https-pending.
+Reconsulta após relato de backend inconclusive/divergent: sistema, Cloudflare e
+Google concordam novamente nos dois A antigos, sem AAAA/CNAME. Divergência não
+reproduzida; sem respostas anteriores por resolvedor não é possível atribuir a
+cache, propagação ou erro transitório. Nenhum defeito de classificação comprovado.
+Sem nova tentativa de resume/ACME enquanto DNS continua incompatível; nenhuma
+mudança adicional de código, firewall ou infraestrutura necessária nesta etapa.
 
 # HTTPS pendente, rede e firewall — 13/11/2026
 
