@@ -31,6 +31,16 @@ projeto/serviço Compose, sem recriá-lo. TLS continua obrigatório após o depl
 
 ### HTTPS pendente e retomada
 
+Se o reconhecimento da instalação falhar, use
+`sh ./instalador_single.sh state-diagnose --dir /home/deploy/amanda`.
+Esse comando não exige que o estado seja aceito por Manager.load: mostra somente
+schema, fase, caminho permitido e a validação rejeitada, sem conteúdo de .env,
+tokens ou senhas. A pasta selecionada é montada somente para leitura. Não migra,
+reescreve ou inventa checkpoints. Schema 1 com fase `https-pending`, antes gravada
+pelo gerenciador mas omitida no reconhecedor, agora é aceito somente com os
+checkpoints HTTPS/seed consistentes. Não requer migração nem backup porque não há
+escrita de conversão. Estado desconhecido/inseguro continua bloqueado.
+
 Para investigar um desafio HTTP-01 com 404/403 ou TLS-ALPN-01 com `no application
 protocol`, execute `sh ./instalador_single.sh https-diagnose --dir /home/deploy/amanda`.
 O comando consulta publicações de containers, estado e volumes do Caddy, variáveis

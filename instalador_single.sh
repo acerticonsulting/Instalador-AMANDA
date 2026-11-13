@@ -21,7 +21,7 @@ while [ "$#" -gt 0 ]; do
     --config) [ "$#" -ge 2 ] || { printf '%s\n' 'Falta o arquivo de configuração.' >&2; exit 2; }; config=$2; shift 2 ;;
     --atualizar|atualizar|2) action=update; shift ;;
     --help|-h|help) action=help; shift ;;
-    menu|install|wizard|configure|instances|migration-plan|urls|services|official|ssl|push|'postgres'|optional-service|rollback|schedule-backup|wuzapi-start|native-unavailable|channels-unavailable|external-unavailable|helper-unavailable|update|resume|adopt|start|stop|restart|status|logs|backup|doctor|https-diagnose|build-token|unlock) action=$1; shift ;;
+    menu|install|wizard|configure|instances|migration-plan|urls|services|official|ssl|push|'postgres'|optional-service|rollback|schedule-backup|wuzapi-start|native-unavailable|channels-unavailable|external-unavailable|helper-unavailable|update|resume|adopt|start|stop|restart|status|logs|backup|doctor|https-diagnose|state-diagnose|build-token|unlock) action=$1; shift ;;
     *) printf 'Argumento não suportado: %s\nUse: sh instalador_single.sh help\n' "$1" >&2; exit 2 ;;
   esac
 done
@@ -90,7 +90,7 @@ set -- run --rm --init --name "$bootstrap" "$terminal" --mount "type=bind,source
 set -- "$@" --mount type=bind,source=/etc/passwd,target=/run/amanda-host-passwd,readonly
 set -- "$@" -e AMANDA_HTTPS_TIMEOUT_MS -e AMANDA_HTTPS_EXPECTED_ADDRESSES
 set -- "$@" -e "AMANDA_INSTALLER_BRANCH=$installer_branch" -e "AMANDA_INSTALLER_COMMIT=$installer_commit" -e "AMANDA_INSTALLER_DIRTY=$installer_dirty"
-case "$action" in help|doctor) ;; *) set -- "$@" -v "$target:$target" ;; esac
+case "$action" in help|doctor) ;; state-diagnose) set -- "$@" --mount "type=bind,source=$target,target=$target,readonly" ;; *) set -- "$@" -v "$target:$target" ;; esac
 if [ "$deploy_layout" = 1 ] && [ "$target" != /home/deploy ]; then set -- "$@" -v /home/deploy:/home/deploy; fi
 if [ -n "$config" ]; then
   case "$config" in /*) ;; *) config=$PWD/$config ;; esac

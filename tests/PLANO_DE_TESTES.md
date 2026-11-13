@@ -1,3 +1,12 @@
+# Compatibilidade do estado — 13/11/2026
+
+state_compatibility_tests.cjs compara fixture do validador antigo com o atual,
+cobre https-pending legítimo, fases anteriores, opcionais ausentes, schema/
+empresa/origem/perfis/booleanos inválidos, checkpoints, permissões/owner/links,
+arquivo privado desconhecido e JSON truncado. Reconhecimento repetido e diagnóstico
+CLI mantêm bytes/arquivos e omitem segredos. Menu reconhece parcial sem novo
+questionário. Não há migração escrita para essa correção aditiva de fase.
+
 # Bloqueio DNS incorreto — 13/11/2026
 
 Regressão com IPs do diagnóstico VPS, recusa da exceção DNS PENDENTE, proxy com
