@@ -57,6 +57,8 @@ class FakeRunner {
       }
     } else if(bin===process.execPath && args[0].endsWith('configure.cjs')) fs.writeFileSync(path.join(options.cwd,'.env'),defaultEnv,{mode:0o600});
     else if(bin==='docker') {
+      if(args.at(-1)?.includes('async function scanDomains'))return {stdout:JSON.stringify({publicSources:[{family:4,values:['203.0.113.10','203.0.113.10']}],ports:[80,443].map(port=>({port,status:'free-local'})),records:[{hostname:'fixture.example.test',resolvers:[{A:['203.0.113.10'],AAAA:[],CNAME:[],errors:[]}]}]})};
+      if(args[0]==='ps'&&args.includes('{{json .}}'))return{stdout:''};
       if(args.at(-1)?.includes('async function inspectHttps'))return {stdout:JSON.stringify({ok:true,results:[]})};
       if(args[0]==='info')stdout=JSON.stringify({OSType:'linux',ServerVersion:'27.5.1',Architecture:'x86_64',MemTotal:8*1024**3,NCPU:4});
       else if(args[0]==='volume'){if(args[1]==='inspect'&&this.volumeAbsent)return {stdout:'',stderr:'',code:1};stdout=this.existing.join('\n');}
@@ -154,6 +156,19 @@ test('HTTPS pending and legacy starting resume validation without build migratio
   assert.ok(!t.runner.calls.some(c=>c.args.includes('build')||c.args.includes('up')||c.args.includes('migrate')||isSeed(c)||c.args.includes('clone')||c.args.includes('down')));
   assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);
  }finally{t.cleanup();}}
+});
+test('fresh install and starting resume block wrong DNS before provision build migrations or seed',async()=>{
+ const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);const original=r.run.bind(r);
+ const wrong={publicSources:[{family:4,values:['157.173.200.50','157.173.200.50']}],ports:[80,443].map(port=>({port,status:'free-local'})),records:[{hostname:'front.example.test',resolvers:[{A:['209.145.62.30'],AAAA:[],errors:[]}]}]};
+ try{
+ r.run=async(bin,args,options)=>args.at(-1)?.includes('async function scanDomains')?(r.calls.push({bin,args}),{stdout:JSON.stringify(wrong)}):original(bin,args,options);
+ await assert.rejects(require('../docker/installer/deploy.cjs').install(m,input({edge:true,frontendUrl:'https://front.example.test',backendUrl:'https://api.example.test'})),/157.173.200.50/);
+ assert.ok(!fs.existsSync(m.stateFile));assert.ok(!r.calls.some(c=>c.args.includes('build')||c.args.includes('clone')||c.args.includes('--provision')||isSeed(c)));
+ }finally{t.cleanup();}
+ const u=await fixture();try{await u.m.initialize();u.m.save({...u.m.state,profiles:[...u.m.state.profiles,'edge'],frontendUrl:'https://front.example.test',backendUrl:'https://api.example.test',initialized:false,phase:'starting'});const before=fs.readFileSync(path.join(u.m.state.platform,'.env'),'utf8');const run=u.runner.run.bind(u.runner);u.runner.calls=[];
+ u.runner.run=async(bin,args,options)=>args.at(-1)?.includes('async function scanDomains')?(u.runner.calls.push({bin,args}),{stdout:JSON.stringify(wrong)}):run(bin,args,options);
+ await assert.rejects(u.m.execute('resume'),/209.145.62.30/);assert.equal(u.m.state.phase,'starting');assert.ok(!u.runner.calls.some(c=>['build','up','migrate','down'].some(a=>c.args.includes(a))||isSeed(c)));assert.equal(fs.readFileSync(path.join(u.m.state.platform,'.env'),'utf8'),before);
+ }finally{u.cleanup();}
 });
 
 test('older prepared state without draft resumes only with consistent private config and proven empty resources',async()=>{

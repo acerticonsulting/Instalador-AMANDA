@@ -382,6 +382,7 @@ class Manager {
     this.runner.emit(`Frontend: ${this.state.frontendUrl}\nBackend: ${this.state.backendUrl}\nAcesso inicial escolhido: ${path.join(this.private,'admin-access.json')} (arquivo privado).\n`);
   }
   async startServices() {
+    await require('./domain-preflight.cjs').assertDns(this,this.state,{existing:true});
     await this.compose(['up','-d','--no-deps','--wait','--wait-timeout','300',...this.services(),...(this.state.profiles.includes('edge') ? ['edge'] : [])], { label: 'Iniciando a plataforma completa e verificando prontidão' });
     for(const a of(await this.configuration()).installerAddons)await this.docker([...a.base,'up','-d','--wait','--wait-timeout','300'],{label:'Iniciando componente '+a.project});
     await this.verifyHealth();
@@ -403,7 +404,7 @@ class Manager {
       const env=envValues(path.join(this.state.platform,'.env'));
       const urls=[{url:env.FRONTEND_URL,exact:true},{url:env.BACKEND_URL+'/healthz',exact:true},...(env.OFICIAL_HOST?[{url:'https://'+env.OFICIAL_HOST,exact:false}]:[])];
       const pending = !this.state.initialized;
-      if(pending)this.save({...this.state,phase:'https-pending',infrastructureReady:true,internalHttpReady:true,publicHttps:'pending'});
+      if(pending)this.save({...this.state,phase:this.state.phase==='starting'?'starting':'https-pending',infrastructureReady:true,internalHttpReady:true,publicHttps:'pending'});
       const {inspectHttps,awaitHttps}=require('./https-check.cjs');
       const timeout=Number(process.env.AMANDA_HTTPS_TIMEOUT_MS||120000);
       if(!Number.isFinite(timeout)||timeout<1000||timeout>600000)throw Error('AMANDA_HTTPS_TIMEOUT_MS deve estar entre 1000 e 600000.');
@@ -526,6 +527,7 @@ class Manager {
     if (action === 'update') return this.update();
     if (action === 'resume') {
       await this.validateSource(true);
+      await require('./domain-preflight.cjs').assertDns(this,this.state,{existing:true});
       if(!this.state.initialized&&this.state.seedSucceeded&&['starting','https-pending'].includes(this.state.phase)){
         await this.verifyHealth(); await this.verifyLogin();
         this.save({...this.state,initialized:true,phase:'ready',revision:await this.revision()});

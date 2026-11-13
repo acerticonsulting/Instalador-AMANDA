@@ -1,3 +1,32 @@
+# Bloqueio de DNS direto incorreto — 13/11/2026
+
+Causa informada pelo diagnóstico da VPS: IPs 157.173.200.50 e
+2605:a140:2372:3218::1, enquanto os hosts homolog3/api.homolog3 resolvem para
+209.145.62.30. Consulta pública confirmou A antigo, sem AAAA/CNAME; zona
+appamanda.com.br delegada a ns1–ns4.bdm.microsoftonline.com. Não há acesso ao
+painel DNS nem confirmação administrativa de proxy; nenhuma alteração DNS feita.
+
+Brechas do código anterior: exceção DNS PENDENTE aceitava divergência comprovada;
+JSON/savedConfig não eram rechecados antes de provisionar; resume não comparava
+destino DNS/VPS. Removido bypass direto. Proxy exige destinos IP explícitos
+compatíveis com todos os resolvedores, motivo/declaração de encaminhamento e
+confirmação. Consulta atual obrigatória em deploy.install antes de provisionar,
+em resume antes de retomar, e antes de startServices. Metadados antigos não
+autorizam DNS incorreto. Nenhuma necessidade de repetir questionário no resume.
+
+probe/evaluate reutilizados para classificar portas: Caddy próprio por labels
+Compose (aceito apenas em instalação existente), outro serviço AMANDA,
+serviço desconhecido ou indisponível sem dono identificado. Diagnóstico mostra
+o veredito DNS com IP esperado/encontrado. Estado starting preservado na falha.
+TLS rejeita também emissor staging; certificados/volumes não são alterados.
+
+Regressões incluem IPs do caso real, bloqueio de fresh install/resume antes de
+build/provision/seed, .env preservado, labels de portas, bypass antigo recusado,
+proxy declarado e staging. Suíte completa: 178 testes Node aprovados, dois opt-in
+ignorados, 84 scripts e cinco suítes; imagem dns-block-validation construída.
+Pendente externo: confirmar publicação direta/topologia autorizada e alterar os
+dois A para a VPS; após propagação executar resume. Não se declara HTTPS resolvido.
+
 # Diagnóstico do encaminhamento ACME — 13/11/2026
 
 Evidências: usuário relata HTTP-01 404 e TLS-ALPN-01 "no application protocol".
