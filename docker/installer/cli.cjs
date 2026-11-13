@@ -20,11 +20,11 @@ async function ask(label, fallback, secret = false) {
 
 async function advancedInput(configFile,options={}) {
   if(configFile)return normalizeConfig(configInput(configFile));
-  return require('./wizard.cjs').collectInstallation({question:ask,...options});
+  return require('./wizard.cjs').collectInstallation({question:ask,checkDomains:require('./domain-preflight.cjs').checker(new Manager(process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE)),...options});
 }
 async function installInput(configFile,options={}) {
   if(configFile)return normalizeConfig(configInput(configFile));
-  return require('./historical.cjs').collectHistorical({question:ask,...options});
+  return require('./historical.cjs').collectHistorical({question:ask,checkDomains:require('./domain-preflight.cjs').checker(new Manager(process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE)),...options});
 }
 async function main() {
   const args = process.argv.slice(2); let action = args.shift() || 'menu', configFile,initial;

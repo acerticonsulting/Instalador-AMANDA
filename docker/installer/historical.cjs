@@ -10,7 +10,7 @@ function render(screen,key='',values={}){
   return result.stdout;
 }
 function labels(screen){return [...render(screen,'',{AMANDA_UI_TTY:'0'}).replace(/\x1b\[[0-9;]*[A-Za-z]/g,'').matchAll(/\[([0-9]+)\] ([^\n]+)/g)].filter(m=>m[1]!=='0').map(m=>[m[1],m[2]]);}
-async function collectHistorical({question,out=console.log,project,directory=process.env.AMANDA_DEPLOY_LAYOUT==='1'?c=>require('./deploy.cjs').companyDirectory(c.project):process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE}={}){
+async function collectHistorical({question,checkDomains,out=console.log,project,directory=process.env.AMANDA_DEPLOY_LAYOUT==='1'?c=>require('./deploy.cjs').companyDirectory(c.project):process.env.AMANDA_INSTALL_DIR||require('./deploy.cjs').BASE}={}){
   let c={sourceUrl:SOURCE,project:'amanda',companyName:'AMANDA',options:{backendEnv:{}}};
   const text=s=>out(String(s).replace(/[\x00-\x08\x0b-\x1f\x7f]/g,''));
   const extra=async(...args)=>{const value=await question(...args);if(value==null||[':cancelar',':sair'].includes(value))throw Error('Instalação cancelada antes de criar recursos.');return value;};
@@ -32,7 +32,16 @@ async function collectHistorical({question,out=console.log,project,directory=pro
   else{
     c.backendUrl=await read('subdominio_backend','',v=>v===''?'':domain(v));
     if(!c.backendUrl)host=await read('host_escolhido','localhost',v=>{if(v!=='localhost'&&!isIP(v))throw Error('IP inválido.');return v;});
-    else c.frontendUrl=await read('subdominio_frontend',undefined,domain);
+    else {
+      c.frontendUrl=await read('subdominio_frontend',undefined,domain);
+      if(checkDomains){
+        while(true){const result=await checkDomains(c,{question:extra,out});Object.assign(c,result);
+          if(!result.back)break;delete c.back;
+          c.backendUrl=await read('subdominio_backend',c.backendUrl,domain);
+          c.frontendUrl=await read('subdominio_frontend',c.frontendUrl,domain);
+        }
+      }
+    }
   }
   // Ordem original de questoes_variaveis_base, inclusive token antes do repositório.
   c.adminEmail=await read('email_deploy','admin@amanda.com.br',email);
