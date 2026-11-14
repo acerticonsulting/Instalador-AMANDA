@@ -378,8 +378,7 @@ class Manager {
     await this.startServices(); await this.verifyLogin();
     this.save({ ...this.state, initialized: true, phase: 'ready', revision: await this.revision() });
     if(this.state.testSmtp)await this.testSmtp();
-    this.runner.emit('Instalação completa: '+this.services().length+' serviços, login e sessão validados. Integrações externas aguardam suas contas.\n');
-    this.runner.emit(`Frontend: ${this.state.frontendUrl}\nBackend: ${this.state.backendUrl}\nAcesso inicial escolhido: ${path.join(this.private,'admin-access.json')} (arquivo privado).\n`);
+    await require('./completion.cjs').showCompletion(this,{login:true,dns:this.state.profiles.includes('edge'),https:this.state.profiles.includes('edge')});
   }
   async startServices() {
     await require('./domain-preflight.cjs').assertDns(this,this.state,{existing:true});
@@ -534,12 +533,12 @@ class Manager {
       }
       await require('./domain-preflight.cjs').assertDns(this,this.state,{existing:true});
       if(this.state.initialized&&this.state.phase==='ready'){
-        await this.verifyHealth();this.runner.emit('Instalação já concluída; saúde e HTTPS revalidados, sem reinstalação.\n');return;
+        await this.verifyHealth();this.runner.emit('Instalação já concluída; saúde e HTTPS revalidados, sem reinstalação.\n');await require('./completion.cjs').showCompletion(this,{dns:this.state.profiles.includes('edge'),https:this.state.profiles.includes('edge')});return;
       }
       if(!this.state.initialized&&this.state.seedSucceeded&&['starting','https-pending'].includes(this.state.phase)){
         await this.verifyHealth(); await this.verifyLogin();
         this.save({...this.state,initialized:true,phase:'ready',revision:await this.revision()});
-        this.runner.emit('Instalação concluída após validar serviços, HTTPS e login; sem build, migrations ou seed adicionais.\n');return;
+        await require('./completion.cjs').showCompletion(this,{login:true,dns:this.state.profiles.includes('edge'),https:this.state.profiles.includes('edge')});return;
       }
       await this.refreshInterruptedBuild();
       if (!this.state.initialized) { if (!this.state.freshResourcesVerified) throw Error('Preparação incompleta; não é seguro assumir banco novo.'); await this.build(); return this.initialize(); }

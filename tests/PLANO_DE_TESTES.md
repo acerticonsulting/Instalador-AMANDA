@@ -1,3 +1,14 @@
+# Resumo de conclusão — 14/11/2026
+
+completion_tests.cjs (carregado pela suíte Docker-only): URLs HTTPS/HTTP/IP/localhost,
+portas personalizadas, API Oficial opcional, ausência de serviços desabilitados,
+bind loopback/IPv6, portas internas sem publicação, segredos e URLs autenticadas,
+cores/NO_COLOR/TERM=dumb, terminal estreito e observações indisponíveis.
+docker_only.test.cjs: resumo após estado ready persistido em instalação nova,
+resume de starting/https-pending, falha de saúde sem falso sucesso e retomada sem
+build/up/migration/seed/down/restart. Consultas extras são somente config/ps.
+A suíte local usa Docker simulado e não comprova conectividade pública da VPS.
+
 # URLs durante HTTPS pendente — 13/11/2026
 
 Testes em docker_only.test.cjs cobrem frontend/backend/ambos, DNS pendente sem

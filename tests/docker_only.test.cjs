@@ -12,6 +12,7 @@ require('./domain_preflight_tests.cjs');
 require('./edge_diagnostics_tests.cjs');
 require('./state_compatibility_tests.cjs');
 require('./firewall_readonly_tests.cjs');
+require('./completion_tests.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');
@@ -90,6 +91,18 @@ class FakeRunner {
   }
 }
 async function fixture() { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());return {...t,runner,m}; }
+test('completion follows persisted success for new install, resume and HTTPS pending, never failed validation',async()=>{
+ const t=await fixture();try{
+  await t.m.initialize();assert.match(t.runner.messages,/AMANDA — INSTALAÇÃO CONCLUÍDA/);assert.equal(JSON.parse(fs.readFileSync(t.m.stateFile)).phase,'ready');
+  for(const phase of ['starting','https-pending']){
+   t.m.save({...t.m.state,initialized:false,phase});t.runner.messages='';t.runner.calls=[];
+   await t.m.execute('resume');assert.match(t.runner.messages,/AMANDA — INSTALAÇÃO CONCLUÍDA/);assert.match(t.runner.messages,/Login inicial: APROVADO/);
+   assert.ok(!t.runner.calls.some(c=>['build','up','migrate','seed','down','restart'].some(a=>c.args.includes(a))));
+  }
+  t.m.save({...t.m.state,initialized:false,phase:'https-pending'});t.runner.messages='';t.runner.fail=c=>c.options.label==='Verificando HTTP interno do backend e frontend';
+  await assert.rejects(t.m.execute('resume'));assert.ok(!t.runner.messages.includes('INSTALAÇÃO CONCLUÍDA'));assert.equal(t.m.state.phase,'https-pending');
+ }finally{t.cleanup();}
+});
 async function pendingUrlFixture(){const t=await fixture();await t.m.initialize();const urls={frontendUrl:'https://front.example.test',backendUrl:'https://api.example.test'};writeEnv(path.join(t.m.state.platform,'.env'),{FRONTEND_URL:urls.frontendUrl,BACKEND_URL:urls.backendUrl,FRONTEND_HOST:'front.example.test',BACKEND_HOST:'api.example.test',ALLOWED_ORIGINS:urls.frontendUrl});t.m.save({...t.m.state,...urls,phase:'https-pending',initialized:false,profiles:[...t.m.state.profiles,'edge'],infrastructureReady:true,internalHttpReady:true,publicHttps:'pending'});t.runner.calls=[];return t;}
 for(const change of [{frontendUrl:'https://newfront.example.test'},{backendUrl:'https://newapi.example.test'},{frontendUrl:'https://newfront.example.test',backendUrl:'https://newapi.example.test'}])test('pending URL change applies only affected services '+Object.keys(change),async()=>{
  const t=await pendingUrlFixture();try{const before=envValues(path.join(t.m.state.platform,'.env'));let confirmed=false;await new Operations(t.m).configure({network:change,confirmNetwork:async p=>{confirmed=true;assert.equal(p.dnsValid,true);return p.expected;}});

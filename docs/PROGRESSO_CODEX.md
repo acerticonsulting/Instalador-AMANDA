@@ -1,3 +1,23 @@
+# Tela de conclusão — 14/11/2026
+
+Investigação: git log/grep/show localizaram o resumo final em
+cc734db:legacy/instalador_single.sh (banner, URLs e docker ps). Reutilizado o
+banner/paleta de ui.cjs; omitida a impressão histórica de acesso administrativo.
+completion.cjs apresenta URLs sem credenciais, protocolo/porta, serviços habilitados,
+portas internas do Compose/Publishers, binds observados no Docker e acesso via Caddy.
+EXPOSE nunca é tratado como publicação; disponibilidade externa depende da rede.
+Dados ausentes ficam Não verificado. Layout vertical e cabeçalho compacto no terminal
+estreito; cores respeitam NO_COLOR/TERM. Apenas config/ps adicionais, sem build/up.
+
+Manager chama o resumo após persistir ready na instalação nova e resume, inclusive
+https-pending; resume já concluído não inventa nova aprovação de login. Falhas nas
+validações não chegam ao resumo. Provisionamento e verificações foram preservados.
+Arquivos: docker/installer/{completion,manager}.cjs,
+tests/{completion_tests,docker_only.test}.cjs, este progresso e PLANO_DE_TESTES.md.
+Validação: 6 testes específicos aprovados; suíte completa aprovada (214 aprovados,
+2 opt-in ignorados, 85 scripts, 5 suítes). Docker e serviços simulados; nenhuma
+validação da VPS: /home/deploy/amanda é alvo remoto sem acesso SSH disponível.
+
 # Alteração de URLs em https-pending — 13/11/2026
 
 Operations.ready agora tem escopos network/view para https-pending com seed
