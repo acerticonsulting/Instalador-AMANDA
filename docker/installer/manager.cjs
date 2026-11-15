@@ -501,8 +501,8 @@ class Manager {
     const images = await this.imageIds();
     const oldRevision = await this.revision();
     const gitEnv = { GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: path.join(__dirname,'source-askpass.cjs'), AMANDA_SOURCE_TOKEN_FILE: path.join(this.private,'source-token') };
-    this.save({ ...this.state, phase: 'preparing-update', rollbackImages: images, rollbackRevision: oldRevision });
-    let mayBeStopped = false;
+    this.save({ ...this.state, phase: 'preparing-update', rollbackImages: images, rollbackRevision: oldRevision,completionContext:null });
+    let mayBeStopped = false,operationBackup;
     try {
       await this.git(['-c','credential.helper=','fetch','origin','main'], { env: gitEnv, label: 'Obtendo atualização oficial' });
       await this.git(['merge-base','--is-ancestor','HEAD','origin/main'], { quiet: true, label: 'Validando histórico oficial sem commits locais divergentes' });
@@ -514,17 +514,17 @@ class Manager {
       for(const type of ['declaredVolumes','networks'])for(const[key,value]of Object.entries(previousConfig[type]||{}))if(nextConfig[type]?.[key]?.name!==value.name)throw Error('Atualização alteraria recurso persistente: '+key);
       for(const[key,value]of Object.entries(previousConfig.services))if(nextConfig.services[key]?.container_name!==value.container_name)throw Error('Atualização alteraria nome existente: '+key);
       this.loadSecrets(); await this.build();
-      mayBeStopped = true; await this.backup({ restart: false });
+      mayBeStopped = true; operationBackup=await this.backup({ restart: false });
     } catch (error) {
       await this.restoreTags(images); await this.git(['checkout','--detach',oldRevision], { quiet: true });
       if(this.state.naming==='company-v1')await this.configureNames();
       if (mayBeStopped) await this.startServices();
       this.save({ ...this.state, phase: 'ready', revision: oldRevision }); throw error;
     }
-    this.save({ ...this.state, phase: 'migration-update', pendingRevision: await this.revision() });
+    this.save({ ...this.state, phase: 'migration-update', pendingRevision: await this.revision(),completionContext:{kind:'update',channel:'main',previousRevision:oldRevision,backup:operationBackup,rebuilt:true,migrations:true} });
     await this.migrations(); await this.startServices();
     this.save({ ...this.state, phase: 'ready', revision: await this.revision() });
-    this.runner.emit('Atualização aprovada; contas, segredos e volumes preservados. Nenhum seed executado.\n');
+    await require('./completion.cjs').showUpdateCompletion(this,{...this.state.completionContext,health:true});
   }
   async execute(action) {
     await this.doctor();
@@ -561,7 +561,10 @@ class Manager {
       if (this.state.phase !== 'migration-update') throw Error('Nenhuma atualização interrompida para retomar.');
       if (await this.revision() !== this.state.pendingRevision) throw Error('Revisão difere da atualização interrompida. Preserve o código registrado antes de retomar migrations.');
       await this.build();
-      await this.migrations(); await this.startServices(); this.save({ ...this.state, phase: 'ready', revision: await this.revision() }); return;
+      await this.migrations(); await this.startServices(); this.save({ ...this.state, phase: 'ready', revision: await this.revision() });
+      if(this.state.completionContext?.kind==='official')await require('./completion.cjs').showOfficialApiCompletion(this,{...this.state.completionContext,health:true});
+      else if(this.state.completionContext?.kind==='update')await require('./completion.cjs').showUpdateCompletion(this,{...this.state.completionContext,health:true});
+      else this.runner.emit('Operação retomada e validada; tipo original não registrado para resumo específico.\n');return;
     }
     if (action === 'status') return this.verifyHealth();
     if (action === 'logs') return this.compose(['logs','--no-color','--tail','200'], { label: 'Logs (credenciais filtradas)' });

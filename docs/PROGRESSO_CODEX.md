@@ -1,3 +1,44 @@
+# Conclusões de atualização/API Oficial — 14/11/2026
+
+completion.cjs separa coleta compartilhada e renderização com contexto, preservando
+a instalação inicial. showUpdateCompletion e showOfficialApiCompletion reutilizam
+URLs seguras, portas, tema/banner e serviços habilitados. Mostram data UTC, revisões,
+canal efetivo do fluxo, revisão inalterada, runtime/health, portas/binds e avisos.
+Health ausente não vira healthy; anomalia atual usa REVALIDAÇÃO NECESSÁRIA.
+Falha complementar de coleta vira COM AVISOS/Não verificado, sem mudar aceitação.
+
+Update captura somente o backup retornado pela própria operação e revisão anterior.
+O resumo verifica pasta privada, complete/project/revision de backup.json e data
+dos metadados; nunca usa lastBackup antigo como fallback. Metadado completionContext
+é persistido na transição migration-update para distinguir atualização de habilitação
+na retomada. Não muda condições, ordem ou comandos de build/migrations/start/seed.
+Checkpoint legado sem contexto recebe mensagem genérica de retomada, sem inventar
+operação anterior. Falha/rollback não chama tela de sucesso.
+
+enableService(api_oficial) apresenta instalação somente após sucesso persistido;
+resume da habilitação usa o mesmo contexto. Operations.services start/restart API
+apresenta iniciado/reiniciado sem atribuir migrations ou HTTP global não executados.
+Menu API update já executava atualização da plataforma inteira: continua mostrando
+AMANDA — ATUALIZAÇÃO, sem fingir atualização exclusiva de API. O renderer suporta
+contexto de update API, mas não cria operação exclusiva que não existe. Dashboard
+mantém seu próprio resultado para evitar telas duplicadas.
+
+HTTP interno 200 e HTTPS/público 200 frontend/backend só atribuídos quando o fluxo
+existente os validou; raiz da API não recebe HTTP 200 presumido. Banco/endpoint
+interno são configuração sanitizada; conectividade Backend/DB/Redis/Rabbit adicional
+fica Não verificado. Meta, conta, webhooks e templates permanecem não homologados.
+Não há chamadas externas, backup/build/restart/migrations extras para apresentação.
+Saída usa Runner.emit (mesma filtragem e log privado existentes).
+
+Testes: 11 direcionados de completion; regressão completa 274 aprovados/2 opt-in
+ignorados, 85 scripts/5 suítes. Cobre títulos/contextos, versões iguais/diferentes,
+retomadas update/API, falha de migrations sem falso sucesso, start posterior,
+coleta complementar falha, backup sem comprovação e ausência de deploy adicional.
+Demais contratos de URLs/cores/NO_COLOR/HTTP/IP/portas/segredos da instalação inicial
+continuam cobertos. Comandos Docker simulados, sem homologação na VPS. Logs:
+tmp/operation-completion-*.log. Arquivos: completion/manager/operations,
+tests/completion_tests/docker_only.test, README, plano e este progresso.
+
 # Dashboard de status e gerenciamento — 14/11/2026
 
 Menu 4 mantém numeração principal e agora coleta dados estruturados antes do

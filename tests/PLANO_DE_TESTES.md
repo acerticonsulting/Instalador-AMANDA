@@ -1,3 +1,12 @@
+# Conclusões de operações — 14/11/2026
+
+completion_tests cobre contextos update/API install/start/restart/update, revisão
+inalterada, avisos/anomalias, limites Meta e layout compacto, além dos contratos
+anteriores. docker_only.test cobre update/retomada, habilitação API interrompida e
+retomada, start sem instalação falsa, backup desta operação e coleta falha sem
+mutação. Asserções de comandos garantem ausência de build/seed adicional.
+Testes locais simulados não comprovam saúde da VPS ou homologação Meta.
+
 # Dashboard — 14/11/2026
 
 dashboard_tests cobre estados/ausência, perfis/jobs, JSON array/lines, labels

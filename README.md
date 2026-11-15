@@ -1,5 +1,12 @@
 # Instalador AMANDA — referência histórica 7a5b31d
 
+Atualização e habilitação da API Oficial possuem resumos próprios após sucesso
+persistido, incluindo retomadas com contexto registrado. Revisões, backup da
+operação, URLs, portas e healthchecks são apresentados sem segredos. Reiniciar ou
+iniciar API já habilitada não é apresentado como instalação. Meta/webhooks/templates
+permanecem não verificados sem homologação específica. A apresentação não executa
+deploy, backup ou testes externos adicionais.
+
 Menu **4** seleciona a empresa reconhecida e apresenta status antes das ações:
 detalhes sanitizados, logs limitados, métricas pontuais, portas/redes, atualização,
 troca de empresa e start/stop/restart individuais ou gerais. Confirmação obrigatória;

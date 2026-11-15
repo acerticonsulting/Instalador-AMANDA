@@ -12,6 +12,7 @@ class Operations {
     const args=action==='ps'?['ps','--all']:action==='logs'?['logs','--no-color','--tail','200']:action==='start'?['up','-d','--no-deps','--wait']:action==='rm'?['rm','-s','-f']:[action];
     if(name)args.push(name);else if(['restart','stop','start','rm'].includes(action))args.push(...this.m.services(),...(this.m.state.profiles.includes('edge')?['edge']:[]));
     await this.m.compose(args,{label:'Gerenciamento de serviços Docker'});
+    if(name==='api_oficial'&&['start','restart'].includes(action))await require('./completion.cjs').showOfficialApiCompletion(this.m,{action});
   }
   current(){const m=this.m;const e=envValues(path.join(m.state.platform,'.env'));return {sourceUrl:m.state.sourceUrl,project:m.state.project,frontendUrl:e.FRONTEND_URL,backendUrl:e.BACKEND_URL,edge:m.state.profiles.includes('edge'),public:e.BIND_ADDRESS==='0.0.0.0',options:{frontendPort:+e.PORT_FRONTEND||3000,backendPort:+e.PORT_BACKEND||8080,services:{official:m.state.profiles.includes('official'),wuzapi:m.state.profiles.includes('whatsmeow'),rabbit:m.state.profiles.includes('rabbit')},officialPort:+e.PORT_APIOFICIAL||6000,wuzapiPort:+e.PORT_WUZAPI||8090,officialUrl:e.OFICIAL_HOST?`https://${e.OFICIAL_HOST}`:undefined}};}
   async pendingUrls(network,confirm){
@@ -101,15 +102,16 @@ class Operations {
     if(name){const r=await m.docker(['inspect','--format','{{index .Config.Labels "com.docker.compose.project"}}',name],{quiet:true,allowFailure:true});if(r.code===0&&r.stdout.trim()!==m.state.project)throw Error('Nome de container ocupado por outra instalação.');}
     for(const[key,v]of Object.entries(config.volumes))if(!previous.volumes[key]){const r=await m.docker(['volume','inspect','--format','{{json .Labels}}',v.name],{quiet:true,allowFailure:true});if(r.code===0&&JSON.parse(r.stdout||'{}')?.['com.docker.compose.project']!==m.state.project)throw Error('Volume existente sem propriedade comprovada.');}
     await m.compose(['--profile',profile,service==='api_oficial'?'build':'pull',service],{label:'Preparando serviço opcional em Docker'});
-    try{await m.backup({restart:false});}catch(error){await m.startServices();throw error;}
+    let operationBackup;try{operationBackup=await m.backup({restart:false});}catch(error){await m.startServices();throw error;}
     const backedUp={...m.state};let migrating=false;
     try{
       m.state={...backedUp,profiles:candidate.profiles};writeEnv(file,{COMPOSE_PROFILES:candidate.profiles.join(','),...(service==='api_oficial'?{USE_WHATSAPP_OFICIAL:'true'}:service==='wuzapi'?{WUZAPI_URL:'http://wuzapi:8080'}:{RABBITMQ_ENABLED_GLOBAL:'true'})});
       const next=await m.configuration();await require('./preflight.cjs').assertPorts(m,next,previous);
-      m.save({...m.state,phase:'migration-update',pendingRevision:await m.revision()});migrating=true;
+      m.save({...m.state,phase:'migration-update',pendingRevision:await m.revision(),completionContext:service==='api_oficial'?{kind:'official',action:'install',previousRevision:before.revision,backup:operationBackup,rebuilt:true,migrations:true}:null});migrating=true;
       await m.migrations();await m.startServices();m.save({...m.state,phase:'ready',revision:await m.revision()});
       m.runner.emit('Serviço opcional habilitado com dados preservados. Nenhum seed executado.\n');
     }catch(error){if(!migrating){fs.writeFileSync(file,env,{mode:0o600});m.save(backedUp);await m.startServices();}else m.runner.emit('Habilitação interrompida; serviços preservados. Use Retomar operação para concluir migrations e startup.\n');throw error;}
+    if(service==='api_oficial')await require('./completion.cjs').showOfficialApiCompletion(m,{...m.state.completionContext,health:true});
   }
   async settings(values,email,password){
     await this.ready();const m=this.m;
