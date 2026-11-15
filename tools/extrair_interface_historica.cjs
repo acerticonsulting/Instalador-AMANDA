@@ -26,6 +26,7 @@ const replacements=[
 const adapt=text=>replacements.reduce((s,[a,b])=>s.replaceAll(a,b),text);
 let main=screen('menu','    banner','    read -p');
 let tools=screen('menu_ferramentas','    banner','    read -p').split('\n').filter(l=>!/[[]\$\{BLUE\}(24|25|26|27)\$/.test(l)).join('\n');
+tools=tools.replace(/^(.*\[\$\{BLUE\}16\$\{WHITE\}.*)$/m,'$1\n    printf "   [${BLUE}33${WHITE}] Atualizar biblioteca Baileys (WhatsApp)\\n"');
 let api=screen('menu_gerenciar_api_oficial','    banner','    read -r');
 const channel=screen('selecionar_canal_branch_amanda','  banner','  read -r').replace('banner 2>/dev/null || true','banner');
 const status=screen('menu_status_reiniciar_containers','  banner','  read -r').split('\n').filter(l=>/^\s*(banner|printf|echo)\b/.test(l)).join('\n').replaceAll('${emp}_apioficial','${emp}_api_oficial').replaceAll('${emp}_transcricao','${emp}_api_transcricao');

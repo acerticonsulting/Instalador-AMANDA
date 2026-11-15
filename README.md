@@ -1,5 +1,50 @@
 # Instalador AMANDA — referência histórica 7a5b31d
 
+## Atualização específica do Baileys (Docker)
+
+Menu **8 → 33 → Atualizar biblioteca Baileys (WhatsApp)**. A opção 16 histórica
+continua atualizando a plataforma oficial inteira. O submenu 33 consulta a versão
+configurada, a carregada no backend e versões do registro público (consulta pode
+ficar indisponível). Nenhuma versão é escolhida/aplicada automaticamente.
+
+A atualização exige instalação `ready`, confirmação `ATUALIZAR BAILEYS empresa`
+e versão exata publicada mais recente na mesma linha **major.minor**. Linha diferente,
+prerelease, fork, pacote local ou patches exigem revisão técnica. A linha atual da
+plataforma é 6.7; até mudanças minor podem exigir migração de módulos/imports.
+`backend/baileys-local` é histórico e excluído do build; a dependência real é
+`@whiskeysockets/baileys` do NPM público, confirmada pelo lockfile e imports.
+
+O instalador prepara manifestos em container Node 22, usa `npm install` com versão
+exata, `--package-lock-only --ignore-scripts --engine-strict` e rejeita alterações
+em dependências fora de Baileys e sua árvore transitiva. Reconstrói apenas backend
+com o Dockerfile oficial (`npm ci`, compilação TypeScript), verifica imports e
+persistência de uma sessão SQLite sintética em container sem rede/volumes reais.
+
+Antes da aplicação, preserva imagem anterior com tag, revisão e manifestos. O backup
+existente recebe escopo backend: pausa somente backend, exporta seu banco com
+pg_dump e arquiva os volumes de sessões/mídia/private do backend. O restante da
+infraestrutura permanece em execução. Esse backup parcial não substitui o backup
+completo nem o ponteiro `lastBackup`; não pode ser restaurado como plataforma inteira.
+O backend é recriado com `--no-deps --no-build --pull never`, aguarda healthcheck,
+verifica logs de inicialização, versão e imagem efetivamente utilizadas.
+
+Falhas após edição restauram os dois manifestos e a imagem anterior; dados e sessões
+não são restaurados/apagados automaticamente. No submenu, **4** permite rollback
+com `REVERTER BAILEYS empresa`, também após interrupção. O journal privado
+`.amanda-installer/baileys-update.json` e a pasta `baileys/` preservam a referência;
+falha no rollback bloqueia outra atualização Baileys. Mudanças manuais posteriores
+ou revisão diferente exigem diagnóstico antes de reverter.
+
+Os manifestos atualizados permanecem como personalização local rastreável. Uma nova
+atualização específica aceita somente os manifestos que ela própria gerenciou;
+o atualizador geral mantém sua proteção contra alterações locais. Antes de atualizar
+a plataforma inteira, reverta pelo submenu ou revise/incorpore a personalização.
+
+O resultado é **validação técnica**, com homologação WhatsApp explicitamente
+pendente: conexão, reconexão, eventos, mensagens e interoperabilidade de sessões
+reais precisam de conta de teste autorizada. Não se abre uma conexão WhatsApp nos
+testes automáticos. Logs do backend podem ser consultados no submenu **3**.
+
 O instalador oficial está em https://github.com/acerticonsulting/Instalador-AMANDA.
 A plataforma vem exclusivamente de https://github.com/acerticonsulting/AMANDA,
 branch `main`. O endereço histórico do remote deste clone e a chave Git foram

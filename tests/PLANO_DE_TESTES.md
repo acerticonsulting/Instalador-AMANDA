@@ -1,3 +1,17 @@
+# Atualização Baileys — 14/11/2026
+
+baileys_tests.cjs usa Docker/registro/sessões simulados e nenhuma rede externa:
+pacote público fixo, fork/local/alias, resolução incoerente, versões/linha compatível,
+sem nova versão, versão principal recusada, confirmação inválida, falhas de download,
+NPM, lockfile não relacionado, build, imports, backup, saúde, versão final e logs.
+Verifica recuperação de manifestos/imagem, journal recuperável, rollback manual e
+falho, edições manuais preservadas, menu, scripts de probe e ausência de NPM no host.
+docker_only.test.cjs exercita o mecanismo real de backup com comandos simulados:
+somente backend parado/recriado, apenas seus volumes, lastBackup completo preservado,
+backup parcial recusado como restauração completa. Histórico mantém números e cores.
+Build real com nova dependência e homologação WhatsApp na VPS não são comprovados
+pela suíte; a operação faz build/smoke tests antes de aplicar, e mantém teste real pendente.
+
 # Resumo de conclusão — 14/11/2026
 
 completion_tests.cjs (carregado pela suíte Docker-only): URLs HTTPS/HTTP/IP/localhost,

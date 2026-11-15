@@ -2,7 +2,7 @@ const {createUI}=require('./ui.cjs');
 const fs=require('node:fs');const path=require('node:path');
 const {Operations}=require('./operations.cjs');const {GROUPS,validateOptions,PG_PROFILES,validatePg}=require('./options.cjs');
 const MAIN=require('./historical.cjs').labels("main").map(([id,label])=>[id,label,({"1":"install","2":"update","3":"urls","4":"services","5":"logs","6":"backup","7":"restore","8":"tools","9":"uninstall","10":"automation","11":"official"})[id]]);
-const TOOLS=require('./historical.cjs').labels("tools").map(([id,label])=>[id,label,({"2":"push","3":"wuzapi-start","4":"rollback","5":"new-instance","6":"schedule-backup","7":"native-unavailable","8":"backup","9":"restore-redis","10":"import-amanda","11":"backup","12":"import-api_oficial","13":"databases","14":"restore-amanda","15":"urls","16":"update","17":"wuzapi-update","18":"postgres","19":"portainer-unavailable","20":"urls","21":"ssl","22":"backup","23":"restore-wuzapi","30":"token-update","31":"official","32":"update"})[id]]);
+const TOOLS=require('./historical.cjs').labels("tools").map(([id,label])=>[id,label,({"2":"push","3":"wuzapi-start","4":"rollback","5":"new-instance","6":"schedule-backup","7":"native-unavailable","8":"backup","9":"restore-redis","10":"import-amanda","11":"backup","12":"import-api_oficial","13":"databases","14":"restore-amanda","15":"urls","16":"update","17":"wuzapi-update","18":"postgres","19":"portainer-unavailable","20":"urls","21":"ssl","22":"backup","23":"restore-wuzapi","30":"token-update","31":"official","32":"update","33":"baileys"})[id]]);
 const API=require('./historical.cjs').labels("api").map(([id,label])=>[id,label,({"1":"start","2":"update","3":"ps","4":"restart","5":"stop","6":"logs","7":"sync","8":"ssl","9":"rm"})[id]]);
 class Menus{
   async selectInstance(){
@@ -77,15 +77,34 @@ class Menus{
     else{const base=process.env.AMANDA_DEPLOY_LAYOUT==='1'?require('./deploy.cjs').BASE:path.join(this.baseRoot,'instances');if(!fs.existsSync(base))throw Error('Sem instâncias filhas. Para outro diretório, execute novamente com --dir.');const dirs=fs.readdirSync(base).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&fs.existsSync(path.join(base,n,'.amanda-installer/state.json')));dirs.forEach((n,i)=>this.out('['+(i+1)+'] '+n));this.out('[P] Instância principal: '+this.baseRoot);const selection=await this.ask('Selecione a instância');if(selection.toUpperCase()==='P'){const{Manager}=require('./manager.cjs');this.m=new Manager(this.baseRoot);this.m.load();return;}const n=Number(selection);if(!dirs[n-1])throw Error('Instância inválida.');const{Manager}=require('./manager.cjs');this.m=new Manager(path.join(base,dirs[n-1]));this.m.load();}
   }
   async automation(){while(true){const a=await this.choose('GHCR / AGENDAMENTO DOCKER',[['1','Autenticar no GHCR','ghcr'],['2','Agendar atualização com backup/migrations (substitui Watchtower)','schedule-update'],['3','Agendar backup diário','schedule-backup'],['4','Atualizar agora com backup','update']]);if(!a)return;await this.dispatch(a);await this.ask('Pressione ENTER para continuar');}}
+  async baileys(){
+    const {Baileys,PACKAGE}=require('./baileys.cjs'),b=new Baileys(this.m);
+    while(true){
+      const info=await this.m.lock(()=>b.inspect());
+      this.out(this.ui.banner('ATUALIZAÇÃO DO BAILEYS'));
+      this.out(this.ui.text(`Empresa: ${this.m.state.project}\nBackend: ${info.container}\nBiblioteca: ${PACKAGE}\nVersão configurada: ${info.configured}\nVersão instalada/carregada: ${info.runtime?.version||'Não verificado'}\nVersão disponível: ${info.versions?.at(-1)||'Não verificado'}\nVersões candidatas da mesma linha: ${info.compatible.join(', ')||'Nenhuma consultável'}\nOrigem: ${info.supported?'NPM público fixado':'Local/fork/resolução não suportada; revisão técnica necessária'}`));
+      const action=await this.choose('BAILEYS', [['1','Verificar versão instalada','inspect'],['2','Atualizar Baileys','update'],['3','Consultar logs','logs'],['4','Rollback da última atualização Baileys','rollback']]);
+      if(!action)return;
+      if(action==='update'){
+        if(!info.supported||!info.compatible.length){this.out('Nenhuma atualização candidata compatível disponível.');continue;}
+        const target=await this.ask('Versão exata da mesma linha',info.compatible.at(-1));
+        this.out(this.ui.text(`ATENÇÃO — ATUALIZAÇÃO DO BAILEYS\nEmpresa: ${this.m.state.project}\nVersão atual: ${info.runtime?.version||'Não verificado'}\nNova versão: ${target}\nServiços afetados: backend (${info.container})\nA operação poderá interromper temporariamente conexões WhatsApp.\nBackup e rollback serão preparados. Homologação WhatsApp continuará pendente.`));
+        const confirmation=await this.ask('Digite ATUALIZAR BAILEYS '+this.m.state.project);
+        await this.m.lock(()=>b.update(target,confirmation));
+      }else if(action==='logs')await this.m.lock(()=>b.logs());
+      else if(action==='rollback'){const confirmation=await this.ask('Digite REVERTER BAILEYS '+this.m.state.project);await this.m.lock(()=>b.rollback(confirmation));}
+    }
+  }
   async dispatch(action,locked=false){
     if(!locked&&!['install','new-instance','tools','instances','doctor','native-unavailable','portainer-unavailable'].includes(action))await this.selectInstance();
-    if(!locked&&!['install','new-instance','tools','official','configure','services','urls','instances','automation'].includes(action))return this.m.lock(async()=>{this.m.runner.emit('Operação: '+action+'\n');try{const value=await this.dispatch(action,true);this.m.runner.emit('OK: '+action+'\n');return value;}catch(error){this.m.runner.emit('FALHA: '+action+' — '+error.message+'\n');throw error;}});
+    if(!locked&&!['install','new-instance','tools','official','configure','services','urls','instances','automation','baileys'].includes(action))return this.m.lock(async()=>{this.m.runner.emit('Operação: '+action+'\n');try{const value=await this.dispatch(action,true);this.m.runner.emit('OK: '+action+'\n');return value;}catch(error){this.m.runner.emit('FALHA: '+action+' — '+error.message+'\n');throw error;}});
     const m=this.m,ops=new Operations(m);
     if(action?.startsWith('restore-'))return this.restore(action.slice(8));
     if(action?.startsWith('import-')){m.load();this.out('Copie um backup confiável de um único banco para '+path.join(m.root,'imports')+'. O banco selecionado será substituído.');const file=await this.ask('Caminho absoluto do arquivo dentro de imports');return ops.importDatabase(file,action.slice(7),await this.ask('Digite IMPORTAR '+m.state.project));}
     switch(action){
       case'install':if(this.startInstall){const installed=await this.startInstall(m);if(installed?.root)this.m=installed;return installed;}if(fs.existsSync(m.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem responder novamente nem repetir seeds.');if(this.install){const installed=await this.install(m,await this.input());if(installed?.root)this.m=installed;return installed;}return null;
       case'urls':return this.urls();case'services':return this.services();case'official':return this.official();case'configure':return this.configure();case'instances':return this.instances();case'automation':return this.automation();
+      case'baileys':return this.baileys();
       case'tools':while(true){const a=await this.choose('FERRAMENTAS ADICIONAIS',TOOLS);if(!a)return;await this.dispatch(a);await this.ask('Pressione ENTER para continuar');}
       case'restore':return this.restore();case'rollback':return this.restore('all',true);
       case'uninstall':{m.load();const a=await this.choose('DESINSTALAR',[['1','Remover containers preservando dados','keep'],['2','Remover containers e apagar volumes — backup obrigatório','erase']]);if(!a)return;this.out('Código, configuração e backups serão preservados.');return ops.uninstall(a==='erase',await this.ask('Digite '+(a==='erase'?'DELETAR TUDO ':'REMOVER ')+m.state.project));}

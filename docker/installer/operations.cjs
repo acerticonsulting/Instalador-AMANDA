@@ -122,7 +122,7 @@ class Operations {
   async databases(){await this.ready();return this.m.compose(['exec','-T','postgres','psql','-U','amanda','-d','postgres','-c','SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname'],{label:'Bancos do PostgreSQL da instância'});}
   async checkBackup(dir){
     const m=this.m,base=fs.realpathSync(path.join(m.private,'backups')),real=fs.realpathSync(dir);if(!real.startsWith(base+path.sep))throw Error('Selecione backup desta instância dentro da pasta privada.');
-    const data=JSON.parse(fs.readFileSync(path.join(real,'backup.json'),'utf8'));if(!data.complete||data.project!==m.state.project||!data.hashes)throw Error('Backup incompleto, antigo sem hashes ou de outra instância.');
+    const data=JSON.parse(fs.readFileSync(path.join(real,'backup.json'),'utf8'));if(data.scope==='backend')throw Error('Backup exclusivo do backend: recuperação manual de dados; não é backup completo da plataforma.');if(!data.complete||data.project!==m.state.project||!data.hashes)throw Error('Backup incompleto, antigo sem hashes ou de outra instância.');
     const databases=data.databases||['amanda','api_oficial'];if(JSON.stringify(databases)!==JSON.stringify(m.databases()))throw Error('Bancos do backup diferem dos serviços desta instalação.');
     for(const name of[...databases.map(n=>n+'.dump'),'volumes.tgz'])if(await digest(path.join(real,name))!==data.hashes[name])throw Error('Integridade do backup inválida: '+name);
     for(const name of databases)await m.compose(['exec','-T','postgres','pg_restore','--list'],{inputFile:path.join(real,name+'.dump'),quiet:true,label:'Validando arquivo PostgreSQL '+name});

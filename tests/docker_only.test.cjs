@@ -13,6 +13,7 @@ require('./edge_diagnostics_tests.cjs');
 require('./state_compatibility_tests.cjs');
 require('./firewall_readonly_tests.cjs');
 require('./completion_tests.cjs');
+require('./baileys_tests.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');
@@ -91,6 +92,15 @@ class FakeRunner {
   }
 }
 async function fixture() { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());return {...t,runner,m}; }
+test('backend scoped backup stops only backend, preserves complete backup pointer and rejects full restore',async()=>{
+ const t=await fixture();try{await t.m.initialize();t.m.save({...t.m.state,lastBackup:'full-backup-reference'});
+  t.runner.configTransform=c=>{c.services.backend.volumes=['backend_database','backend_private','backend_public'].map(source=>({type:'volume',source,target:'/app/'+source}));return c;};t.runner.calls=[];
+  const backup=await t.m.backup({scope:'backend',restart:true}),record=JSON.parse(fs.readFileSync(path.join(backup,'backup.json')));
+  assert.equal(record.scope,'backend');assert.deepEqual(Object.keys(record.volumes).sort(),['backend_database','backend_private','backend_public']);assert.equal(t.m.state.lastBackup,'full-backup-reference');assert.equal(t.m.state.lastBaileysBackup,backup);
+  for(const c of t.runner.calls.filter(c=>c.args.includes('stop')||c.args.includes('up')))assert.equal(c.args.at(-1),'backend');
+  await assert.rejects(new Operations(t.m).checkBackup(backup),/exclusivo do backend/);
+ }finally{t.cleanup();}
+});
 test('completion follows persisted success for new install, resume and HTTPS pending, never failed validation',async()=>{
  const t=await fixture();try{
   await t.m.initialize();assert.match(t.runner.messages,/AMANDA — INSTALAÇÃO CONCLUÍDA/);assert.equal(JSON.parse(fs.readFileSync(t.m.stateFile)).phase,'ready');
@@ -396,7 +406,7 @@ test('authorized repository is mandatory, canonical and cannot carry credentials
 
 test('compatible historical main/tools/API numbers are preserved and menus repeat after an operation',async()=>{
   assert.deepEqual(MAIN.slice(0,11).map(x=>x[0]),Array.from({length:11},(_,i)=>String(i+1)));
-  assert.deepEqual(TOOLS.map(x=>x[0]),['2','3','5','31','32','4','30','6','7','8','9','10','11','12','13','14','22','23','15','21','20','19','16','17','18']);
+  assert.deepEqual(TOOLS.map(x=>x[0]),['2','3','5','31','32','4','30','6','7','8','9','10','11','12','13','14','22','23','15','21','20','19','16','33','17','18']);
   assert.deepEqual(API.map(x=>x[0]),Array.from({length:9},(_,i)=>String(i+1)));
   const t=temporary();try{const m=new Manager(t.root,new FakeRunner()),answers=['6','','0'],calls=[],menus=new Menus(m,async()=>answers.shift(),null,{out:()=>{}});menus.dispatch=async action=>calls.push(action);await menus.run();assert.deepEqual(calls,['backup']);assert.equal(answers.length,0);}finally{t.cleanup();}
 });

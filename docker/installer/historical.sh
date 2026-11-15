@@ -87,6 +87,7 @@ historical_tools() {
     echo
     printf "  ${BLUE}━━ Performance e dependências ━━${WHITE}\n"
     printf "   [${BLUE}16${WHITE}] Atualizar Baileys pela versão oficial da plataforma\n"
+    printf "   [${BLUE}33${WHITE}] Atualizar biblioteca Baileys (WhatsApp)\n"
     printf "   [${BLUE}17${WHITE}] Atualizar API WhatsMeow (WuzAPI — imagem oficial)\n"
     printf "   [${BLUE}18${WHITE}] Otimizar Postgres em Docker\n"
     echo

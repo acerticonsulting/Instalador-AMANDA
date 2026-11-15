@@ -1,3 +1,40 @@
+# Atualização controlada Baileys — 14/11/2026
+
+Investigação: backend/package.json e lockfile fixam @whiskeysockets/baileys 6.7.24
+do NPM público; os imports usam esse pacote, inclusive caminho interno de logger.
+backend/baileys-local é histórico e excluído por .dockerignore. Compose usa
+docker/backend.Dockerfile, Node 22, npm ci, TypeScript, volumes persistentes; não há
+patch-package ativo. A autenticação SQLite é adaptador próprio da AMANDA, não fork.
+Referência de compatibilidade: https://baileys.wiki/docs/migration/to-v7.0.0/;
+mudanças de linha/módulos exigem migração, portanto somente patches da mesma linha
+estável são candidatos, sem homologação automática de WhatsApp.
+
+Menu 8 recebe 33 (submenu versões/atualizar/logs/rollback); mantém 16 e números antigos.
+baileys.cjs identifica pacote/resolução/runtime, consulta NPM em Docker, exige
+confirmação por empresa, prepara lock em container isolado, bloqueia fork/local,
+patches e alterações fora da árvore transitiva. Guarda manifestos originais, revisão,
+imagem com tag preservada e journal atômico. Compila só backend, testa imports e
+sessão SQLite sintética sem rede/volumes reais, recria só backend e verifica saúde,
+logs, versão e imagem utilizadas. Falhas restauram manifestos/imagem e verificam
+rollback; rollback falho/interrompido exige opção dedicada, sem restaurar banco.
+Edições posteriores e revisão diferente são preservadas para diagnóstico.
+
+Backup existente ganhou escopo backend, sem alterar o padrão completo: pausa só
+backend, pg_dump do banco da AMANDA e tar dos volumes do backend; lastBackup
+completo preservado. Backup parcial não pode ser restaurado como plataforma inteira.
+Novas atualizações Baileys aceitam os manifestos previamente gerenciados; o updater
+geral mantém proteção contra mudanças locais. README explica personalização/rollback.
+
+Arquivos: docker/installer/{baileys,manager,menus,operations}.cjs, historical.sh,
+tools/extrair_interface_historica.cjs, tests/{baileys_tests,docker_only.test,
+historical.test}.cjs, README, PLANO_DE_TESTES e este progresso.
+Testes: 24 direcionados aprovados; suíte completa 239 aprovados, 2 opt-in ignorados,
+85 scripts e 5 suítes. Comandos Docker/NPM/WhatsApp simulados, sem rede nos testes.
+Sem rebuild real de dependência ou operação na VPS. /home/deploy/amanda é alvo
+remoto sem acesso SSH disponível; verificação --plataforma não executada nesse alvo.
+Build e probes serão exigidos pela operação antes da aplicação. Conexão/reconexão,
+eventos, mensagens e sessões reais permanecem pendentes de homologação autorizada.
+
 # Tela de conclusão — 14/11/2026
 
 Investigação: git log/grep/show localizaram o resumo final em

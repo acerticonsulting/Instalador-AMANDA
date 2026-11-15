@@ -450,30 +450,39 @@ class Manager {
     if (platform === this.root) { const file = path.join(platform,'.git/info/exclude'); fs.appendFileSync(file,'\n/.amanda-installer/\n/addons/\n/instances/\n/imports/\n'); }
     this.runner.emit('Instalação oficial existente adotada; configurações e volumes preservados. Nenhum seed executado.\n');
   }
-  async backup({ restart = true, allowUnhealthy = false } = {}) {
+  async backup({ restart = true, allowUnhealthy = false, scope = 'all' } = {}) {
+    if(!['all','backend'].includes(scope))throw Error('Escopo de backup inválido.');
     if(allowUnhealthy)await this.compose(['exec','-T','postgres','pg_isready','-U','amanda','-d','amanda'],{quiet:true,label:'Validando PostgreSQL para backup de recuperação'});
     else await this.verifyHealth();
     const config = await this.configuration();
+    if(scope==='backend'){
+      const keys=(config.services.backend.volumes||[]).filter(v=>v.type==='volume').map(v=>v.source);
+      if(!keys.length||(config.services.backend.volumes||[]).some(v=>v.type!=='volume'))throw Error('Backup Baileys requer volumes Docker identificados do backend.');
+      config.volumes=Object.fromEntries(Object.entries(config.volumes).filter(([k])=>keys.includes(k)));
+      if(keys.some(k=>!config.volumes[k]))throw Error('Volume do backend sem declaração preservável.');
+      config.installerAddons=[];
+    }
+    const databases=scope==='backend'?['amanda']:this.databases();
     const images = await this.imageIds();
     const dir = path.join(this.private,'backups',new Date().toISOString().replace(/[:.]/g,'-'));
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const stopped = [...this.services().filter(x => x !== 'postgres'),...(this.state.profiles.includes('edge') ? ['edge'] : [])];
+    const stopped = scope==='backend'?['backend']:[...this.services().filter(x => x !== 'postgres'),...(this.state.profiles.includes('edge') ? ['edge'] : [])];
     try {
       for(const a of config.installerAddons)await this.docker([...a.base,'stop'],{label:'Pausando componente '+a.project+' para backup'});
       await this.compose(['stop',...stopped], { label: 'Pausando gravadores para backup consistente' });
-      for (const name of this.databases()) await this.compose(['exec','-T','postgres','pg_dump','-U','amanda','-d',name,'-Fc'], { outputFile: path.join(dir,name+'.dump'), label: 'Backup do banco ' + name });
+      for (const name of databases) await this.compose(['exec','-T','postgres','pg_dump','-U','amanda','-d',name,'-Fc'], { outputFile: path.join(dir,name+'.dump'), label: 'Backup do banco ' + name });
       const mounts = Object.entries(config.volumes).filter(([key]) => key !== 'postgres_data').flatMap(([key,v]) => ['--mount',`type=volume,source=${v.name},target=/data/${key},readonly`]);
       await this.docker(['run','--rm','--network','none',...mounts,'--mount',`type=bind,source=${dir},target=/backup`,'alpine:3.21','tar','-czf','/backup/volumes.tgz','-C','/data','.'], { label: 'Arquivando volumes de mídia, sessões, filas e certificados' });
       await this.docker(['run','--rm','--network','none','--mount',`type=bind,source=${dir},target=/backup,readonly`,'alpine:3.21','sh','-c','tar -tzf /backup/volumes.tgz >/dev/null'], { label: 'Verificando integridade do arquivo de volumes' });
       for (const file of ['.env','.env.backend','.env.oficial']) { const p = path.join(this.state.platform,file); if (fs.existsSync(p)) { fs.copyFileSync(p,path.join(dir,file)); fs.chmodSync(path.join(dir,file),0o600); } }
-      for (const f of [...this.databases().map(n=>n+'.dump'),'volumes.tgz']) if (!fs.statSync(path.join(dir,f)).size) throw Error('Backup vazio: '+f);
+      for (const f of [...databases.map(n=>n+'.dump'),'volumes.tgz']) if (!fs.statSync(path.join(dir,f)).size) throw Error('Backup vazio: '+f);
       const accountFile = path.join(this.private,'admin-access.json');
       if (fs.existsSync(accountFile)) { fs.copyFileSync(accountFile,path.join(dir,'admin-access.json')); fs.chmodSync(path.join(dir,'admin-access.json'),0o600); }
       const addons=[];for(const a of config.installerAddons){const kind=a.project.slice(this.state.project.length+1),record=JSON.parse(fs.readFileSync(path.join(this.private,'addon-'+kind+'.json'),'utf8'));addons.push(record);const file='addon-'+kind+'.env';this.write(path.join(dir,file),fs.readFileSync(path.join(this.private,file),'utf8'));}
-      const hashes={};for(const file of [...this.databases().map(n=>n+'.dump'),'volumes.tgz'])hashes[file]=await digest(path.join(dir,file));
-      this.write(path.join(dir,'backup.json'), { complete: true, project: this.state.project, revision: this.state.revision, images, hashes,addons,databases:this.databases(),volumes:config.volumes });
-      this.save({ ...this.state, lastBackup: dir }); return dir;
-    } finally { if (restart) await this.startServices(); }
+      const hashes={};for(const file of [...databases.map(n=>n+'.dump'),'volumes.tgz'])hashes[file]=await digest(path.join(dir,file));
+      this.write(path.join(dir,'backup.json'), { complete: true, scope, project: this.state.project, revision: this.state.revision, images, hashes,addons,databases,volumes:config.volumes });
+      this.save({ ...this.state, ...(scope==='backend'?{lastBaileysBackup:dir}:{lastBackup:dir}) }); return dir;
+    } finally { if (restart) {if(scope==='backend')await this.compose(['up','-d','--no-deps','--wait','--wait-timeout','300','backend']);else await this.startServices();} }
   }
   async imageIds() {
     const config = await this.configuration(), result = {};
