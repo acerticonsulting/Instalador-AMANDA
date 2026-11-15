@@ -2,7 +2,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const MODES=['quick','backend','runtime','frontend','official','wuzapi','transcription','infrastructure','unit','all','flowbuilder','campaigns','webhooks','tickets'];
 function selection(value){const names=value.split(',');if(names.some(n=>!MODES.includes(n))||(names.length>1&&names.some(n=>['quick','all','runtime'].includes(n))))throw Error('Categoria não suportada.');return [...new Set(names)].join(',');}
 function completion(dir,code){const children=fs.readdirSync(dir).filter(n=>/^amanda_audit_\d+_[a-f0-9]{6}$/.test(n));if(children.length!==1)return 'INCOMPLETA';const base=path.join(dir,children[0]),read=n=>fs.existsSync(path.join(base,n))?JSON.parse(fs.readFileSync(path.join(base,n))):null;if(read('orchestrator-error.json'))return 'INCOMPLETA';const marker=read('execution.json'),report=read('results.json'),unit=read('unit-status.json');if((marker?.complete&&report)||(!report&&unit?.resultsWritten&&unit?.coverageWritten))return code!==0||report?.results.some(r=>['failed','timeout'].includes(r.status))||unit?.passed===false?'CONCLUÍDA COM FALHAS':'CONCLUÍDA SEM FALHAS';return 'INCOMPLETA';}
-function compare(a,b){const old=new Map(a.map(r=>[r.id,r])),now=new Map(b.map(r=>[r.id,r]));return {newFailures:b.filter(r=>r.status==='failed'&&old.get(r.id)?.status!=='failed'),fixed:b.filter(r=>r.status==='passed'&&old.get(r.id)?.status==='failed'),persistent:b.filter(r=>r.status==='failed'&&old.get(r.id)?.status==='failed'),notRetested:a.filter(r=>!now.has(r.id)),newTests:b.filter(r=>!old.has(r.id))};}
+function compare(a,b){const old=new Map(a.map(r=>[r.id,r])),now=new Map(b.map(r=>[r.id,r]));return {newFailures:b.filter(r=>r.status==='failed'&&old.get(r.id)?.status!=='failed'),fixed:b.filter(r=>r.status==='passed'&&old.get(r.id)?.status==='failed'&&old.get(r.id)?.fingerprint===r.fingerprint),changedTests:b.filter(r=>old.has(r.id)&&old.get(r.id)?.fingerprint!==r.fingerprint),persistent:b.filter(r=>r.status==='failed'&&old.get(r.id)?.status==='failed'),notRetested:a.filter(r=>!now.has(r.id)),newTests:b.filter(r=>!old.has(r.id))};}
 class Audit{
  constructor(m){this.m=m;this.base=path.join(m.private,'diagnostics');}
  list(){return fs.existsSync(this.base)?fs.readdirSync(this.base).filter(n=>/^audit_[0-9TZ_-]+_[a-f0-9]{12}$/.test(n)&&!fs.lstatSync(path.join(this.base,n)).isSymbolicLink()).sort():[];}
@@ -22,8 +22,11 @@ class Audit{
     // Versão com adaptador é necessária para nunca usar imagens de outra instalação.
     if(!fs.readFileSync(runner,'utf8').includes('AUDIT_RUN_BASE'))throw Error('Suíte antiga: requer adaptador AUDIT_RUN_BASE/imagens dinâmicas.');
     const env={AUDIT_RUN_BASE:dir,TZ:'America/Sao_Paulo',AUDIT_RETRY_IDS:(options.retryIds||[]).join(',')};
+    const planFile=path.join(m.state.platform,'tests/platform/lib/selection.cjs');
+    const planner=fs.existsSync(planFile)?require(planFile):null;
+    const required=typeof planner?.servicesFor==='function'?planner.servicesFor(planner.select(mode)):['backend','frontend','api_oficial','api_transcricao'];
     for(const[key,service]of Object.entries({BACKEND:'backend',FRONTEND:'frontend',OFFICIAL:'api_oficial',TRANSCRIPTION:'api_transcricao'})){
-     if(!config.services[service]?.image)throw Error('Suíte isolada atual requer imagem '+service+'; serviço opcional ausente não é falha funcional.');env['AUDIT_'+key+'_IMAGE']=config.services[service].image;
+     if(!config.services[service]?.image){if(required.includes(service))throw Error('Suíte isolada requer imagem '+service+'; serviço opcional ausente não é falha funcional.');continue;}env['AUDIT_'+key+'_IMAGE']=config.services[service].image;
     }
     launched=true;const result=await m.runner.run(process.execPath,[runner,'--'+mode],{cwd:m.state.platform,env,allowFailure:true,label:'Auditoria isolada: '+mode});
     record.state=completion(dir,result.code);record.complete=record.state.startsWith('CONCLUÍDA');

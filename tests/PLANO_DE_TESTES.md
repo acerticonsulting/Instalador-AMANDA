@@ -1,3 +1,11 @@
+# Central — runtime e isolamento de 14/11/2026
+
+Regressão de fingerprint impede chamar caso alterado de erro corrigido.
+Plano de serviços considera apenas categorias selecionadas (compatibilidade com
+planner antigo mantém exigências anteriores). Plataforma valida subprocesso
+travado, marcador fatal, banco real multiempresa, os 6 HTTP, webhook token ausente,
+WebChat/Socket/PG e Chromium autenticado. Evidências e limites estão no progresso.
+
 # Central — continuação funcional de 14/11/2026
 
 audit_tests cobre categorias múltiplas, deduplicação, categorias proibidas,

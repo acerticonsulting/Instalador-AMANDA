@@ -1,3 +1,51 @@
+# Central: correções multiempresa e E2E reais — 14/11/2026
+
+Partida confirmada/fetch: 17b578e instalador, fd57155 plataforma; preservados.
+FLOW-TENANT-DUPLICATE corrigido em contrato/controller/serviço, com req.user.companyId,
+validação de ID, 404 uniforme e erros propagados. Exclusão tinha consulta só por ID
+e recebeu filtro de empresa/ID estrito. Regressões de serviço e duas empresas no
+PostgreSQL real comprovaram acesso próprio, recusa cruzada/body adulterado e originais
+preservados. Não se relaxou a asserção de isolamento.
+
+Os 6 HTTP pendentes foram executados com imagem oficial backend, migrations/seed
+apenas em PostgreSQL novo, Redis próprio e rede interna validada. Frontend oficial
+também construído. Auditoria encontrou falha adicional no webhook WuzAPI: sem token,
+mas com segredo configurado, retornava 200 e alterava estado. Corrigida, com
+evidências antes/depois e callback válido preservado. Sem segredo, permanece legado;
+não declarar autenticação desses casos validada.
+
+Consolidado real: 92 casos, 88 aprovados, 0 falhos, 4 pendentes. Inclui 21 Flow HTTP
+(6 originais +15 tenant/PostgreSQL), 5 webhook/PG, 5 WebChat/PG/Socket.IO, 3 Chromium,
+53 contratos de serviço com IO simulado e 1 sintaxe. Login autenticado passou;
+mensagem WebChat teve mesmo ID no banco/evento; sessão e namespace estrangeiro
+recusados. Não confundir os 53 contratos simulados com E2E de worker/provedor.
+
+Executor: subprocessos por categoria, deadline com TERM/KILL só no PID criado,
+IPC incremental, worker fatal incompleto, falha funcional concluída com falhas.
+Plano mínimo de serviços evita exigir imagens opcionais para Flow. Fingerprints
+do corpo/opções e comparação conservadora; retry ainda refaz categorias/fixtures.
+Timeout por caso permanece cooperativo, limite forçado é por categoria.
+
+Regressões: plataforma 38 aprovados/1 opt-in ignorado; instalador 245 aprovados/
+2 opt-in ignorados, 85 scripts/5 suítes. Builds backend (incluindo rebuild corrigido),
+frontend e runner concluídos. Compose principal/override audit com perfis validado.
+
+Evidência principal: tmp/e2e-runs/amanda_audit_1794707384988_4c81a0/ (results.json,
+cases.jsonl, execution.json, report.md, junit.xml, auditoria-completa.log).
+Antes do webhook: amanda_audit_1794707135466_ce64a5; Flow final/metadados corrigidos:
+amanda_audit_1794707615379_c6e4cd. Lista completa e caminhos dos logs em
+AMANDA/tests/platform/CENTRAL_STATUS.md. Logs/builds ficam em tmp, não versionados.
+São imagens do working tree desta etapa; commits feitos após a validação.
+
+Pendências: motor completo/V2, campanhas até ACK com workers/PG reais, eventos de
+mensagem até consumidor, resposta/atribuição/fechamento, demais páginas/módulos.
+Retomada: fixtures de CampaignPro + mock HTTP WuzAPI na rede interna, handlers
+Process/Prepare/Dispatch em queues.ts, ACK e conciliação do shipping. Não inventar
+E2E nem repetir inventário inicial. Ainda falta tratamento N/A amplo de opcionais
+em --all; modos específicos já usam plano mínimo. Central segue PARCIAL.
+Não acessada VPS; nenhum deploy. Sem efeitos em produção/credenciais/sessões reais;
+containers de auditoria encerrados pelo runner e volumes sintéticos preservados.
+
 # Continuação da Central — 14/11/2026
 
 Etapa 1: menu 8→34 recebe múltiplas categorias e retry (16). Retentativa cria
