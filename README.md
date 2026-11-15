@@ -1,5 +1,11 @@
 # Instalador AMANDA — referência histórica 7a5b31d
 
+Menu **4** seleciona a empresa reconhecida e apresenta status antes das ações:
+detalhes sanitizados, logs limitados, métricas pontuais, portas/redes, atualização,
+troca de empresa e start/stop/restart individuais ou gerais. Confirmação obrigatória;
+sem build/migrations/seeds. Running sem healthcheck é aviso, nunca healthy.
+O painel mede operação Docker; use 8→34 para auditoria funcional.
+
 ## Central de testes (integração inicial, cobertura parcial)
 
 Menu **8 → 34**: diagnóstico rápido somente leitura, categorias da suíte existente,

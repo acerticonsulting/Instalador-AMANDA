@@ -1,3 +1,35 @@
+# Dashboard de status e gerenciamento — 14/11/2026
+
+Menu 4 mantém numeração principal e agora coleta dados estruturados antes do
+painel/opções. Seleção estrita reutiliza selectInstance e inspectInstallation;
+troca substitui Manager. Compose/perfis e addons registrados definem serviços;
+jobs são excluídos por restart=no/service_completed_successfully e contratos
+oficiais. Labels exatas de projeto/serviço, nunca prefixo, vinculam containers.
+Escala ambígua bloqueia; ausência é problema, running sem healthcheck é aviso.
+
+dashboard.cjs usa Manager.configuration/compose/docker/lock e ui.cjs. Abertura
+não usa doctor/identifyManager (sem saída intercalada nem rename). Detalhes têm
+whitelist: imagem/tag/ID, estado, health, datas/uptime, exit/OOM/restarts, política,
+redes/volumes sanitizados. Stats --no-stream (alerta >80%); portas distinguem
+EXPOSE, loopback e publicação. Logs limitados a 150 linhas/30min, sem follow,
+Runner.mask/redaction e remoção ANSI. Nenhum Env/inspect completo é apresentado.
+
+Submenu: refresh, detalhes, logs, restart individual/geral, start/stop individual/
+geral, stats, portas/redes e troca. Mutação exige ready, lock, snapshot renovado
+e confirmação com empresa/serviço ou TODOS. Restart --no-deps; start --no-deps
+--no-build --pull never --wait; stop restrito ao escopo. Sem migrations/seed/down.
+Restart aguarda até 30s por running/healthcheck; falha/timeout não vira sucesso.
+Operations.services legado é preservado nos outros consumidores; painel usa
+Manager.compose para seleção dinâmica. Saúde operacional não é saúde funcional.
+
+19 testes direcionados; regressão completa: 265 aprovados/2 opt-in ignorados,
+85 scripts/5 suítes. Cobrem estados, perfis/jobs, arrays/JSONL, labels estrangeiras,
+ações/confirmacões/falhas, logs/stats/portas/whitelist e ordem visual. Troca real
+de Manager com reconhecimento simulado; segurança de diretórios é coberta nas
+suítes estado/deploy existentes. Não são 62 provas independentes nem homologação
+VPS/SSH. Nenhuma operação em instalação real/deploy. Logs tmp/dashboard-*.log.
+Arquivos: dashboard/menus, dashboard_tests/docker_only.test, README, plano e progresso.
+
 # Central: correções multiempresa e E2E reais — 14/11/2026
 
 Partida confirmada/fetch: 17b578e instalador, fd57155 plataforma; preservados.

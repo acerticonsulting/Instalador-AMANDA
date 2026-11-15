@@ -1,3 +1,11 @@
+# Dashboard — 14/11/2026
+
+dashboard_tests cobre estados/ausência, perfis/jobs, JSON array/lines, labels
+estrangeiras, coleta read-only, ações/confirmacão/estado parcial/falha, whitelist,
+portas/loopback/IPv6, logs/redaction e stats finitos. docker_only.test verifica
+troca de Manager e painel completo antes das opções sem saída ps intercalada.
+Mutações Docker são simuladas; não equivalem à homologação em VPS.
+
 # Central — runtime e isolamento de 14/11/2026
 
 Regressão de fingerprint impede chamar caso alterado de erro corrigido.

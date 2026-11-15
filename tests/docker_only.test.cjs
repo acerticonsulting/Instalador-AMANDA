@@ -15,6 +15,7 @@ require('./firewall_readonly_tests.cjs');
 require('./completion_tests.cjs');
 require('./baileys_tests.cjs');
 require('./audit_tests.cjs');
+require('./dashboard_tests.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');
@@ -93,6 +94,7 @@ class FakeRunner {
   }
 }
 async function fixture() { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());return {...t,runner,m}; }
+test('status selector validates companies and replaces Manager on switch',async()=>{const t=await fixture(),deploy=require('../docker/installer/deploy.cjs'),original=deploy.inspectInstallation;try{await t.m.initialize();const betaRoot=path.join(t.root,'instances','beta'),beta=new Manager(betaRoot,new FakeRunner());await beta.prepare(input({project:'beta'}));await beta.initialize();deploy.inspectInstallation=()=>({kind:'complete'});const menu=new Menus(t.m,async()=> '2',null,{out:()=>{}});await menu.selectInstance(true);assert.equal(menu.m.root,betaRoot);assert.equal(menu.m.state.project,'beta');menu.ask=async()=> '1';await menu.selectInstance(true);assert.equal(menu.m.root,t.root);menu.ask=async()=> '0';await assert.rejects(menu.selectInstance(true),/cancelada/);}finally{deploy.inspectInstallation=original;t.cleanup();}});
 test('backend scoped backup stops only backend, preserves complete backup pointer and rejects full restore',async()=>{
  const t=await fixture();try{await t.m.initialize();t.m.save({...t.m.state,lastBackup:'full-backup-reference'});
   t.runner.configTransform=c=>{c.services.backend.volumes=['backend_database','backend_private','backend_public'].map(source=>({type:'volume',source,target:'/app/'+source}));return c;};t.runner.calls=[];
@@ -718,10 +720,10 @@ test('SMTP wizard collects real TLS settings, private password and optional conn
   assert.equal(c.options.backendEnv.MAIL_SECURE,'true');assert.equal(c.options.backendEnv.MAIL_PASS,'smtp$#password');assert.equal(c.options.initialSettings.signupSmtpFromName,'ACERTI');assert.equal(c.options.testSmtp,true);
 });
 test('status is displayed after the banner and remains visible until the next selection',async()=>{
-  const t=await fixture();try{await t.m.initialize();const output=[],answers=['0','0'];t.runner.emit=s=>output.push(s);const menus=new Menus(t.m,async()=>answers.shift(),null,{out:s=>output.push(s)});await menus.services();
-    assert.ok(output[0].includes('STATUS E REINÍCIO'));assert.ok(t.runner.calls.some(c=>c.args.includes('ps')));assert.equal(answers.length,1);
+  const t=await fixture(),{Dashboard,summary}=require('../docker/installer/dashboard.cjs'),original=Dashboard.prototype.collect;try{await t.m.initialize();const output=[],answers=['0','0'];t.runner.calls=[];Dashboard.prototype.collect=async()=>({project:'amanda',root:t.root,items:[{key:'backend'}],summary:summary([{key:'backend'}])});t.runner.emit=s=>output.push(s);const menus=new Menus(t.m,async()=>answers.shift(),null,{out:s=>output.push(s)});menus.selectInstance=async()=>{};await menus.services();
+    assert.ok(output[0].includes('STATUS DA PLATAFORMA'));assert.ok(output[0].includes('AUSENTE'));assert.ok(output[1].includes('Atualizar painel'));assert.equal(t.runner.calls.length,0);assert.equal(answers.length,1);
     const order=[];await menus.choose('TESTE',[],async()=>order.push('status'));assert.deepEqual(order,['status']);
-  }finally{t.cleanup();}
+  }finally{Dashboard.prototype.collect=original;t.cleanup();}
 });
 
 test('historical HTTPS bindings persist through later configuration and safe updates',async()=>{
