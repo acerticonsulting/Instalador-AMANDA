@@ -1,3 +1,38 @@
+# Continuação da Central — 14/11/2026
+
+Etapa 1: menu 8→34 recebe múltiplas categorias e retry (16). Retentativa cria
+auditoria nova ligada à origem, reexecuta categorias para reconstruir dependências
+e marca IDs pedidos. Ausentes viram pendência; não se reutiliza resultado anterior.
+Seleção deduplica e rejeita categorias desconhecidas/mistura quick com mutáveis.
+Semântica corrigida: relatório completo com falhas é CONCLUÍDA COM FALHAS mesmo
+com exit 1; marcador/relatório ausente ou falha fatal continua INCOMPLETA;
+pré-requisitos são BLOQUEADA. Compare não considera omissão como correção.
+Reporter ganhou dependências, timeout individual e deadline global cooperativos,
+expected/observed, JUnit de timeout/bloqueio e cobertura apenas para casos aprovados.
+
+Etapas funcionais: quatro novas categorias executam serviços TS reais com IO
+explicitamente simulado. 57 casos executados: Flow 14 pass/1 fail/1 pendente;
+campanhas 26 pass/1 pendente; webhooks 8 pass/1 pendente; tickets 4 pass/1 pendente.
+Falha FLOW-TENANT-DUPLICATE comprova consulta sem company_id no serviço de
+duplicação; código de produção não foi alterado para ocultá-la. Status final dos
+casos: CONCLUÍDA COM FALHAS. Não são E2E com banco/filas reais.
+6 cenários HTTP de Flow Builder foram registrados para sandbox, ainda não executados.
+
+Regressões: plataforma 17 aprovados/1 opt-in ignorado; instalador 244 aprovados/
+2 opt-in ignorados, 85 scripts e 5 suítes. Evidências não versionadas em
+tmp/business-expanded/ e tmp/central-expanded-{tests,installer}.log.
+Imagem backend local não disponível; runtime integral, VPS e WhatsApp não validados.
+Sem produção, seeds/migrations reais, sessões, credenciais, mensagens ou deploy.
+
+Arquivos: audit/menus e audit_tests no instalador; plataforma run/reporter/selection,
+source-service, consolidated-log, compose, scripts flowbuilder/flowbuilder-http,
+campaigns/webhooks/tickets, business.test e CENTRAL_STATUS. Histórico abaixo preservado.
+Pendências: retry estritamente por caso/fingerprints, dependências legadas completas,
+timeout preemptivo, motor inteiro de fluxos, V2, campanhas worker/ACK, eventos
+webhook até persistência, atendimento WebChat/Socket e demais módulos/E2E.
+Próximo ponto: executar HTTP sandbox e expandir motor/campanhas reais. Não declarar
+central completa nem 771 rotas validadas; inventário inicial não foi repetido.
+
 # Central de testes — 14/11/2026, fases iniciais PARCIAIS
 
 Menu 8 → 34 integra tests/platform/run.cjs existente, em Node dentro do instalador

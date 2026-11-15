@@ -77,6 +77,19 @@ class Menus{
     else{const base=process.env.AMANDA_DEPLOY_LAYOUT==='1'?require('./deploy.cjs').BASE:path.join(this.baseRoot,'instances');if(!fs.existsSync(base))throw Error('Sem instâncias filhas. Para outro diretório, execute novamente com --dir.');const dirs=fs.readdirSync(base).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&fs.existsSync(path.join(base,n,'.amanda-installer/state.json')));dirs.forEach((n,i)=>this.out('['+(i+1)+'] '+n));this.out('[P] Instância principal: '+this.baseRoot);const selection=await this.ask('Selecione a instância');if(selection.toUpperCase()==='P'){const{Manager}=require('./manager.cjs');this.m=new Manager(this.baseRoot);this.m.load();return;}const n=Number(selection);if(!dirs[n-1])throw Error('Instância inválida.');const{Manager}=require('./manager.cjs');this.m=new Manager(path.join(base,dirs[n-1]));this.m.load();}
   }
   async automation(){while(true){const a=await this.choose('GHCR / AGENDAMENTO DOCKER',[['1','Autenticar no GHCR','ghcr'],['2','Agendar atualização com backup/migrations (substitui Watchtower)','schedule-update'],['3','Agendar backup diário','schedule-backup'],['4','Atualizar agora com backup','update']]);if(!a)return;await this.dispatch(a);await this.ask('Pressione ENTER para continuar');}}
+  async auditCenter(){
+    const{Audit,compare}=require('./audit.cjs'),audit=new Audit(this.m);
+    const entries=[['1','Diagnóstico operacional somente leitura','quick'],['2','Backend','backend'],['3','Flow Builder (cobertura parcial)','flowbuilder'],['4','Campanhas (cobertura parcial)','campaigns'],['5','Webhooks (cobertura parcial)','webhooks'],['6','Tickets e retomada de fluxo','tickets'],['7','Frontend','frontend'],['8','API Oficial','official'],['9','Infraestrutura','infrastructure'],['10','Jest/cobertura','unit'],['11','Todas as suítes disponíveis','all'],['12','Selecionar várias categorias','multi'],['14','Relatórios anteriores','history'],['15','Comparar últimas execuções','compare'],['16','Reexecutar falhas da última auditoria','retry'],['17','Lacunas de cobertura','gaps']];
+    while(true){const action=await this.choose('CENTRAL DE TESTES — COBERTURA PARCIAL',entries);if(!action)return;
+      const ids=audit.list();
+      if(action==='history')this.out(ids.join('\n')||'Nenhuma execução');
+      else if(action==='compare'&&ids.length>1)this.out(JSON.stringify(compare(audit.read(ids.at(-2)).report?.results||[],audit.read(ids.at(-1)).report?.results||[]),null,2));
+      else if(action==='gaps'&&ids.length)this.out(JSON.stringify(audit.read(ids.at(-1)).report?.coverage||{status:'Inventário não executado'},null,2));
+      else if(action==='retry'){if(ids.length){this.out('Nova execução das categorias de origem, incluindo pré-requisitos; nenhum resultado anterior é reaproveitado.');if(await this.ask('Digite AUDITAR '+path.basename(this.m.root))==='AUDITAR '+path.basename(this.m.root))await this.m.lock(()=>audit.retry(ids.at(-1)));}}
+      else if(!['compare','gaps'].includes(action)){const mode=action==='multi'?await this.ask('Categorias separadas por vírgula (ex.: flowbuilder,campaigns,webhooks,tickets)'):action;this.out('Instalação: '+this.m.root+'\nTestes mutáveis somente no projeto isolado; cobertura parcial e homologações externas pendentes.');if(await this.ask('Digite AUDITAR '+path.basename(this.m.root))==='AUDITAR '+path.basename(this.m.root))await this.m.lock(()=>audit.run(mode));}
+      await this.ask('ENTER para continuar');
+    }
+  }
   async baileys(){
     const {Baileys,PACKAGE}=require('./baileys.cjs'),b=new Baileys(this.m);
     while(true){
@@ -96,6 +109,7 @@ class Menus{
     }
   }
   async dispatch(action,locked=false){
+    if(action==='audit')return this.auditCenter();
     if(!locked&&!['install','new-instance','tools','instances','doctor','native-unavailable','portainer-unavailable'].includes(action))await this.selectInstance();
     if(!locked&&!['install','new-instance','tools','official','configure','services','urls','instances','automation','baileys'].includes(action))return this.m.lock(async()=>{this.m.runner.emit('Operação: '+action+'\n');try{const value=await this.dispatch(action,true);this.m.runner.emit('OK: '+action+'\n');return value;}catch(error){this.m.runner.emit('FALHA: '+action+' — '+error.message+'\n');throw error;}});
     const m=this.m,ops=new Operations(m);
@@ -104,7 +118,7 @@ class Menus{
     switch(action){
       case'install':if(this.startInstall){const installed=await this.startInstall(m);if(installed?.root)this.m=installed;return installed;}if(fs.existsSync(m.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem responder novamente nem repetir seeds.');if(this.install){const installed=await this.install(m,await this.input());if(installed?.root)this.m=installed;return installed;}return null;
       case'urls':return this.urls();case'services':return this.services();case'official':return this.official();case'configure':return this.configure();case'instances':return this.instances();case'automation':return this.automation();
-      case'audit':{const {Audit,MODES,compare}=require('./audit.cjs'),audit=new Audit(m);while(true){const a=await this.choose('CENTRAL DE TESTES — COBERTURA PARCIAL',[...MODES.map((mode,i)=>[String(i+1),mode==='quick'?'Diagnóstico operacional somente leitura':mode==='all'?'Auditoria isolada completa disponível (não cobre toda a plataforma)':mode,mode]),['14','Relatórios anteriores','history'],['15','Comparar últimos relatórios','compare'],['17','Consultar lacunas de cobertura','gaps']]);if(!a)return;if(['history','compare','gaps'].includes(a)){const ids=audit.list();if(a==='history')this.out(ids.join('\n')||'Nenhuma execução');else if(a==='compare'&&ids.length>1)this.out(JSON.stringify(compare(audit.read(ids.at(-2)).report?.results||[],audit.read(ids.at(-1)).report?.results||[]),null,2));else if(a==='gaps'&&ids.length)this.out(JSON.stringify(audit.read(ids.at(-1)).report?.coverage||{status:'Inventário ainda não executado'},null,2));}else{this.out('Empresa: '+m.state?.project+'\nInstalação: '+m.root+'\nTestes mutáveis somente em projeto novo isolado; homologações externas não são executadas.');if(await this.ask('Digite AUDITAR '+path.basename(m.root))==='AUDITAR '+path.basename(m.root))await audit.run(a);}await this.ask('ENTER para continuar');}}
+      case'audit':return this.auditCenter();
       case'baileys':return this.baileys();
       case'tools':while(true){const a=await this.choose('FERRAMENTAS ADICIONAIS',TOOLS);if(!a)return;await this.dispatch(a);await this.ask('Pressione ENTER para continuar');}
       case'restore':return this.restore();case'rollback':return this.restore('all',true);

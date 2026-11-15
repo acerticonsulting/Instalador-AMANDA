@@ -1,3 +1,12 @@
+# Central — continuação funcional de 14/11/2026
+
+audit_tests cobre categorias múltiplas, deduplicação, categorias proibidas,
+conclusão com falha/relatório ausente/fatal, origem do retry sem reaproveitar
+resultados, comparação conservadora e preservação do log em bloqueio.
+Na plataforma business.test exercita serviços TS reais com fronteiras simuladas;
+ver CENTRAL_STATUS.md para 52 pass/1 defeito exposto/4 pendentes e limites.
+Timeout e dependências são testados sem acesso a dados/clientes reais.
+
 # Atualização Baileys — 14/11/2026
 
 baileys_tests.cjs usa Docker/registro/sessões simulados e nenhuma rede externa:
