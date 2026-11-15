@@ -1,5 +1,19 @@
 # Instalador AMANDA — referência histórica 7a5b31d
 
+## Central de testes (integração inicial, cobertura parcial)
+
+Menu **8 → 34**: diagnóstico rápido somente leitura, categorias da suíte existente,
+auditoria isolada completa disponível, histórico, comparação e lacunas. A empresa
+é a instância selecionada no instalador; confirme `AUDITAR empresa`. O runner usa
+imagens configuradas na instalação e requer a versão da plataforma com adaptador
+AUDIT_RUN_BASE. Sem suíte/imagens necessárias a execução fica incompleta, sem
+alterar serviços da instalação. O Node do orquestrador roda no container do instalador.
+
+Logs/relatórios privados: `.amanda-installer/diagnostics/`. Não se declara saúde
+funcional integral. Veja docs/PROGRESSO_CODEX.md e tests/platform/CENTRAL_STATUS.md
+na plataforma para fases ainda pendentes. Não é necessário executar esta auditoria
+em produção para testar o próprio executor; nenhuma ação externa real é autorizada.
+
 ## Atualização específica do Baileys (Docker)
 
 Menu **8 → 33 → Atualizar biblioteca Baileys (WhatsApp)**. A opção 16 histórica

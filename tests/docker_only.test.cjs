@@ -14,6 +14,7 @@ require('./state_compatibility_tests.cjs');
 require('./firewall_readonly_tests.cjs');
 require('./completion_tests.cjs');
 require('./baileys_tests.cjs');
+require('./audit_tests.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');
@@ -406,7 +407,7 @@ test('authorized repository is mandatory, canonical and cannot carry credentials
 
 test('compatible historical main/tools/API numbers are preserved and menus repeat after an operation',async()=>{
   assert.deepEqual(MAIN.slice(0,11).map(x=>x[0]),Array.from({length:11},(_,i)=>String(i+1)));
-  assert.deepEqual(TOOLS.map(x=>x[0]),['2','3','5','31','32','4','30','6','7','8','9','10','11','12','13','14','22','23','15','21','20','19','16','33','17','18']);
+  assert.deepEqual(TOOLS.map(x=>x[0]),['2','3','5','31','32','4','30','6','7','8','9','10','11','12','13','14','22','23','15','21','20','19','16','33','34','17','18']);
   assert.deepEqual(API.map(x=>x[0]),Array.from({length:9},(_,i)=>String(i+1)));
   const t=temporary();try{const m=new Manager(t.root,new FakeRunner()),answers=['6','','0'],calls=[],menus=new Menus(m,async()=>answers.shift(),null,{out:()=>{}});menus.dispatch=async action=>calls.push(action);await menus.run();assert.deepEqual(calls,['backup']);assert.equal(answers.length,0);}finally{t.cleanup();}
 });

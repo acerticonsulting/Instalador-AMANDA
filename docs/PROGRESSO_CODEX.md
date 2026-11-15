@@ -1,3 +1,31 @@
+# Central de testes — 14/11/2026, fases iniciais PARCIAIS
+
+Menu 8 → 34 integra tests/platform/run.cjs existente, em Node dentro do instalador
+Docker, sem segundo framework. Categorias disponíveis e --all reutilizam testes
+funcionais isolados existentes; diagnóstico rápido só lê saúde. A central registra
+início, empresa, revisão, imagens, incompletude, histórico privado e comparação
+por ID (teste ausente nunca significa corrigido). Relatórios em
+.amanda-installer/diagnostics/audit_<UTC>_<id>/, com resultados detalhados em subpasta
+amanda_audit_*. Suíte antiga/ausente ou imagem opcional indisponível bloqueiam
+execução sem classificar o módulo como funcionalmente defeituoso.
+
+Plataforma: adaptador AUDIT_RUN_BASE, imagens selecionadas por configuração,
+tags de ferramentas isoladas, JSONL/IDs/horários, catálogo ampliado. Inventário
+executado: 8086 funções, 771 rotas, 1593 entradas de catálogo, 0 erros de sintaxe;
+descoberta não é cobertura executada. Ver tests/platform/CENTRAL_STATUS.md.
+
+Regressão instalador: 241 aprovados, 2 opt-in ignorados, 85 scripts/5 suítes.
+Plataforma: 13 aprovados/1 opt-in ignorado; config Compose principal e auditoria
+válidos com valores fictícios. Sem build/runtime integral ou acesso à VPS.
+Não executado --plataforma em /home/deploy/amanda: alvo remoto sem acesso SSH.
+
+Pendências explícitas: fases 1–2 incompletas (seleção múltipla, retry por IDs,
+dependências/timeouts, inventário AST frontend/eventos e matriz funcional);
+fases 3–9 ainda exigem novos casos profundos de negócio/flows/campanhas/webhooks,
+canais, telas e E2E. Fase 10 tem só regressões locais. Não declarar missão concluída.
+Última etapa: adaptador e regressões iniciais. Próxima: fixtures/contratos funcionais
+Flow Builder/Campanhas, expandindo a suíte existente sem tocar produção.
+
 # Atualização controlada Baileys — 14/11/2026
 
 Investigação: backend/package.json e lockfile fixam @whiskeysockets/baileys 6.7.24

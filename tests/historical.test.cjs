@@ -111,7 +111,7 @@ test('7a5b31d main presentation and banner are recovered verbatim except the uns
 });
 test('historical tool sections, ordering and valid numbers remain; unavailable operations retain their slots',()=>{
  const ids=s=>[...s.matchAll(/\[(\d+)\]/g)].map(m=>m[1]).filter(id=>id!=='0');
- assert.deepEqual(TOOLS.map(x=>x[0]).filter(id=>id!=='33'),ids(historical('tools')).filter(id=>!['24','25','26','27'].includes(id)));
+ assert.deepEqual(TOOLS.map(x=>x[0]).filter(id=>!['33','34'].includes(id)),ids(historical('tools')).filter(id=>!['24','25','26','27'].includes(id)));
  assert.deepEqual(TOOLS.find(x=>x[0]==='33'),['33','Atualizar biblioteca Baileys (WhatsApp)','baileys']);
  assert.deepEqual(API.map(x=>x[0]),ids(historical('api')));
  assert.ok(TOOLS.some(x=>x[0]==='7'));assert.ok(TOOLS.some(x=>x[0]==='19'));
@@ -200,5 +200,5 @@ test('historical performance choices map to bounded PostgreSQL profiles in conta
 test('real color terminals retain menu dispatch while rendering the original lilac highlights',()=>{
  const script="Object.defineProperty(process.stdout,'isTTY',{value:true});const {MAIN,TOOLS}=require('./docker/installer/menus.cjs');const {render}=require('./docker/installer/historical.cjs');process.stdout.write(JSON.stringify({main:MAIN.map(x=>x[0]),tools:TOOLS.map(x=>x[0]),screen:render('main')}));";
  const result=spawnSync(process.execPath,['-e',script],{cwd:path.join(__dirname,'..'),encoding:'utf8',env:{...process.env,TERM:'xterm-256color',NO_COLOR:undefined}});assert.equal(result.status,0,result.stderr);
- const value=JSON.parse(result.stdout);assert.equal(value.main.length,11);assert.equal(value.tools.length,26);assert.ok(value.screen.includes('\x1b[1;38;2;167;139;250m'));assert.ok(value.screen.includes('\x1b[38;2;139;92;246m'));
+ const value=JSON.parse(result.stdout);assert.equal(value.main.length,11);assert.equal(value.tools.length,27);assert.ok(value.screen.includes('\x1b[1;38;2;167;139;250m'));assert.ok(value.screen.includes('\x1b[38;2;139;92;246m'));
 });
