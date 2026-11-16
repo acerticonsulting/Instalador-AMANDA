@@ -52,6 +52,14 @@ esac
     assert.equal(result,0,output);assert.equal(step,direct?3:5,output);
     assert.ok(!/Nenhuma instalação reconhecida|OPERAÇÃO NÃO CONCLUÍDA|ERRO:|INCOMPLETO/.test(output),output);
     assert.match(output,choice==='4'?/STATUS DA PLATAFORMA/:choice==='11'?/API Oficial/:/WhatsMeow\/WuzAPI/);
+    if(choice!=='4'){
+      const project=bravo?'bravo':'acerti';
+      assert.match(output,new RegExp('\\nEmpresa: '+project+'\\r*\\n'));
+      assert.match(output,new RegExp('\\nProjeto: '+project+'\\r*\\n'));
+      assert.match(output,new RegExp('\\nEstado: '+(bravo?'NÃO INSTALADO':'HEALTHY')+'\\r*\\n'));
+      assert.match(output,/\nURL pública: [^\r\n]+\r*\n/);
+      if(!bravo)assert.match(output,/Já instalada — domínio em \[8\]/);
+    }
     if(bravo){assert.match(output,/Projeto: bravo/);assert.match(output,/Instalado: Não/);assert.ok(!output.includes('acerti_api_oficial'));assert.ok(!output.includes('acerti_wuzapi'));}
     else{assert.match(output,/acerti_backend|acerti_api_oficial|acerti_wuzapi/);assert.match(output,/HEALTHY|Healthy:/);}
     if(switchCompany){assert.match(secondPanel,/bravo_backend/);assert.ok(!secondPanel.includes('acerti_backend'));}else assert.ok(!output.includes('bravo_backend'));

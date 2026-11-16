@@ -87,13 +87,14 @@ class Menus{
     await this.selectInstance(true);const{ApiServices,DEFINITIONS}=require('./api-services.cjs'),d=DEFINITIONS[service];
     const entries=[['1','Instalar '+d.label,'install'],['2',service==='api_oficial'?'Atualizar plataforma AMANDA (inclui API Oficial)':'Atualizar somente imagem WuzAPI','update'],['3','Status e diagnóstico','ps'],['4','Iniciar / reiniciar','restart'],['5','Parar','stop'],['6','Logs recentes','logs'],['7','Sincronizar integração interna do backend','sync'],['8','Domínio próprio e HTTPS','ssl'],['9','Remover somente container (preservar volumes)','rm']];
     while(true){try{
-      const api=new ApiServices(this.m),info=await api.inspect(service);this.out(this.ui.banner(d.label));this.out(this.ui.text(require('./api-services.cjs').renderApi(info)));
-      const a=await this.choose(d.label,entries);if(!a)return;const ops=new Operations(this.m);
-      if(a==='install')await this.enable(service);
+      const api=new ApiServices(this.m),info=await api.inspect(service);
+      entries[0][1]=info.installed?'Já instalada — domínio em [8]':'Instalar '+d.label;
+      const a=await this.choose(d.label,entries,()=>{this.out(require('./api-services.cjs').renderApi(info,{ui:this.ui,mask:value=>this.m.runner.mask(value)}));if(info.installed)this.out(this.ui.lines(['API já instalada. Use [8] Domínio próprio e HTTPS para configurar somente a URL pública. Não é necessário reinstalar.']));});if(!a)return;const ops=new Operations(this.m);
+      if(a==='install'){if(info.installed)this.out(this.ui.lines(['API já instalada. Utilize [8] Domínio próprio e HTTPS para configurar a URL pública, ou [4] para iniciar/reiniciar.']));else await this.enable(service);}
       else if(a==='update'){if(service==='api_oficial')await this.m.lock(()=>this.update());else{const confirmation=await this.ask('Digite ATUALIZAR '+this.m.state.project+' wuzapi');await this.m.lock(()=>api.updateWuzapi(confirmation));}}
       else if(a==='ssl'){const plan=await this.apiPlan(service),confirmation=await this.ask('Digite DOMINIO '+this.m.state.project+' '+service);await this.m.lock(()=>api.domain(service,plan,confirmation));}
       else if(a==='sync'){await ops.ready();ops.service(service);await ops.configure({backendEnv:{[d.integration]:d.internal}});}
-      else if(a==='ps'){this.out(this.ui.text(require('./api-services.cjs').renderApi(await api.inspect(service))));}
+      else if(a==='ps'){this.out(require('./api-services.cjs').renderApi(await api.inspect(service),{ui:this.ui,mask:value=>this.m.runner.mask(value)}));}
       else if(a==='rm'){this.out('Serão preservados banco, credenciais e volumes: '+JSON.stringify(info.volumes||[])+'\nA integração ficará indisponível até iniciar novamente.');if(await this.ask('Digite REMOVER '+this.m.state.project+' '+service)!=='REMOVER '+this.m.state.project+' '+service)throw Error('Remoção cancelada.');await ops.services('rm',service);}
       else if(a==='logs')this.out(await new(require('./dashboard.cjs').Dashboard)(this.m).logs(service));
       else if(a==='restart'){if(await this.ask('Digite INICIAR '+this.m.state.project+' '+service)!=='INICIAR '+this.m.state.project+' '+service)throw Error('Operação cancelada.');await ops.services(info.installed?'restart':'start',service);}
@@ -141,14 +142,13 @@ class Menus{
     const {Baileys,PACKAGE}=require('./baileys.cjs'),b=new Baileys(this.m);
     while(true){
       const info=await this.m.lock(()=>b.inspect());
-      this.out(this.ui.banner('ATUALIZAÇÃO DO BAILEYS'));
-      this.out(this.ui.text(`Empresa: ${this.m.state.project}\nBackend: ${info.container}\nBiblioteca: ${PACKAGE}\nVersão configurada: ${info.configured}\nVersão instalada/carregada: ${info.runtime?.version||'Não verificado'}\nVersão disponível: ${info.versions?.at(-1)||'Não verificado'}\nVersões candidatas da mesma linha: ${info.compatible.join(', ')||'Nenhuma consultável'}\nOrigem: ${info.supported?'NPM público fixado':'Local/fork/resolução não suportada; revisão técnica necessária'}`));
-      const action=await this.choose('BAILEYS', [['1','Verificar versão instalada','inspect'],['2','Atualizar Baileys','update'],['3','Consultar logs','logs'],['4','Rollback da última atualização Baileys','rollback']]);
+      const panel=this.ui.lines([`Empresa: ${this.ui.text(this.m.state.project)}`,`Backend: ${this.ui.text(info.container)}`,`Biblioteca: ${PACKAGE}`,`Versão configurada: ${this.ui.text(info.configured)}`,`Versão instalada/carregada: ${this.ui.text(info.runtime?.version||'Não verificado')}`,`Versão disponível: ${this.ui.text(info.versions?.at(-1)||'Não verificado')}`,`Versões candidatas da mesma linha: ${info.compatible.map(value=>this.ui.text(value)).join(', ')||'Nenhuma consultável'}`,`Origem: ${info.supported?'NPM público fixado':'Local/fork/resolução não suportada; revisão técnica necessária'}`]);
+      const action=await this.choose('ATUALIZAÇÃO DO BAILEYS', [['1','Verificar versão instalada','inspect'],['2','Atualizar Baileys','update'],['3','Consultar logs','logs'],['4','Rollback da última atualização Baileys','rollback']],()=>this.out(panel));
       if(!action)return;
       if(action==='update'){
         if(!info.supported||!info.compatible.length){this.out('Nenhuma atualização candidata compatível disponível.');continue;}
         const target=await this.ask('Versão exata da mesma linha',info.compatible.at(-1));
-        this.out(this.ui.text(`ATENÇÃO — ATUALIZAÇÃO DO BAILEYS\nEmpresa: ${this.m.state.project}\nVersão atual: ${info.runtime?.version||'Não verificado'}\nNova versão: ${target}\nServiços afetados: backend (${info.container})\nA operação poderá interromper temporariamente conexões WhatsApp.\nBackup e rollback serão preparados. Homologação WhatsApp continuará pendente.`));
+        this.out(this.ui.lines(['ATENÇÃO — ATUALIZAÇÃO DO BAILEYS',`Empresa: ${this.ui.text(this.m.state.project)}`,`Versão atual: ${this.ui.text(info.runtime?.version||'Não verificado')}`,`Nova versão: ${this.ui.text(target)}`,`Serviços afetados: backend (${this.ui.text(info.container)})`,'A operação poderá interromper temporariamente conexões WhatsApp.','Backup e rollback serão preparados. Homologação WhatsApp continuará pendente.']));
         const confirmation=await this.ask('Digite ATUALIZAR BAILEYS '+this.m.state.project);
         await this.m.lock(()=>b.update(target,confirmation));
       }else if(action==='logs')await this.m.lock(()=>b.logs());

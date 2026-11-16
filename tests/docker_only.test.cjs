@@ -17,6 +17,7 @@ require('./baileys_tests.cjs');
 require('./audit_tests.cjs');
 require('./dashboard_tests.cjs');
 require('./instance_selection_tests.cjs');
+require('./panel_format_tests.cjs');
 const {Operations}=require('../docker/installer/operations.cjs');
 const {MAIN,TOOLS,API,Menus}=require('../docker/installer/menus.cjs');
 const {validateOptions,writeEnv,vapidPrivateKey}=require('../docker/installer/options.cjs');

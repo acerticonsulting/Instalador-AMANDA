@@ -15,9 +15,27 @@ function imageOverride(manager){
   if(Object.keys(data).join(',')!=='services'||Object.keys(data.services).join(',')!=='wuzapi'||Object.keys(data.services.wuzapi).join(',')!=='image'||!/^sha256:[a-f0-9]{64}$/.test(data.services.wuzapi.image))throw Error('Override de imagem WuzAPI inválido.');
   return['-f',file];
 }
-function renderApi(info){
-  const fields=[['Empresa',info.company],['Projeto',info.project],['Diretório',info.directory],['Serviço / perfil',info.service+' / '+info.profile],['Instalado',info.installed?'Sim (container encontrado)':'Não; declaração Compose não comprova instalação'],['Perfil habilitado',info.enabled?'Sim':'Não'],['Estado / saúde',info.status],['Container',info.container||'Não encontrado'],['Imagem',info.image||'Não verificada'],['ID da imagem',info.imageId||'Não verificado'],['Uptime (segundos)',info.uptimeSeconds??'Não verificado'],['URL interna',info.internalUrl],['URL pública',info.publicUrl],['HTTPS',info.https?.status||'Não verificado'],['Última verificação HTTPS',info.https?.checkedAt||'Não realizada'],['DNS / URL proposta',info.pending||'Sem proposta pendente'],['Token administrativo',info.adminToken?'Configurado; preservado':'Não configurado'],['Banco / sessões',info.database],['Revisão',info.revision||'Não verificada'],['Backup',info.backup||'Não registrado']];
-  return fields.map(([k,v])=>k+': '+v).concat(['Portas: '+(info.ports?.join('; ')||'Sem publicação confirmada'),'Volumes: '+(info.volumes?.map(v=>(v.name||v.type)+' → '+v.target).join('; ')||'Não verificados')]).join('\n');
+function apiStatus(info){
+  if(info.installed===false||['AUSENTE','NÃO INSTALADO'].includes(info.status))return'NÃO INSTALADO';
+  if(['EXITED','CREATED','STOPPED','DEAD','PARADO'].includes(info.status))return'PARADO';
+  if(['RUNNING — SEM HEALTHCHECK','RUNNING SEM HEALTHCHECK','RUNNING'].includes(info.status))return'RUNNING SEM HEALTHCHECK';
+  return['HEALTHY','UNHEALTHY','STARTING','RESTARTING','PAUSED'].includes(info.status)?info.status:'NÃO VERIFICADO';
+}
+function renderApi(info,{ui=require('./ui.cjs').createUI(),mask=value=>value}={}){
+  const clean=value=>ui.text(mask(String(value??'NÃO VERIFICADO'))),rows=[];
+  const section=title=>rows.push('',title,'─'.repeat(Math.min(72,ui.width)));
+  const field=(label,value)=>rows.push(label+': '+clean(value));
+  const url=value=>{if(!value||value==='Não configurada')return'Não configurada';try{const u=new URL(value);if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.search||u.hash||u.pathname!=='/')return'NÃO VERIFICADO';return u.origin;}catch{return'NÃO VERIFICADO';}};
+  section('Empresa');field('Empresa',info.company);field('Projeto',info.project);field('Diretório',info.directory);
+  section('Estado do Serviço');field('Estado',apiStatus(info));field('Instalado',info.installed===true?'Sim (container encontrado)':info.installed===false?'Não; declaração Compose não comprova instalação':'NÃO VERIFICADO');field('Uptime (segundos)',info.uptimeSeconds);
+  section('Container');field('Container',info.container||'NÃO VERIFICADO');field('Imagem',info.image);field('ID da imagem',info.imageId);
+  section('Rede e Portas');field('URL interna',url(info.internalUrl));field('Redes',info.networks?.map(clean).join(', ')||'NÃO VERIFICADO');
+  if(info.ports?.length)for(const port of info.ports)field('Porta',port);else field('Portas','Sem publicação confirmada');
+  section('URL Pública/HTTPS');field('URL pública',url(info.publicUrl));field('HTTPS',({validated:'VALIDADO (última verificação)',internal:'MODO INTERNO',pending:'PENDENTE'})[info.https?.status]||'NÃO VERIFICADO');field('Última verificação HTTPS',info.https?.checkedAt);field('URL proposta',info.pending?url(info.pending):'Sem proposta pendente');
+  section('Configurações');field('Serviço',info.service);field('Perfil',info.profile);field('Perfil habilitado',info.enabled===true?'Sim':info.enabled===false?'Não':'NÃO VERIFICADO');field('Token administrativo',info.adminToken===true?'Configurado; preservado':info.adminToken===false?'Não configurado':'NÃO VERIFICADO');field('Banco / sessões',info.database);
+  section('Volumes');if(info.volumes?.length)for(const volume of info.volumes)field('Volume',clean(volume.name||volume.type)+' → '+clean(volume.target));else field('Volumes','NÃO VERIFICADO');
+  section('Backup');field('Backup',info.backup);field('Revisão',info.revision);
+  return ui.lines(rows);
 }
 function publicUrl(value){
   if(typeof value!=='string'||/[\s\x00-\x1f\x7f]/.test(value)||/https?:\/\/[^/]+:/.test(value))throw Error('Use domínio HTTPS sem porta, credencial ou caminho.');
