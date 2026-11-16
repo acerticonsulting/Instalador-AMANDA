@@ -88,7 +88,8 @@ class Operations {
   async identity(appName,email,password){
     validateOptions({appName});return this.settings({appName},email,password);
   }
-  async enableService(service,confirmation){
+  async enableService(service,confirmation,plan){
+    if(['api_oficial','wuzapi'].includes(service))return new(require('./api-services.cjs').ApiServices)(this.m).install(service,confirmation,plan);
     await this.ready();const m=this.m,profile={api_oficial:'official',wuzapi:'whatsmeow',rabbitmq:'rabbit'}[service];
     if(!profile||confirmation!=='HABILITAR '+m.state.project+' '+service)throw Error('Confirmação de habilitação inválida.');
     if(m.services().includes(service))throw Error('Serviço já habilitado.');

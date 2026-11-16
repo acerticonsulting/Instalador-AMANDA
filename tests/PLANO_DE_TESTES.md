@@ -1,3 +1,39 @@
+# APIs independentes — 16/11/2026
+
+`api_services_tests.cjs` integra a suíte obrigatória Docker-only: 62 casos novos
+para instalação base, bloqueio de flags antigas, perfis persistidos multiempresa,
+URLs inválidas/normalização/conflito, ausência de Caddy/token, WuzAPI pública
+bloqueada, modo interno explícito, DNS pendente, escopo de migrations, falhas em
+build/backup/Prisma/aplicação/Caddy/TLS, rollback e rollback falho, retomada,
+operações de serviço, imagem imutável/rollback por empresa, status real vs
+declaração, segredos e prompts exclusivos da API. Não simulam WhatsApp conectado.
+
+`compose_contract.test.cjs` roda com Docker CLI, fonte oficial montada read-only
+e configuração gerada em pasta temporária: perfis individuais, padrão mínimo,
+binds antigos e específicos, endpoints internos, domínio Oficial e ausência de
+rota WuzAPI. Não inicia banco nem jobs da plataforma.
+
+Runtime opt-in, sem rede externa/portas públicas/sessões reais:
+
+```sh
+docker run --rm --entrypoint node -v /var/run/docker.sock:/var/run/docker.sock \
+  --mount "type=bind,source=$PWD,target=/suite,readonly" -w /suite \
+  -e AMANDA_OPTIONAL_RUNTIME=1 amanda-installer:local \
+  --test tests/optional_runtime.test.cjs
+```
+
+Requer a imagem `asternic/wuzapi:latest` previamente obtida. O teste cria projeto
+aleatório `amanda_optional_test_*`, volume novo com label e token sintético;
+valida health, autenticação negativa, stop/start/restart e remoção/recriação
+preservando o volume. Remove somente seu container após conferir label; mantém o
+volume sintético e informa seu nome. Não há remoção de volumes ou sessões reais.
+As rotas verificadas não autorizam publicação pública da API inteira.
+
+Homologação pendente em VPS autorizada: build/migrations reais API Oficial,
+DNS/CAA/AAAA/TLS, entrada 80/443, integração e pareamento Meta/WhatsApp. Não
+considerar testes locais como validação desses itens. Falhas HTTP/TLS não devem
+disparar loops de reinício ou emissão ACME enquanto DNS estiver incompatível.
+
 # Conclusões de operações — 14/11/2026
 
 completion_tests cobre contextos update/API install/start/restart/update, revisão

@@ -88,7 +88,8 @@ async function interactive(config,{question,out=console.log,probe}){
   }
 }
 async function probe(manager,urls,{existing=false}={}){
-  const result=await manager.docker(['run','--rm','--network','host','--entrypoint','node',process.env.AMANDA_MANAGER_IMAGE||'amanda-installer:local','-e',`(${scanDomains.toString()})(${JSON.stringify([urls.backendUrl,urls.frontendUrl])}).then(r=>console.log(JSON.stringify(r))).catch(()=>process.exit(1))`],{quiet:true,label:'Pré-validação DNS dentro do Docker'});
+  const targets=Object.values(urls).filter(Boolean);
+  const result=await manager.docker(['run','--rm','--network','host','--entrypoint','node',process.env.AMANDA_MANAGER_IMAGE||'amanda-installer:local','-e',`(${scanDomains.toString()})(${JSON.stringify(targets)}).then(r=>console.log(JSON.stringify(r))).catch(()=>process.exit(1))`],{quiet:true,label:'Pré-validação DNS dentro do Docker'});
   const report=JSON.parse(result.stdout);
   const raw=(await manager.docker(['ps','--format','{{json .}}'],{quiet:true})).stdout;
   const publishers=raw.trim().split(/\r?\n/).filter(Boolean).map(v=>JSON.parse(v));

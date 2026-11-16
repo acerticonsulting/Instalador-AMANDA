@@ -1,5 +1,21 @@
 # Instalador AMANDA — referência histórica 7a5b31d
 
+Instalação padrão: PostgreSQL, Redis, backend, frontend e transcrição; Caddy
+somente no modo HTTPS. API Oficial, WuzAPI e RabbitMQ não são instalados,
+construídos ou ativados por padrão. Arquivos novos com `services:true` são
+recusados antes do provisionamento. Instalações existentes mantêm seus perfis.
+
+Menu **11** gerencia API Oficial; menu **12** gerencia WhatsMeow/WuzAPI.
+Cada instalador solicita a URL própria ou a escolha explícita `INTERNO`, sem
+perguntar URLs do frontend/backend. DNS incorreto salva apenas uma proposta,
+sem criar recursos ou disparar ACME. Veja [URLs e APIs](docs/URLS_E_APIS.md).
+
+WuzAPI pública está bloqueada até homologar autenticação por rota e bloqueio
+administrativo; o modo interno usa `http://wuzapi:8080` e preserva sessões.
+A atualização da API Oficial é identificada como atualização da plataforma
+inteira; a atualização WuzAPI troca somente sua imagem, com backup e rollback
+por empresa. Remover container mantém perfis e volumes para posterior início.
+
 Atualização e habilitação da API Oficial possuem resumos próprios após sucesso
 persistido, incluindo retomadas com contexto registrado. Revisões, backup da
 operação, URLs, portas e healthchecks são apresentados sem segredos. Reiniciar ou

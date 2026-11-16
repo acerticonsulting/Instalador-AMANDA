@@ -30,7 +30,7 @@ historical_main() {
     banner
     printf "${WHITE} Selecione abaixo a opção desejada:\n"
     echo
-    printf "   [${BLUE}1${WHITE}] Instalar ${nome_titulo} (Docker Compose Completo + APIs)\n"
+    printf "   [${BLUE}1${WHITE}] Instalar ${nome_titulo} (Plataforma Docker)\n"
     printf "   [${BLUE}2${WHITE}] Atualizar ${nome_titulo} (Docker Compose)\n"
     printf "   [${BLUE}3${WHITE}] Gerenciar URLs do Sistema (com Ping e Reinício Automático)\n"
     printf "   [${BLUE}4${WHITE}] Status e Reiniciar Contêineres Docker\n"
@@ -41,6 +41,7 @@ historical_main() {
     printf "   [${BLUE}9${WHITE}] Desinstalar Plataforma ${nome_titulo}\n"
     printf "   [${BLUE}10${WHITE}] Homologação GHCR / Configurar Atualização Agendada\n"
     printf "   [${BLUE}11${WHITE}] Instalar ou Gerenciar API Oficial\n"
+    printf "   [${BLUE}12${WHITE}] Instalar ou Gerenciar WhatsMeow/WuzAPI\n"
     printf "   [${BLUE}0${WHITE}] Sair\n"
     echo
 
@@ -54,7 +55,7 @@ historical_tools() {
     printf "   [${BLUE}3${WHITE}] Instalar API WhatsMeow\n"
     printf "   [${BLUE}5${WHITE}] Instalar Nova Instância\n"
     printf "   [${BLUE}31${WHITE}] Instalar ou Gerenciar API Oficial (WhatsApp Meta Cloud)\n"
-    printf "   [${BLUE}32${WHITE}] Atualizar API Oficial (Docker)\n"
+    printf "   [${BLUE}32${WHITE}] Atualizar plataforma AMANDA (inclui API Oficial)\n"
     echo
     printf "  ${BLUE}━━ Versão da aplicação ━━${WHITE}\n"
     printf "   [${BLUE}4${WHITE}] Roolback Versão\n"
@@ -110,7 +111,7 @@ historical_api() {
     printf "   ${WHITE}URL Configurada: ${CYAN}%s${WHITE}\n\n" "$url_oficial"
     printf "   ${WHITE}Selecione a ação desejada:\n"
     printf "     [${BLUE}1${WHITE}] Instalar API Oficial (Contêiner Docker - Padrão AMANDA)\n"
-    printf "     [${BLUE}2${WHITE}] Atualizar API Oficial (Contêiner Docker)\n"
+    printf "     [${BLUE}2${WHITE}] Atualizar plataforma AMANDA (inclui API Oficial)\n"
     printf "     [${BLUE}3${WHITE}] Status Detalhado e Teste de Conexão\n"
     printf "     [${BLUE}4${WHITE}] Iniciar / Reiniciar API Oficial (Docker)\n"
     printf "     [${BLUE}5${WHITE}] Parar API Oficial (Docker)\n"
@@ -191,7 +192,7 @@ historical_summary() {
   printf '   %bPorta PostgreSQL: ------>> %b%s\n' "$WHITE" "$YELLOW" "${PORT_DB:-5432}"
   printf '   %bPorta Redis: ----------->> %b%s\n' "$WHITE" "$YELLOW" "${PORT_REDIS:-6379}"
   printf '   %bPorta Transcrição: ----->> %b%s\n' "$WHITE" "$YELLOW" "${PORT_TRANSCRIBER:-4002}"
-  printf '   %bPorta Wuzapi: ---------->> %b%s\n' "$WHITE" "$YELLOW" "${PORT_WUZAPI:-8090}"
+  printf '   %bAPIs opcionais: -------->> %b%s\n' "$WHITE" "$YELLOW" 'Não instaladas; menus 11 e 12'
   printf '   %bVersão Instalada: ------->> %b%s\n' "$WHITE" "$YELLOW" "${versao_instalacao}"
   printf '   %bCommit Instalado: ------->> %b%s\n' "$WHITE" "$YELLOW" "${commit_instalacao}"
 }

@@ -9,7 +9,7 @@ const email=value=>{if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw Error('In
 const port=value=>{if(!/^\d+$/.test(value)||+value<1||+value>65535)throw Error('Use uma porta entre 1 e 65535.');return String(+value);};
 const domain=value=>{const v=/^https?:\/\//i.test(value)?value:'https://'+value;const u=new URL(v);if(u.protocol!=='https:'||u.port||u.username||u.password||u.search||u.hash||u.pathname!=='/'||!u.hostname.includes('.')||u.hostname.split('.').some(p=>! /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(p))||isIP(u.hostname))throw Error('Use um domínio DNS válido, com HTTPS, sem porta ou caminho.');return u.origin;};
 function publicSummary(c,directory){
-  const o=c.options,pg=o.pg||PG_PROFILES.small,flags={official:true,wuzapi:true,rabbit:true,...o.services};
+  const o=c.options,pg=o.pg||PG_PROFILES.small,flags=require('./options.cjs').serviceFlags(o);
   return {
     tipo:c.edge?'Domínios e HTTPS':c.public?'IP / acesso pela rede':'Local',empresa:c.companyName||c.project,projeto:c.project,plataforma:o.appName||'AMANDA',suporte:o.supportPhone||'Não informado',frontend:c.frontendUrl,backend:c.backendUrl,
     portas:c.edge?'80 TCP, 443 TCP/UDP (HTTP direto em loopback)':(new URL(c.frontendUrl).port||'80')+' / '+(new URL(c.backendUrl).port||'80'),
@@ -74,12 +74,9 @@ async function collectInstallation({question,checkDomains,out=console.log,getRes
     },
     async()=>{
       show('Baileys e transcrição fazem parte do backend oficial. Pareamento e contas Meta são configurados na interface após a instalação.');
-      const previousServices={official:true,wuzapi:true,rabbit:true,...draft.options.services};
-      const services={official:await yes('Habilitar API Oficial WhatsApp/Meta',previousServices.official?'s':'n'),wuzapi:await yes('Habilitar WuzAPI/WhatsMeow',previousServices.wuzapi?'s':'n')};services.rabbit=services.official?await yes('Habilitar RabbitMQ para filas da API Oficial',previousServices.rabbit?'s':'n'):false;draft.options.services=services;
-      for(const [flag,key,label,defaultPort,tokenKey]of [['official','officialPort','API Oficial','6000','officialToken'],['wuzapi','wuzapiPort','WuzAPI','8090','wuzapiToken']]){
-        if(services[flag]){draft.options[key]=Number(await read('Porta externa '+label,String(draft.options[key]||defaultPort),port));const token=await read('Token interno '+label+' (ENTER gera automaticamente)',undefined,v=>{if(v)validateOptions({[tokenKey]:v});return v;},true,draft.options[tokenKey]);if(token)draft.options[tokenKey]=token;else delete draft.options[tokenKey];}else{delete draft.options[key];delete draft.options[tokenKey];}
-      }
-      if(draft.edge&&services.official)draft.options.officialUrl=await read('URL pública HTTPS da API Oficial (opcional)',draft.options.officialUrl||'',v=>v?domain(v):'');else delete draft.options.officialUrl;
+      draft.options.services={official:false,wuzapi:false,rabbit:false};
+      for(const key of ['officialPort','wuzapiPort','officialToken','wuzapiToken','officialUrl'])delete draft.options[key];
+      show('Instalação padrão: somente AMANDA. API Oficial no menu 11; WhatsMeow/WuzAPI no menu 12. RabbitMQ não será instalado.');
       if(await yes('Configurar Facebook/Meta App ID e App Secret agora',GROUPS.facebook.some(([k])=>draft.options.backendEnv[k])?'s':'n'))await group('facebook');else for(const[k]of GROUPS.facebook)delete draft.options.backendEnv[k];
     },
     async()=>{

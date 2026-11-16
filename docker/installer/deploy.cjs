@@ -37,6 +37,7 @@ async function install(manager,config){
  const c=require('./manager.cjs').normalizeConfig(config),root=process.env.AMANDA_DEPLOY_LAYOUT==='1'?companyDirectory(c.project):manager.root,info=inspectInstallation(root,c.project);
  if(info.kind==='unknown')throw Error(conflict(info));
  if(!['absent','empty','temporary'].includes(info.kind))throw Error(`Instalação AMANDA já registrada em ${root}; use resume ou gerenciamento, sem novo provisionamento.`);
+ require('./options.cjs').assertBaseInstall(c.options);
  const pending=info.savedConfig||c;
  await require('./domain-preflight.cjs').assertDns(manager,pending);
  const target=await installationManager(manager,c);

@@ -37,7 +37,7 @@ function temporary() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'amanda-manager-test-'));
   return { root, cleanup() { const resolved = fs.realpathSync(root); assert.ok(resolved.startsWith(fs.realpathSync(os.tmpdir()) + path.sep)); assert.ok(path.basename(resolved).startsWith('amanda-manager-test-')); fs.rmSync(resolved,{recursive:true}); } };
 }
-const defaultEnv = 'COMPOSE_PROJECT_NAME=amanda\nDB_PASS=fixture-db-password\nJWT_SECRET=fixture-jwt-secret\nJWT_REFRESH_SECRET=fixture-refresh\nTRANSCRIBE_API_KEY=fixture-transcription\n';
+const defaultEnv = 'COMPOSE_PROJECT_NAME=amanda\nDB_PASS=fixture-db-password\nJWT_SECRET=fixture-jwt-secret\nJWT_REFRESH_SECRET=fixture-refresh\nTRANSCRIBE_API_KEY=fixture-transcription\nTOKEN_API_OFICIAL=fixture-official-token\nWUZAPI_ADMIN_TOKEN=fixture-wuzapi-token\n';
 class FakeRunner {
   constructor() { this.calls=[]; this.messages=''; this.secrets=[]; this.fail=null; this.existing=[]; this.dirty=false; this.users='0'; this.badService=null; this.remote=SOURCE; }
   secret(s) { if(s)this.secrets.push(s); }
@@ -76,7 +76,7 @@ class FakeRunner {
         if(args.includes('config')) {
           const project=args[args.indexOf('-p')+1];this.project=project;
           stdout=JSON.stringify(project.endsWith('_voz')&&this.addonValid?{services:{voice:{container_name:project+'_voice',image:project+'-voice:local',environment:{},healthcheck:{test:['CMD','true']}}},volumes:{voice_data:{name:project+'_voice_data'}},networks:{amanda:{name:'amanda_default',external:true}}}:{services:Object.fromEntries([...CORE,'edge','migrate','seed','official-db-init','official-migrate'].map(n=>[n,{image:project+'-'+n+':local',environment:{}}])),networks:{default:{name:project+'_default',external:!!this.externalNetwork}},volumes:Object.fromEntries(['postgres_data','redis_data','backend_database','backend_private','backend_public','oficial_public','wuzapi_data','rabbitmq_data','caddy_data','caddy_config'].map(n=>[n,{name:project+'_'+n}]))});
-          if(args.includes(path.join(path.dirname(args[args.indexOf('--project-directory')+1]),'.amanda-installer','compose-names.json'))){const c=JSON.parse(stdout),overlay=JSON.parse(fs.readFileSync(args[args.lastIndexOf('-f')+1]));for(const [k,v]of Object.entries(overlay.services))c.services[k]={...c.services[k],...v};stdout=JSON.stringify(c);}
+          for(let i=0;i<args.length-1;i++)if(args[i]==='-f'&&args[i+1].endsWith('.json')){const c=JSON.parse(stdout),overlay=JSON.parse(fs.readFileSync(args[i+1]));for(const [k,v]of Object.entries(overlay.services))c.services[k]={...c.services[k],...v};stdout=JSON.stringify(c);}
           if(this.configTransform)stdout=JSON.stringify(this.configTransform(JSON.parse(stdout)));
         } else if(args.includes('ps')) {
           if(args.includes('-q'))stdout='b'.repeat(64);
@@ -93,12 +93,13 @@ class FakeRunner {
     return {stdout,stderr:'',code:0};
   }
 }
-async function fixture() { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());return {...t,runner,m}; }
+async function fixture({legacy=false}={}) { const t=temporary(),runner=new FakeRunner(),m=new Manager(t.root,runner);await m.prepare(input());if(legacy){m.save({...m.state,profiles:['official','whatsmeow','rabbit']});writeEnv(path.join(m.state.platform,'.env'),{COMPOSE_PROFILES:'official,whatsmeow,rabbit',USE_WHATSAPP_OFICIAL:'true',WUZAPI_URL:'http://wuzapi:8080',RABBITMQ_ENABLED_GLOBAL:'true'});}return {...t,runner,m}; }
+require('./api_services_tests.cjs')({fixture,temporary,FakeRunner,input});
 test('complementary summary failure warns, does not reuse an old backup or mutate deployment',async()=>{const t=await fixture();try{await t.m.initialize();const before=fs.readFileSync(t.m.stateFile);t.runner.messages='';t.runner.calls=[];t.runner.fail=c=>c.args.includes('config');await require('../docker/installer/completion.cjs').showUpdateCompletion(t.m,{health:true});assert.match(t.runner.messages,/COM AVISOS/);assert.match(t.runner.messages,/Backup desta operação: Não verificado/);assert.deepEqual(fs.readFileSync(t.m.stateFile),before);assert.ok(!t.runner.calls.some(c=>['build','up','migrate','seed','stop','restart'].some(a=>c.args.includes(a))));}finally{t.cleanup();}});
 test('update completion is emitted once after ready, uses this backup and does not add deployments',async()=>{const t=await fixture();try{await t.m.initialize();t.runner.messages='';t.runner.calls=[];await t.m.execute('update');assert.equal(t.m.state.phase,'ready');assert.match(t.runner.messages,/ATUALIZAÇÃO CONCLUÍDA/);assert.match(t.runner.messages,/Revisão inalterada/);assert.match(t.runner.messages,/metadados completos/);assert.ok(!t.runner.calls.some(isSeed));assert.equal(t.runner.calls.filter(c=>c.args.includes('build')).length,1);assert.equal(t.runner.messages.split('AMANDA — ATUALIZAÇÃO CONCLUÍDA').length-1,2); // cabeçalho e rodapé, uma tela
  }finally{t.cleanup();}});
 test('failed update never emits success and resume uses saved update context',async()=>{const t=await fixture();try{await t.m.initialize();t.runner.messages='';t.runner.fail=c=>c.args.includes('run')&&c.args.includes('migrate');await assert.rejects(t.m.execute('update'));assert.ok(!t.runner.messages.includes('ATUALIZAÇÃO CONCLUÍDA'));t.runner.fail=null;t.runner.messages='';await t.m.execute('resume');assert.match(t.runner.messages,/ATUALIZAÇÃO CONCLUÍDA/);assert.equal(t.m.state.phase,'ready');}finally{t.cleanup();}});
-test('official enable resume and later start distinguish installation from startup',async()=>{const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.volumeAbsent=true;try{await m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.initialize();r.messages='';r.fail=c=>c.args.includes('official-migrate');await assert.rejects(new Operations(m).enableService('api_oficial','HABILITAR amanda api_oficial'));assert.ok(!r.messages.includes('API OFICIAL — INSTALAÇÃO CONCLUÍDA'));r.fail=null;r.messages='';await m.execute('resume');assert.match(r.messages,/API OFICIAL — INSTALAÇÃO CONCLUÍDA/);r.messages='';await new Operations(m).services('start','api_oficial');assert.match(r.messages,/API OFICIAL — SERVIÇO INICIADO/);assert.ok(!r.messages.includes('INSTALAÇÃO CONCLUÍDA'));}finally{t.cleanup();}});
+test('official enable resume and later start distinguish installation from startup',async()=>{const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.volumeAbsent=true;try{await m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.initialize();r.messages='';r.fail=c=>c.args.includes('official-migrate');await assert.rejects(new Operations(m).enableService('api_oficial','HABILITAR amanda api_oficial',{service:'api_oficial',url:'',mode:'internal'}));assert.ok(!r.messages.includes('API OFICIAL — INSTALAÇÃO CONCLUÍDA'));r.fail=null;r.messages='';await m.execute('resume');assert.match(r.messages,/API OFICIAL — INSTALAÇÃO CONCLUÍDA/);r.messages='';await new Operations(m).services('start','api_oficial');assert.match(r.messages,/API OFICIAL — SERVIÇO INICIADO/);assert.ok(!r.messages.includes('INSTALAÇÃO CONCLUÍDA'));}finally{t.cleanup();}});
 test('status selector validates companies and replaces Manager on switch',async()=>{const t=await fixture(),deploy=require('../docker/installer/deploy.cjs'),original=deploy.inspectInstallation;try{await t.m.initialize();const betaRoot=path.join(t.root,'instances','beta'),beta=new Manager(betaRoot,new FakeRunner());await beta.prepare(input({project:'beta'}));await beta.initialize();deploy.inspectInstallation=()=>({kind:'complete'});const menu=new Menus(t.m,async()=> '2',null,{out:()=>{}});await menu.selectInstance(true);assert.equal(menu.m.root,betaRoot);assert.equal(menu.m.state.project,'beta');menu.ask=async()=> '1';await menu.selectInstance(true);assert.equal(menu.m.root,t.root);menu.ask=async()=> '0';await assert.rejects(menu.selectInstance(true),/cancelada/);}finally{deploy.inspectInstallation=original;t.cleanup();}});
 test('backend scoped backup stops only backend, preserves complete backup pointer and rejects full restore',async()=>{
  const t=await fixture();try{await t.m.initialize();t.m.save({...t.m.state,lastBackup:'full-backup-reference'});
@@ -373,10 +374,10 @@ test('minimal installation builds, migrates, backs up, restores and updates only
   const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);try{await m.prepare(input({companyName:'Empresa Teste',options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.build();await m.initialize();assert.equal(m.services().length,5);assert.deepEqual(m.databases(),['amanda']);assert.ok(!r.calls.some(c=>c.args.includes('official-migrate')));const dir=await m.backup(),data=JSON.parse(fs.readFileSync(path.join(dir,'backup.json')));assert.deepEqual(data.databases,['amanda']);assert.equal(data.hashes['api_oficial.dump'],undefined);await new Operations(m).restore(dir,'all','RESTAURAR amanda');await m.update();const env=envValues(path.join(m.state.platform,'.env'));assert.equal(env.USE_WHATSAPP_OFICIAL,'false');assert.equal(env.WUZAPI_URL,'');assert.deepEqual(m.state.profiles,[]);assert.equal(r.calls.filter(isSeed).length,1);}finally{t.cleanup();}
 });
 test('optional service can be enabled later with backup and migrations but no new seed',async()=>{
-  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.volumeAbsent=true;try{await m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.initialize();r.calls=[];await new Operations(m).enableService('api_oficial','HABILITAR amanda api_oficial');assert.ok(m.services().includes('api_oficial'));assert.equal(envValues(path.join(m.state.platform,'.env')).USE_WHATSAPP_OFICIAL,'true');assert.equal(r.calls.filter(isSeed).length,0);assert.ok(r.calls.findIndex(c=>c.args.includes('pg_dump'))<r.calls.findIndex(c=>c.args.includes('official-migrate')));assert.equal(m.state.phase,'ready');}finally{t.cleanup();}
+  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.volumeAbsent=true;try{await m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.initialize();r.calls=[];await new Operations(m).enableService('api_oficial','HABILITAR amanda api_oficial',{service:'api_oficial',url:'',mode:'internal'});assert.ok(m.services().includes('api_oficial'));assert.equal(envValues(path.join(m.state.platform,'.env')).USE_WHATSAPP_OFICIAL,'true');assert.equal(r.calls.filter(isSeed).length,0);assert.ok(r.calls.findIndex(c=>c.args.includes('pg_dump'))<r.calls.findIndex(c=>c.args.includes('official-migrate')));assert.equal(m.state.phase,'ready');}finally{t.cleanup();}
 });
 test('failed optional-service migration remains resumable without automatic schema rollback',async()=>{
-  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.volumeAbsent=true;try{await m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.initialize();r.fail=c=>c.args.includes('official-migrate');await assert.rejects(new Operations(m).enableService('api_oficial','HABILITAR amanda api_oficial'));assert.equal(m.state.phase,'migration-update');r.fail=null;await m.execute('resume');assert.equal(m.state.phase,'ready');assert.equal(r.calls.filter(isSeed).length,1);}finally{t.cleanup();}
+  const t=temporary(),r=new FakeRunner(),m=new Manager(t.root,r);r.volumeAbsent=true;try{await m.prepare(input({options:{services:{official:false,wuzapi:false,rabbit:false}}}));await m.initialize();r.fail=c=>c.args.includes('official-migrate');await assert.rejects(new Operations(m).enableService('api_oficial','HABILITAR amanda api_oficial',{service:'api_oficial',url:'',mode:'internal'}));assert.equal(m.state.phase,'migration-update');r.fail=null;await m.execute('resume');assert.equal(m.state.phase,'ready');assert.equal(r.calls.filter(isSeed).length,1);}finally{t.cleanup();}
 });
 test('resource limits reject oversized PostgreSQL profiles before cloning or modifying runtime config',async()=>{
   const {validatePg}=require('../docker/installer/options.cjs');assert.throws(()=>validatePg({maxConnections:500,sharedBuffers:'1GB'},1024**3),/memória/);for(const pg of [{maxConnections:0,sharedBuffers:'128MB'},{maxConnections:100,sharedBuffers:'8GB'},{maxConnections:100,sharedBuffers:'128MB;id'}])assert.throws(()=>validatePg(pg));
@@ -449,7 +450,7 @@ test('push setup generates a matching P-256 key pair once and preserves subscrip
 });
 
 test('service submenu targets only the selected Compose service and rejects arbitrary names',async()=>{
-  const t=await fixture();try{await t.m.initialize();t.runner.calls=[];const ops=new Operations(t.m);await ops.services('restart','api_oficial');const call=t.runner.calls.find(c=>c.args.includes('restart'));assert.equal(call.args.at(-1),'api_oficial');await assert.rejects(ops.services('restart','some-other-project'));assert.ok(!t.runner.calls.some(c=>c.bin==='sudo'));}finally{t.cleanup();}
+  const t=await fixture({legacy:true});try{await t.m.initialize();t.runner.calls=[];const ops=new Operations(t.m);await ops.services('restart','api_oficial');const call=t.runner.calls.find(c=>c.args.includes('restart'));assert.equal(call.args.at(-1),'api_oficial');await assert.rejects(ops.services('restart','some-other-project'));assert.ok(!t.runner.calls.some(c=>c.bin==='sudo'));}finally{t.cleanup();}
 });
 
 test('restore verifies hashes and typed project confirmation before any destructive call',async()=>{
@@ -457,7 +458,7 @@ test('restore verifies hashes and typed project confirmation before any destruct
 });
 
 test('database restore is targeted, backed up first, and a failure leaves services stopped for recovery',async()=>{
-  const t=await fixture();try{await t.m.initialize();const dir=await t.m.backup();t.runner.calls=[];await new Operations(t.m).restore(dir,'api_oficial','RESTAURAR amanda');const drops=t.runner.calls.filter(c=>c.args.includes('dropdb'));assert.equal(drops.length,1);assert.equal(drops[0].args.at(-1),'api_oficial');assert.ok(t.runner.calls.findIndex(c=>c.args.includes('pg_dump'))<t.runner.calls.findIndex(c=>c.args.includes('dropdb')));assert.equal(t.m.state.phase,'ready');
+  const t=await fixture({legacy:true});try{await t.m.initialize();const dir=await t.m.backup();t.runner.calls=[];await new Operations(t.m).restore(dir,'api_oficial','RESTAURAR amanda');const drops=t.runner.calls.filter(c=>c.args.includes('dropdb'));assert.equal(drops.length,1);assert.equal(drops[0].args.at(-1),'api_oficial');assert.ok(t.runner.calls.findIndex(c=>c.args.includes('pg_dump'))<t.runner.calls.findIndex(c=>c.args.includes('dropdb')));assert.equal(t.m.state.phase,'ready');
     t.runner.calls=[];t.runner.fail=c=>c.args.includes('pg_restore')&&c.args.includes('--single-transaction');await assert.rejects(new Operations(t.m).restore(dir,'amanda','RESTAURAR amanda'));assert.equal(t.m.state.phase,'restoring');assert.ok(!t.runner.calls.some(c=>c.args.includes('up')&&c.args.includes('backend')));
     t.runner.fail=null;await new Operations(t.m).restore(dir,'amanda','RESTAURAR amanda');assert.equal(t.m.state.phase,'ready');
   }finally{t.cleanup();}
@@ -510,7 +511,7 @@ test('restored main menu is shown before any Docker download and exit creates no
 test('default complete stack and administrator are retained; custom values remain literal',()=>{
   const c=normalizeConfig(input());assert.equal(c.adminEmail,'admin@amanda.com.br');assert.equal(c.adminPassword,'adminamanda');
   assert.equal(normalizeConfig(input({adminPassword:"custom$#'\\value"})).adminPassword,"custom$#'\\value");
-  for(const extra of [{project:'../etc'},{adminEmail:'invalid'},{adminPassword:''},{sourceUrl:'https://other.invalid/repo'},{frontendUrl:'javascript:alert(1)'},{backendUrl:'http://user:password@localhost:8080'},{frontendUrl:'http://localhost:6000'},{frontendUrl:'http://server:3000'}])assert.throws(()=>normalizeConfig(input(extra)));
+  for(const extra of [{project:'../etc'},{adminEmail:'invalid'},{adminPassword:''},{sourceUrl:'https://other.invalid/repo'},{frontendUrl:'javascript:alert(1)'},{backendUrl:'http://user:password@localhost:8080'},{frontendUrl:'http://server:3000'}])assert.throws(()=>normalizeConfig(input(extra)));
   assert.equal(normalizeConfig(input({frontendUrl:'http://server:3000',backendUrl:'http://server:8080',public:true})).public,true);
 });
 test('HTTPS remains optional and requires explicit separate DNS domains',()=>{
@@ -518,10 +519,10 @@ test('HTTPS remains optional and requires explicit separate DNS domains',()=>{
   for(const extra of [{frontendUrl:'https://app.example.test'},{edge:true,frontendUrl:'https://localhost',backendUrl:'https://localhost'},{edge:true,frontendUrl:'https://app.example.test',backendUrl:'https://app.example.test'}])assert.throws(()=>normalizeConfig(input(extra)));
 });
 test('protected filesystem paths are refused',()=>{for(const p of ['/','/etc','/etc/amanda','/var/lib/docker/amanda','/run/user/1','/tmp/a,b'])assert.throws(()=>rootPath(p));});
-test('preparation uses official Git/Compose, unique secrets and only the actual eight services',async()=>{
+test('preparation uses official Git/Compose, unique secrets and only the five base services',async()=>{
   const t=await fixture();try{
-    assert.deepEqual(t.m.state.profiles,['official','whatsmeow','rabbit']);assert.equal(t.m.state.freshResourcesVerified,true);
-    const env=envValues(path.join(t.m.state.platform,'.env'));assert.equal(env.USE_WHATSAPP_OFICIAL,'true');assert.equal(env.RABBITMQ_ENABLED_GLOBAL,'true');assert.equal(env.WUZAPI_URL,'http://wuzapi:8080');assert.equal(env.BIND_ADDRESS,'127.0.0.1');assert.equal(env.DB_PASS,'fixture-db-password');
+    assert.deepEqual(t.m.state.profiles,[]);assert.equal(t.m.state.freshResourcesVerified,true);
+    const env=envValues(path.join(t.m.state.platform,'.env'));assert.equal(env.USE_WHATSAPP_OFICIAL,'false');assert.equal(env.RABBITMQ_ENABLED_GLOBAL,'false');assert.equal(env.WUZAPI_URL,'');assert.equal(env.BIND_ADDRESS,'127.0.0.1');assert.equal(env.DB_PASS,'fixture-db-password');
     assert.equal(env.AMANDA_ADMIN_PASSWORD,undefined);
     assert.ok(!t.runner.calls.some(c=>['apt','sudo','npm','pm2','python','openssl','systemctl'].includes(c.bin)));
     assert.equal(fs.readFileSync(path.join(t.m.state.platform,'docker-compose.yml'),'utf8'),'# official test fixture\n');
@@ -550,7 +551,7 @@ test('initial seed only runs after migrations and an empty user table; all servi
     await t.m.build();await t.m.initialize();
     assert.equal(t.m.state.initialized,true);assert.equal(t.m.state.phase,'ready');assert.equal(t.runner.calls.filter(isSeed).length,1);
     const seed=t.runner.calls.find(isSeed);assert.equal(seed.options.env.AMANDA_ADMIN_EMAIL,'admin@amanda.com.br');assert.equal(seed.options.env.AMANDA_ADMIN_PASSWORD,'adminamanda');
-    const start=t.runner.calls.find(c=>c.args.includes('up')&&c.args.includes('backend'));for(const name of CORE)assert.ok(start.args.includes(name));
+    const start=t.runner.calls.find(c=>c.args.includes('up')&&c.args.includes('backend'));for(const name of t.m.services())assert.ok(start.args.includes(name));
     assert.ok(t.runner.calls.some(c=>c.args.some(a=>String(a).includes('/auth/me'))));
   }finally{t.cleanup();}
 });
@@ -587,13 +588,13 @@ test('failed or interrupted seed is not silently repeated',async()=>{
   const t=await fixture();try{t.runner.fail=c=>isSeed(c);await assert.rejects(t.m.initialize());assert.equal(t.m.state.seedAttempted,true);t.runner.fail=null;await assert.rejects(t.m.initialize(),/Seed anterior incompleto/);assert.equal(t.runner.calls.filter(isSeed).length,1);}finally{t.cleanup();}
 });
 test('unhealthy required service cannot yield a success result',async()=>{
-  const t=await fixture();try{t.runner.badService='api_oficial';await assert.rejects(t.m.initialize(),/api_oficial/);assert.equal(t.m.state.initialized,false);}finally{t.cleanup();}
+  const t=await fixture();try{t.runner.badService='api_transcricao';await assert.rejects(t.m.initialize(),/api_transcricao/);assert.equal(t.m.state.initialized,false);}finally{t.cleanup();}
 });
 test('resume after startup failure preserves accounts and does not seed again',async()=>{
   const t=await fixture();try{t.runner.badService='frontend';await assert.rejects(t.m.initialize());t.runner.badService=null;await new Operations(t.m).configure({network:{frontendUrl:'http://localhost:3100'}});assert.equal(t.m.state.initialized,false);await t.m.execute('resume');assert.equal(t.runner.calls.filter(isSeed).length,1);assert.equal(t.m.state.initialized,true);}finally{t.cleanup();}
 });
 test('update builds, backs up both databases and volumes, migrates and never seeds',async()=>{
-  const t=await fixture();try{await t.m.initialize();t.runner.calls=[];await t.m.execute('update');assert.equal(t.runner.calls.filter(isSeed).length,0);assert.ok(fs.existsSync(path.join(t.m.state.lastBackup,'amanda.dump')));assert.ok(fs.existsSync(path.join(t.m.state.lastBackup,'api_oficial.dump')));assert.ok(fs.existsSync(path.join(t.m.state.lastBackup,'volumes.tgz')));assert.equal(JSON.parse(fs.readFileSync(path.join(t.m.state.lastBackup,'backup.json'))).complete,true);assert.equal(t.m.state.phase,'ready');}finally{t.cleanup();}
+  const t=await fixture({legacy:true});try{await t.m.initialize();t.runner.calls=[];await t.m.execute('update');assert.equal(t.runner.calls.filter(isSeed).length,0);assert.ok(fs.existsSync(path.join(t.m.state.lastBackup,'amanda.dump')));assert.ok(fs.existsSync(path.join(t.m.state.lastBackup,'api_oficial.dump')));assert.ok(fs.existsSync(path.join(t.m.state.lastBackup,'volumes.tgz')));assert.equal(JSON.parse(fs.readFileSync(path.join(t.m.state.lastBackup,'backup.json'))).complete,true);assert.equal(t.m.state.phase,'ready');}finally{t.cleanup();}
 });
 test('update refuses tracked user changes and preserves secret configuration',async()=>{
   const t=await fixture();try{await t.m.initialize();const before=fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8');t.runner.dirty=true;await assert.rejects(t.m.execute('update'),/alterações locais/);assert.equal(fs.readFileSync(path.join(t.m.state.platform,'.env'),'utf8'),before);}finally{t.cleanup();}
@@ -704,7 +705,7 @@ test('wizard keeps the preflight company fixed while retaining PostgreSQL and ad
 });
 test('HTTPS wizard accepts distinct domains and custom administrator without leaking secrets in review',async()=>{
   const output=[],password='custom$#strongPassword',c=await installInput(undefined,{out:s=>output.push(s),question:wizardQuestion({'Tipo de instalação':'1','URL do frontend HTTPS':'app.example.com','URL do backend HTTPS':'https://api.example.com','E-mail do administrador':'owner@example.com','Senha do administrador':password,'Confirmação da senha':password,'URL pública HTTPS da API Oficial':'official.example.com'})});
-  assert.equal(c.edge,true);assert.equal(c.frontendUrl,'https://app.example.com');assert.equal(c.backendUrl,'https://api.example.com');assert.equal(c.options.officialUrl,'https://official.example.com');assert.equal(c.adminPassword,password);assert.ok(!output.join('').includes(password));
+  assert.equal(c.edge,true);assert.equal(c.frontendUrl,'https://app.example.com');assert.equal(c.backendUrl,'https://api.example.com');assert.equal(c.options.officialUrl,undefined);assert.deepEqual(c.options.services,{official:false,wuzapi:false,rabbit:false});assert.equal(c.adminPassword,password);assert.ok(!output.join('').includes(password));
 });
 test('IP wizard maps IPv4/IPv6 and custom ports into configuration',async()=>{
   for(const ip of ['192.0.2.20','2001:db8::1']){const c=await installInput(undefined,{out:()=>{},question:wizardQuestion({'Tipo de instalação':'2','IP do servidor':ip,'Deseja utilizar portas personalizadas':'s','Porta externa do frontend':'3300','Porta externa do backend':'8800','E-mail do administrador':'owner@example.test','Senha do administrador':'safe$Pass12345','Confirmação da senha':'safe$Pass12345'})});assert.equal(c.public,true);assert.equal(new URL(c.backendUrl).port,'8800');assert.ok(c.frontendUrl.includes(ip));}

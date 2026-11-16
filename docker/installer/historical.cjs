@@ -71,7 +71,7 @@ async function collectHistorical({question,checkDomains,out=console.log,project,
   out(render('question','confirmacao').split(' >> Os dados estão corretos?')[0]);
   out(render('summary','',{subdominio_backend:c.backendUrl,subdominio_frontend:c.frontendUrl,email_deploy:c.adminEmail,empresa:c.project,nome_titulo:c.options.appName,numero_suporte:c.options.supportPhone,facebook_app_id:c.options.backendEnv.FACEBOOK_APP_ID,repo_url:c.sourceUrl,proxy:c.edge?'Caddy (Docker)':'none',backend_port:back,frontend_port:front,PORT_WUZAPI:'8090',versao_instalacao:'main',commit_instalacao:'Revisão oficial obtida após confirmação'}));
   text('Diretório da instalação: '+(typeof directory==='function'?directory(c):directory));
-  text('PostgreSQL, Redis e transcrição: portas internas da rede Docker. API Oficial: 6000; WuzAPI: 8090.');
+  text('PostgreSQL, Redis e transcrição: portas internas da rede Docker. API Oficial e WuzAPI não serão instaladas; utilize os menus 11 e 12 posteriormente.');
   if(!/^s$/i.test(await extra('Os dados estão corretos? S/N','n')))throw Error('Instalação cancelada antes de criar recursos.');
   text(' >> Continuando a Instalação...');
   out(render('optimize'));

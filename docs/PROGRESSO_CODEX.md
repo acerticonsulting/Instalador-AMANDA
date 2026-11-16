@@ -1,3 +1,71 @@
+# APIs independentes e instalação base — 16/11/2026
+
+Base: main do instalador c7dc546 e plataforma b0467a9. Instalação nova, wizard
+avançado e fluxo histórico usam apenas postgres, redis, backend, frontend e
+api_transcricao, mais edge quando solicitado. `services:true` em configuração
+nova é recusado antes de recursos. Resume da preparação consulta perfis do estado
+persistido; update/adoção não recebem os padrões novos. Segredos futuros gerados
+pelo configurador não significam ativação dos respectivos serviços.
+
+Menu 11 e novo menu 12 têm gestão própria de instalação, update, diagnóstico,
+início/reinício, parada, logs, integração, domínio e remoção do container. O atalho
+histórico de WhatsMeow abre o submenu; CLI wuzapi-start foi preservada. Domínio
+próprio não abre o formulário de frontend/backend. Há seleção de empresa,
+confirmação, pré-validação DNS/portas, conflito de domínio e ownership. URL interna
+do backend permanece Docker. Perfis/volumes/sessões/credenciais antigos permanecem.
+
+Transações reutilizam locks, backup e recuperação. API Oficial executa somente
+seu db-init/Prisma; WuzAPI não executa migrations. Aplicação afeta API/backend e,
+quando necessário, edge. Backup consistente anuncia pausa dos gravadores. Falhas
+anteriores a migrations permitem rollback de configuração; migrations iniciadas
+não são revertidas automaticamente. TLS pendente tem checkpoint da API, retomável
+sem build/seed/Sequelize. Proposta com DNS incorreto não publica Caddy nem dispara
+ACME. Apenas domínio da mesma API pode ser corrigido no checkpoint próprio de TLS;
+outros estados parciais continuam bloqueados. `https-pending` da base é preservado.
+
+Atualizar API Oficial está explicitamente identificado como atualizar plataforma
+inteira. WuzAPI usa atualização somente da imagem, verificada por ID e saúde,
+com backup e override privado imutável por empresa. Rollback não retagueia imagem
+compartilhada. Remoção é somente rm -s -f do serviço, preservando volumes.
+
+WuzAPI pública fica bloqueada: a imagem configurável/latest não fornece contrato
+homologado de todas as rotas autenticadas e bloqueio administrativo. O usuário
+pode confirmar modo interno. Não há rota Caddy WuzAPI nem URL pública inventada.
+A plataforma acrescenta binds específicos com fallback compatível para instalações
+antigas; novos opcionais ficam em loopback. Não foram alterados firewall/SSH/VPS.
+
+Validação local: suíte integral (85 scripts / 5 etapas), regressões em Node 22
+dentro de Docker; 62 novos casos direcionados em api_services_tests, além dos
+contratos existentes atualizados. Contratos com Compose real: 14 aprovados,
+incluindo todos os perfis separadamente e binds novos/legados. Plataforma:
+tests/docker.test.cjs com COMPOSE_BIN=docker, 6 aprovados. Build da imagem do
+instalador validado. Resultado final da suíte e verificações TTY complementares
+registrados abaixo após a última execução.
+
+Resultado final: 338 testes na suíte obrigatória, 336 aprovados, nenhuma falha e
+2 verificações TTY optativas ignoradas nessa execução. As duas foram executadas
+separadamente com Docker real e passaram (sem skips). Registros locais ignorados
+pelo Git: tmp/optional-final.log, optional-compose-final.log, optional-platform.log,
+optional-runtime.log, optional-tty.log e optional-build-final.log. A construção
+final inclui o módulo novo; testes Node/npm não foram executados no host.
+
+Runtime opt-in optional_runtime.test.cjs: 1 aprovado com imagem real WuzAPI
+sha256:5cc11e5bf30c09fb27034fad75ad5419bf355e787974f16deb680eceb8627473.
+Container sem rede externa, sem portas publicadas e com chaves sintéticas:
+health HTTP, recusa de token ausente/inválido em /admin/users e /session/status,
+stop/start/restart, remoção/recriação e persistência do marcador em volume.
+Volume sintético preservado: amanda_optional_test_fbca801709_wuzapi_data.
+Nenhuma sessão real, pareamento, seed, migration ou operação destrutiva na VPS.
+Testes de falha/rollback/orquestração usam fixtures e comandos simulados; não
+comprovam migrations reais da API Oficial, conectividade/TLS público, Meta ou
+WhatsApp de produção. Homologação da VPS permanece pendente e não foi autorizada.
+
+Trabalho anterior de Flow fora desta entrega: stash preservado na plataforma
+ad6de234904bff76796cfacc857906b2c486c1d4, mensagem “WIP Flow funcional 2026-11-16:
+retomar apos instaladores independentes”. Seus testes/alterações não validados
+não foram misturados. Containers do antigo projeto isolado foram parados;
+volumes preservados. Imagens intermediárias Flow não foram usadas nesta entrega.
+
 # Conclusões de atualização/API Oficial — 14/11/2026
 
 completion.cjs separa coleta compartilhada e renderização com contexto, preservando

@@ -2,6 +2,14 @@
 
 O procedimento vigente está no [README principal](../README.md).
 
+O padrão agora inclui apenas os cinco serviços da plataforma; não habilita API
+Oficial, WuzAPI ou RabbitMQ. O wizard avançado também mantém esse padrão.
+Instalações antigas são reconhecidas antes de aplicar qualquer padrão novo.
+Use os menus 11 e 12 após concluir a instalação base para habilitar cada API.
+Arquivos de instalação novos devem omitir `options.services` ou conter apenas
+valores `false`. O instalador rejeita ativações implícitas por arquivos antigos.
+Credenciais geradas previamente para integrações futuras são preservadas.
+
 1. Disponibilizar Docker Engine Linux atual e acesso ao socket Unix local.
 2. Baixar este repositório com Git em container, conforme README.
 3. Executar `sh instalador_single.sh install --dir "$HOME/amanda"`.

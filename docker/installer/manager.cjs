@@ -18,7 +18,7 @@ function rootPath(value) {
   if (root === path.parse(root).root || /[\r\n,:]/.test(root) || protectedPaths.some(p => root === p || root.startsWith(p + path.sep))) throw Error('Use um diretório exclusivo para a AMANDA.');
   return root;
 }
-function normalizeConfig(input) {
+function normalizeConfig(input,{profiles}={}) {
   const allowed = ['sourceUrl', 'project', 'companyName', 'frontendUrl', 'backendUrl', 'public', 'edge', 'adminEmail', 'adminPassword', 'sourceToken', 'buildToken','options','domainPreflight'];
   if(input.domainPreflight&&(!['compatible','exception'].includes(input.domainPreflight.status)||JSON.stringify(input.domainPreflight).length>65536))throw Error('Registro de pré-validação inválido.');
   for (const key of Object.keys(input)) if (!allowed.includes(key)) throw Error('Campo de configuração desconhecido: ' + key);
@@ -37,7 +37,7 @@ function normalizeConfig(input) {
   }
   const front = new URL(c.frontendUrl), back = new URL(c.backendUrl);
   c.options=validateOptions(c.options);
-  const flags={official:true,wuzapi:true,rabbit:true,...c.options.services};
+  const flags=require('./options.cjs').serviceFlags(c.options,profiles);
   if(c.options.officialUrl&&!flags.official)throw Error('Domínio da API Oficial exige o serviço habilitado.');
   if(c.options.officialUrl&&(!c.edge||[front.hostname,back.hostname].includes(new URL(c.options.officialUrl).hostname)))throw Error('A API Oficial pública requer Caddy/HTTPS e domínio próprio diferente do frontend/backend.');
   if (c.edge) {
@@ -167,9 +167,10 @@ class Manager {
   git(args, options = {}) { return this.runner.run('git', ['-c','safe.directory=' + this.state.platform,...args], { cwd: this.state.platform, ...options }); }
   compose(args, options = {}) {
     const s = this.state;
+    const {supplierImages=false,...runOptions}=options;
     const run=args.indexOf('run');
     if(run>=0&&!args.includes('--name'))args=[...args.slice(0,run+1),'--name',this.temporaryName('job'),...args.slice(run+1)];
-    return this.docker(['compose', '--project-directory', s.platform, '--env-file', path.join(s.platform,'.env'), '-p', s.project, '-f', path.join(s.platform,'docker-compose.yml'), ...(s.naming==='company-v1'?['-f',path.join(this.private,'compose-names.json')]:[]), ...s.profiles.flatMap(p => ['--profile',p]), ...args], { cwd: s.platform, ...options });
+    return this.docker(['compose', '--project-directory', s.platform, '--env-file', path.join(s.platform,'.env'), '-p', s.project, '-f', path.join(s.platform,'docker-compose.yml'), ...(s.naming==='company-v1'?['-f',path.join(this.private,'compose-names.json')]:[]), ...(supplierImages?[]:require('./api-services.cjs').imageOverride(this)), ...s.profiles.flatMap(p => ['--profile',p]), ...args], { cwd: s.platform, ...runOptions });
   }
   async configureNames() {
     // Read the supplier contract without an override; never edit tracked source.
@@ -236,14 +237,15 @@ class Manager {
     if (ids || Object.values(config.services).some(s=>s.container_name&&names.has(s.container_name)) || Object.values(config.declaredVolumes).some(v => volumes.has(v.name)) || Object.values(config.networks||{}).some(n=>networks.has(n.name)) || networks.has(this.state.project + '_default')) throw Error('Projeto ou volumes já existem. Use adopt para a instalação oficial existente; nenhum seed foi executado.');
   }
   async prepare(input, { resume = false } = {}) {
-    const c = normalizeConfig(input);
+    const persisted=resume?require('./deploy.cjs').inspectInstallation(this.root).state:undefined;
+    const c = normalizeConfig(input,{profiles:persisted?.profiles});
     const {inspectInstallation}=require('./deploy.cjs'),{conflict,setupRecord}=require('./directory-state.cjs');
     const info=inspectInstallation(this.root,c.project);
     if(info.kind==='unknown')throw Error(conflict(info));
     if(resume){
       if(info.kind!=='partial'||info.phase!=='preparing'||!info.savedConfig)throw Error('Preparação interrompida sem configuração salva comprovada. Preserve o diretório e consulte o diagnóstico.');
       this.state=info.state;
-    }else if(!['absent','empty','temporary'].includes(info.kind))throw Error('Instalação já registrada; use update ou resume.');
+    }else{if(!['absent','empty','temporary'].includes(info.kind))throw Error('Instalação já registrada; use update ou resume.');require('./options.cjs').assertBaseInstall(c.options);}
     if(info.savedConfig&&JSON.stringify(info.savedConfig)!==JSON.stringify(c))throw Error('Configuração difere da preparação salva; use a retomada.');
     this.runner.secret(c.adminPassword); this.runner.secret(c.sourceToken); this.runner.secret(c.buildToken);
     const o=c.options;
@@ -252,7 +254,7 @@ class Manager {
     if(o.pg){const resources=await this.resources();if(!resources.memory)throw Error('Docker não informou memória para validar PostgreSQL.');validatePg(o.pg,resources.memory);}
     fs.mkdirSync(this.root,{recursive:true,mode:0o700});
     if(!info.savedConfig)this.write(path.join(this.private,'setup.json'),setupRecord(this.root,c));
-    const flags={official:true,wuzapi:true,rabbit:true,...o.services};
+    const flags=require('./options.cjs').serviceFlags(o,resume?this.state.profiles:undefined);
     const profiles=[...(flags.official?['official']:[]),...(flags.wuzapi?['whatsmeow']:[]),...(flags.rabbit?['rabbit']:[]),...(c.edge?['edge']:[])];
     if(!resume)this.save({schema:1,sourceUrl:SOURCE,project:c.project,companyName:c.companyName,frontendUrl:c.frontendUrl,backendUrl:c.backendUrl,domainPreflight:c.domainPreflight,platform:path.join(this.root,'platform'),profiles,selectiveServices:true,retainedEdgeVolumes:c.edge,phase:'preparing',initialized:false,seedAttempted:false,seedSucceeded:false});
     const tokenFile=path.join(this.private,'source-token');
@@ -535,6 +537,12 @@ class Manager {
     if (action === 'update') return this.update();
     if (action === 'resume') {
       await this.validateSource(true);
+      if(this.state.pendingApi){
+        const api=new(require('./api-services.cjs').ApiServices)(this),pending=this.state.pendingApi,plan=await api.plan(pending.service,pending.url);
+        if(!plan.dnsValid)throw Error('Domínio da API ainda pendente de DNS; nenhum serviço foi alterado.');
+        return pending.action==='install'?new(require('./operations.cjs').Operations)(this).enableService(pending.service,'HABILITAR '+this.state.project+' '+pending.service,plan):api.domain(pending.service,plan,'DOMINIO '+this.state.project+' '+pending.service);
+      }
+      if(this.state.optionalOperation)return new(require('./api-services.cjs').ApiServices)(this).finish();
       if(this.state.phase==='https-pending'&&this.state.pendingNetwork){
         if(this.state.pendingNetwork.applying||this.state.pendingNetwork.rollbackRequired)throw Error('Alteração de URLs interrompida ou rollback pendente; consulte config-history e diagnostique antes de retomar. Nenhum serviço foi recriado.');
         await new(require('./operations.cjs').Operations)(this).configure({network:this.state.pendingNetwork.urls});

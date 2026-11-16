@@ -26,7 +26,7 @@ function inspectDirectory(root,{project,owner,logicalRoot=root}={}){
     const privateDir=path.join(root,'.amanda-installer');
     if(!entries.includes('.amanda-installer'))return reject('Arquivos cuja origem não pôde ser confirmada.');
     check(privateDir,true);
-    const knownPrivate=/^(?:state\.json(?:\.tmp)?|setup\.json|setup-files|install\.log|operation\.lock(?:\.guard)?|source-token|admin-access\.json|compose-names\.json|backups|config-history|docker-auth|registry-input|schedule-(?:backup|update)\.json|addon-(?:voz|hub|goflow)(?:\.json|\.env|-source-token))$/;
+    const knownPrivate=/^(?:state\.json(?:\.tmp)?|setup\.json|setup-files|install\.log|operation\.lock(?:\.guard)?|source-token|admin-access\.json|compose-(?:names|api-image)\.json|backups|config-history|docker-auth|registry-input|schedule-(?:backup|update)\.json|addon-(?:voz|hub|goflow)(?:\.json|\.env|-source-token))$/;
     const privateDirectories=new Set(['setup-files','backups','config-history','docker-auth']);
     for(const name of fs.readdirSync(privateDir)){
       if(!knownPrivate.test(name))return reject('Arquivo privado não reconhecido.');

@@ -18,8 +18,11 @@ function validatePg(pg, memory){
   if(memory&& (bytes>memory/4||bytes+pg.maxConnections*5*1024**2>memory*0.75))throw Error('Perfil PostgreSQL excede o orçamento de memória do Docker; reduza conexões/buffers.');
   return pg;
 }
+const SERVICE_DEFAULTS=Object.freeze({official:false,wuzapi:false,rabbit:false});
+function serviceFlags(options={},profiles){return profiles?{official:profiles.includes('official'),wuzapi:profiles.includes('whatsmeow'),rabbit:profiles.includes('rabbit')}:{...SERVICE_DEFAULTS,...options.services};}
+function assertBaseInstall(options={}){if(Object.values(serviceFlags(options)).some(Boolean)||options.officialUrl)throw Error('Nova instalação inclui somente a plataforma AMANDA. Remova services:true/officialUrl do arquivo e instale APIs pelos menus 11 (API Oficial) e 12 (WhatsMeow/WuzAPI); RabbitMQ é opcional após API Oficial.');}
 function selectedServices(options={}){
-  const flags={official:true,wuzapi:true,rabbit:true,...options.services};
+  const flags=serviceFlags(options);
   return ['postgres','redis','backend','frontend','api_transcricao',...(flags.official?['api_oficial']:[]),...(flags.wuzapi?['wuzapi']:[]),...(flags.rabbit?['rabbitmq']:[])];
 }
 function literal(value) {
@@ -48,7 +51,7 @@ function validateOptions(options = {}) {
   if(options.pg)validatePg(options.pg);
   if(options.testSmtp!==undefined&&typeof options.testSmtp!=='boolean')throw Error('testSmtp deve ser booleano.');
   if(options.pushEmail!==undefined&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(options.pushEmail))throw Error('E-mail VAPID inválido.');
-  if(options.services!==undefined){if(!options.services||typeof options.services!=='object'||Array.isArray(options.services)||Object.entries(options.services).some(([k,v])=>!['official','wuzapi','rabbit'].includes(k)||typeof v!=='boolean'))throw Error('Seleção de serviços inválida.');if(options.services.official===false&&options.services.rabbit!==false)throw Error('RabbitMQ requer API Oficial; desabilite ambos.');}
+  if(options.services!==undefined){if(!options.services||typeof options.services!=='object'||Array.isArray(options.services)||Object.entries(options.services).some(([k,v])=>!['official','wuzapi','rabbit'].includes(k)||typeof v!=='boolean'))throw Error('Seleção de serviços inválida.');if(options.services.rabbit===true&&options.services.official===false)throw Error('RabbitMQ requer API Oficial; desabilite ambos.');}
   if(options.initialSettings!==undefined){if(!options.initialSettings||typeof options.initialSettings!=='object'||Array.isArray(options.initialSettings))throw Error('Configurações iniciais inválidas.');for(const[k,v]of Object.entries(options.initialSettings)){if(!INITIAL_SETTINGS.includes(k)||typeof v!=='string'||/[\r\n\0]/.test(v)||v.length>4096)throw Error('Configuração inicial inválida: '+k);if(k==='activePaymentGateway'&&!['none','stripe','asaas','mercadopago'].includes(v))throw Error('Gateway de pagamento inválido.');if(['asaassandbox','mpsandbox'].includes(k)&&!['true','false'].includes(v))throw Error('Sandbox deve ser true ou false.');if(k==='mpnotificationurl'&&v)validateUrl(v,k);}}
   for (const key of ['officialPort','wuzapiPort','backendPort','frontendPort']) if (options[key] !== undefined && (!Number.isInteger(options[key]) || options[key]<1 || options[key]>65535)) throw Error('Porta inválida: '+key);
   if(options.officialUrl){const u=new URL(options.officialUrl);if(u.protocol!=='https:'||u.port||u.username||u.password||u.search||u.hash||u.pathname!=='/'||!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(u.hostname)||u.hostname.length>253||u.hostname.split('.').some(label=>! /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label)))throw Error('URL HTTPS da API Oficial inválida.');}
@@ -73,4 +76,4 @@ function vapidPrivateKey(bytes){
   if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>32)throw Error('Escalar P-256 inválido.');
   return Buffer.concat([Buffer.alloc(32-bytes.length),bytes]).toString('base64url');
 }
-module.exports = { GROUPS, INITIAL_SETTINGS, PG_PROFILES, validatePg, selectedServices, validateUrl, literal, writeEnv, validateOptions, digest,vapidPrivateKey };
+module.exports = { GROUPS, INITIAL_SETTINGS, PG_PROFILES, validatePg, selectedServices, serviceFlags,assertBaseInstall,validateUrl, literal, writeEnv, validateOptions, digest,vapidPrivateKey };

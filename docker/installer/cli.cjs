@@ -34,7 +34,7 @@ async function main() {
     console.log(`AMANDA — gerenciador inteiramente em containers
 Uso: sh instalador_single.sh [comando] --dir /pasta/da/instalacao [--config /arquivo.json]
 Comandos: install, update, resume, adopt, start, stop, restart, status, logs, backup, doctor, https-diagnose, state-diagnose, build-token, unlock
-Administração: configure, instances, official, urls, services, ssl, postgres
+Administração: configure, instances, official, wuzapi, urls, services, ssl, postgres
 Compatibilidade: scripts históricos encaminham para operações em Docker; receitas nativas ficam indisponíveis.
 O assistente histórico é o padrão. wizard mantém o assistente adicional de 11 etapas.
 Sem comando: menu interativo. Source obrigatório: ${SOURCE}
@@ -60,7 +60,7 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
   if (action === 'doctor') return manager.doctor();
   if(action==='migration-plan')return manager.lock(async()=>console.log(JSON.stringify(await deploy.migrationPlan(manager),null,2)));
   if (action === 'unlock') { await manager.doctor(); return manager.unlock(); }
-  if(['configure','instances','urls','services','official','ssl','push','postgres','optional-service','rollback','schedule-backup','wuzapi-start','native-unavailable','channels-unavailable','external-unavailable','helper-unavailable'].includes(action))return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context)}),{startInstall}).dispatch(action);
+  if(['configure','instances','urls','services','official','wuzapi','ssl','push','postgres','optional-service','rollback','schedule-backup','wuzapi-start','native-unavailable','channels-unavailable','external-unavailable','helper-unavailable'].includes(action))return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context)}),{startInstall}).dispatch(action);
   if (action === 'install'||action==='wizard') return startInstall(manager);
   if (action === 'adopt') {
     const url = configFile ? configInput(configFile).sourceUrl : await ask('Link da plataforma existente (obrigatório)');

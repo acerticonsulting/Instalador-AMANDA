@@ -1,9 +1,10 @@
 const {createUI}=require('./ui.cjs');
 const fs=require('node:fs');const path=require('node:path');
 const {Operations}=require('./operations.cjs');const {GROUPS,validateOptions,PG_PROFILES,validatePg}=require('./options.cjs');
-const MAIN=require('./historical.cjs').labels("main").map(([id,label])=>[id,label,({"1":"install","2":"update","3":"urls","4":"services","5":"logs","6":"backup","7":"restore","8":"tools","9":"uninstall","10":"automation","11":"official"})[id]]);
+const MAIN=require('./historical.cjs').labels("main").map(([id,label])=>[id,label,({"1":"install","2":"update","3":"urls","4":"services","5":"logs","6":"backup","7":"restore","8":"tools","9":"uninstall","10":"automation","11":"official","12":"wuzapi"})[id]]);
 const TOOLS=require('./historical.cjs').labels("tools").map(([id,label])=>[id,label,({"2":"push","3":"wuzapi-start","4":"rollback","5":"new-instance","6":"schedule-backup","7":"native-unavailable","8":"backup","9":"restore-redis","10":"import-amanda","11":"backup","12":"import-api_oficial","13":"databases","14":"restore-amanda","15":"urls","16":"update","17":"wuzapi-update","18":"postgres","19":"portainer-unavailable","20":"urls","21":"ssl","22":"backup","23":"restore-wuzapi","30":"token-update","31":"official","32":"update","33":"baileys","34":"audit"})[id]]);
 const API=require('./historical.cjs').labels("api").map(([id,label])=>[id,label,({"1":"start","2":"update","3":"ps","4":"restart","5":"stop","6":"logs","7":"sync","8":"ssl","9":"rm"})[id]]);
+TOOLS.find(item=>item[0]==='3')[2]='wuzapi';
 class Menus{
   async selectInstance(strict=false){
     const {Manager}=require('./manager.cjs'),base=this.baseRoot,children=process.env.AMANDA_DEPLOY_LAYOUT==='1'?require('./deploy.cjs').BASE:path.join(base,'instances');
@@ -43,8 +44,8 @@ class Menus{
     const officialUrl=edge?await this.ask('URL HTTPS pública da API Oficial (opcional)',current.options.officialUrl||''):'';
     await ops.configure({network:{frontendUrl,backendUrl,edge,public:publish,options:{officialPort,wuzapiPort,officialUrl}}});
   }
-  async enable(service){const ops=new Operations(this.m);await ops.ready();this.out('O serviço será preparado em Docker. Haverá backup e possível interrupção; falhas de migration exigem Retomar operação.');return ops.enableService(service,await this.ask('Digite HABILITAR '+this.m.state.project+' '+service));}
-  async urls(){while(true){const a=await this.choose('GERENCIAR URLs DO SISTEMA',[['1','Frontend (painel web)','front'],['2','Backend (REST / Socket)','back'],['3','API Oficial','URL_API_OFICIAL'],['4','Transcrição de áudio','TRANSCRIBE_URL'],['5','WuzAPI / WhatsMeow','WUZAPI_URL'],['7','Alterar URLs principais, portas e publicação','network'],['8','Domínios e HTTPS / SSL em Docker','ssl'],['9','VOZ / HUB: sincronizar configuração pela API','external-settings']]);if(!a)return;const ops=new Operations(this.m);
+  async enable(service){const ops=new Operations(this.m);await ops.ready();this.out('O serviço será preparado em Docker. Haverá backup e possível interrupção; falhas de migration exigem Retomar operação.');const plan=['api_oficial','wuzapi'].includes(service)?await this.apiPlan(service):undefined;return ops.enableService(service,await this.ask('Digite HABILITAR '+this.m.state.project+' '+service),plan);}
+  async urls(){while(true){const a=await this.choose('GERENCIAR URLs DO SISTEMA',[['1','Frontend (painel web)','front'],['2','Backend (REST / Socket)','back'],['3','API Oficial — URL interna Docker','URL_API_OFICIAL'],['4','Transcrição de áudio','TRANSCRIBE_URL'],['5','WuzAPI / WhatsMeow — URL interna Docker','WUZAPI_URL'],['7','Alterar URLs principais, portas e publicação','network'],['8','Domínios e HTTPS / SSL em Docker','ssl'],['9','VOZ / HUB: sincronizar configuração pela API','external-settings']]);if(!a)return;const ops=new Operations(this.m);
     if(a==='network')await this.network();else if(a==='ssl')await this.network(true);
     else if(a==='external-settings')await this.dispatch(a);else if(a==='front'||a==='back'){await ops.ready(false,'network');const current=ops.current(),key=a==='front'?'frontendUrl':'backendUrl';this.out('Frontend atual: '+current.frontendUrl+'\nBackend atual: '+current.backendUrl);await this.changeUrls(ops,{[key]:await this.ask('Nova URL',this.m.state.pendingNetwork?.urls?.[key]||current[key])});}
     else await ops.configure({backendEnv:{[a]:await this.ask('Nova URL acessível pelo backend')}});
@@ -61,8 +62,37 @@ class Menus{
       }}catch(error){this.out(this.ui.text('OPERAÇÃO NÃO VALIDADA: '+error.message));}await this.ask('ENTER para voltar ao painel');
     }
   }
-  async official(){const ops=new Operations(this.m);while(true){const a=await this.choose('API OFICIAL — META CLOUD',API);if(!a)return;
-    if(a==='update')await this.m.lock(()=>this.update());else if(a==='sync')await ops.configure({backendEnv:{URL_API_OFICIAL:'http://api_oficial:6000'}});else if(a==='ssl')await this.network(true);else if(a==='start'){this.m.load();if(!this.m.services().includes('api_oficial'))await this.enable('api_oficial');else await ops.services('start','api_oficial');}else if(a==='rm'){this.m.load();if(await this.ask('Digite REMOVER API '+this.m.state.project)!=='REMOVER API '+this.m.state.project)throw Error('Remoção cancelada.');await ops.services('rm','api_oficial');}else await ops.services(a,'api_oficial');await this.ask('Pressione ENTER para continuar');}}
+  async apiPlan(service){
+    const{ApiServices,DEFINITIONS,publicUrl}=require('./api-services.cjs'),api=new ApiServices(this.m),d=DEFINITIONS[service];this.m.load();
+    this.out(this.ui.banner(d.label+' — DOMÍNIO PRÓPRIO'));
+    this.out('Empresa: '+(this.m.state.companyName||this.m.state.project)+'\nProjeto: '+this.m.state.project+'\nDiretório: '+this.m.root+'\nURL interna do backend: '+d.internal);
+    const env=require('./manager.cjs').envValues(path.join(this.m.state.platform,'.env'));
+    this.out('Docker: gerenciamento em container\nPerfil: '+d.profile+'\nPorta interna: '+(service==='api_oficial'?'6000':'8080')+'\nPorta no host em loopback: '+(service==='api_oficial'?(env.PORT_APIOFICIAL||6000):(env.PORT_WUZAPI||8090))+'\nVolume: '+this.m.state.project+'_'+(service==='api_oficial'?'oficial_public':'wuzapi_data')+'\nToken administrativo: '+(env[service==='api_oficial'?'TOKEN_API_OFICIAL':'WUZAPI_ADMIN_TOKEN']?'Configurado; será preservado':'Ausente; instalação bloqueada até configurar com segurança')+'\nCaddy: '+(this.m.state.profiles.includes('edge')?'Existente; somente domínio desta API será alterado':'Não habilitado'));
+    if(service==='wuzapi')this.out('Publicação WuzAPI bloqueada até homologar autenticação e bloqueio de rotas administrativas. O modo interno mantém sessões em volume.');
+    if(!this.m.state.profiles.includes('edge'))this.out('Esta instalação não possui Caddy. Disponível somente modo interno.');
+    const value=await this.ask('URL HTTPS própria da '+d.label+' (ou digite INTERNO)',this.m.state.pendingApi?.service===service?this.m.state.pendingApi.url:undefined);
+    if(value==='INTERNO'){if(await this.ask('Digite CONFIRMAR INTERNO','')!=='CONFIRMAR INTERNO')throw Error('Modo interno não confirmado.');return api.plan(service,'');}
+    const plan=await api.plan(service,publicUrl(value));
+    if(!plan.dnsValid)this.out(plan.dnsError+' A proposta poderá ser salva sem instalar nem emitir certificado.');
+    this.out('URL pública proposta: '+plan.url+'\nURL interna preservada: '+d.internal);return plan;
+  }
+  async official(service='api_oficial'){
+    await this.selectInstance(true);const{ApiServices,DEFINITIONS}=require('./api-services.cjs'),d=DEFINITIONS[service];
+    const entries=[['1','Instalar '+d.label,'install'],['2',service==='api_oficial'?'Atualizar plataforma AMANDA (inclui API Oficial)':'Atualizar somente imagem WuzAPI','update'],['3','Status e diagnóstico','ps'],['4','Iniciar / reiniciar','restart'],['5','Parar','stop'],['6','Logs recentes','logs'],['7','Sincronizar integração interna do backend','sync'],['8','Domínio próprio e HTTPS','ssl'],['9','Remover somente container (preservar volumes)','rm']];
+    while(true){try{
+      const api=new ApiServices(this.m),info=await this.m.lock(()=>api.inspect(service));this.out(this.ui.banner(d.label));this.out(this.ui.text(require('./api-services.cjs').renderApi(info)));
+      const a=await this.choose(d.label,entries);if(!a)return;const ops=new Operations(this.m);
+      if(a==='install')await this.enable(service);
+      else if(a==='update'){if(service==='api_oficial')await this.m.lock(()=>this.update());else{const confirmation=await this.ask('Digite ATUALIZAR '+this.m.state.project+' wuzapi');await this.m.lock(()=>api.updateWuzapi(confirmation));}}
+      else if(a==='ssl'){const plan=await this.apiPlan(service),confirmation=await this.ask('Digite DOMINIO '+this.m.state.project+' '+service);await this.m.lock(()=>api.domain(service,plan,confirmation));}
+      else if(a==='sync'){await ops.ready();ops.service(service);await ops.configure({backendEnv:{[d.integration]:d.internal}});}
+      else if(a==='ps'){this.out(this.ui.text(require('./api-services.cjs').renderApi(await api.inspect(service))));}
+      else if(a==='rm'){this.out('Serão preservados banco, credenciais e volumes: '+JSON.stringify(info.volumes||[])+'\nA integração ficará indisponível até iniciar novamente.');if(await this.ask('Digite REMOVER '+this.m.state.project+' '+service)!=='REMOVER '+this.m.state.project+' '+service)throw Error('Remoção cancelada.');await ops.services('rm',service);}
+      else if(a==='logs')this.out(await new(require('./dashboard.cjs').Dashboard)(this.m).logs(service));
+      else if(a==='restart'){if(await this.ask('Digite INICIAR '+this.m.state.project+' '+service)!=='INICIAR '+this.m.state.project+' '+service)throw Error('Operação cancelada.');await ops.services(info.installed?'restart':'start',service);}
+      else if(a==='stop'){if(await this.ask('Digite PARAR '+this.m.state.project+' '+service)!=='PARAR '+this.m.state.project+' '+service)throw Error('Operação cancelada.');await ops.services('stop',service);}
+    }catch(error){this.out(this.ui.text('OPERAÇÃO NÃO CONCLUÍDA: '+this.m.runner.mask(error.message)));}await this.ask('Pressione ENTER para continuar');}
+  }
   async restore(kind='amanda',rollback=false){this.m.load();const base=path.join(this.m.private,'backups');if(!fs.existsSync(base))throw Error('Nenhum backup gerenciado encontrado.');
     const backups=fs.readdirSync(base).filter(n=>fs.existsSync(path.join(base,n,'backup.json'))).sort().reverse();if(!backups.length)throw Error('Nenhum backup completo encontrado.');
     backups.forEach((n,i)=>this.out('['+(i+1)+'] '+n));const index=Number(await this.ask('Escolha o backup (0 cancela)'));if(!index)return;if(!backups[index-1])throw Error('Backup inválido.');
@@ -120,14 +150,14 @@ class Menus{
   }
   async dispatch(action,locked=false){
     if(action==='audit')return this.auditCenter();
-    if(!locked&&!['install','new-instance','tools','instances','doctor','native-unavailable','portainer-unavailable'].includes(action))await this.selectInstance();
-    if(!locked&&!['install','new-instance','tools','official','configure','services','urls','instances','automation','baileys'].includes(action))return this.m.lock(async()=>{this.m.runner.emit('Operação: '+action+'\n');try{const value=await this.dispatch(action,true);this.m.runner.emit('OK: '+action+'\n');return value;}catch(error){this.m.runner.emit('FALHA: '+action+' — '+error.message+'\n');throw error;}});
+    if(!locked&&!['install','new-instance','tools','official','wuzapi','instances','doctor','native-unavailable','portainer-unavailable'].includes(action))await this.selectInstance();
+    if(!locked&&!['install','new-instance','tools','official','wuzapi','configure','services','urls','instances','automation','baileys'].includes(action))return this.m.lock(async()=>{this.m.runner.emit('Operação: '+action+'\n');try{const value=await this.dispatch(action,true);this.m.runner.emit('OK: '+action+'\n');return value;}catch(error){this.m.runner.emit('FALHA: '+action+' — '+error.message+'\n');throw error;}});
     const m=this.m,ops=new Operations(m);
     if(action?.startsWith('restore-'))return this.restore(action.slice(8));
     if(action?.startsWith('import-')){m.load();this.out('Copie um backup confiável de um único banco para '+path.join(m.root,'imports')+'. O banco selecionado será substituído.');const file=await this.ask('Caminho absoluto do arquivo dentro de imports');return ops.importDatabase(file,action.slice(7),await this.ask('Digite IMPORTAR '+m.state.project));}
     switch(action){
       case'install':if(this.startInstall){const installed=await this.startInstall(m);if(installed?.root)this.m=installed;return installed;}if(fs.existsSync(m.stateFile))throw Error('Instalação já registrada. Use resume para retomar sem responder novamente nem repetir seeds.');if(this.install){const installed=await this.install(m,await this.input());if(installed?.root)this.m=installed;return installed;}return null;
-      case'urls':return this.urls();case'services':return this.services();case'official':return this.official();case'configure':return this.configure();case'instances':return this.instances();case'automation':return this.automation();
+      case'urls':return this.urls();case'services':return this.services();case'official':return this.official();case'wuzapi':return this.official('wuzapi');case'configure':return this.configure();case'instances':return this.instances();case'automation':return this.automation();
       case'audit':return this.auditCenter();
       case'baileys':return this.baileys();
       case'tools':while(true){const a=await this.choose('FERRAMENTAS ADICIONAIS',TOOLS);if(!a)return;await this.dispatch(a);await this.ask('Pressione ENTER para continuar');}
@@ -144,12 +174,12 @@ class Menus{
       case'front-url':case'back-url':{await ops.ready(false,'network');const key=action==='front-url'?'frontendUrl':'backendUrl';return this.changeUrls(ops,{[key]:await this.ask('Nova URL pública',this.m.state.pendingNetwork?.urls?.[key]||ops.current()[key])});}
       case'view-config':{await ops.ready(false,'view');const {envValues}=require('./manager.cjs'),e=envValues(path.join(m.state.platform,'.env')),be=fs.existsSync(path.join(m.state.platform,'.env.backend'))?envValues(path.join(m.state.platform,'.env.backend')):{};const {publicSummary}=require('./wizard.cjs');const summary=publicSummary({...ops.current(),companyName:m.state.companyName,adminEmail:'Preservado; consulte a conta na plataforma',options:{...ops.current().options,appName:'Gerenciado na interface da plataforma',supportPhone:e.REACT_APP_NUMBER_SUPPORT||'',backendEnv:{MAIL_HOST:be.MAIL_HOST},pg:{maxConnections:+e.PG_MAX_CONNECTIONS||100,sharedBuffers:e.PG_SHARED_BUFFERS||'128MB'}}},m.root);for(const[k,v]of Object.entries(summary))this.out(this.ui.text(k+': '+v));return;}
       case'smtp-test':await ops.ready();return m.testSmtp();
-      case'wuzapi-config':await ops.ready();ops.service('wuzapi');this.out('Tokens de sessões são configurados na tela Conexões. Chaves de criptografia existentes não são rotacionadas pelo instalador.');return ops.configure({network:{options:{wuzapiPort:Number(await this.ask('Porta externa WuzAPI',String(ops.current().options.wuzapiPort)))}}});
+      case'wuzapi-config':return this.official('wuzapi');
       case'payments':{await ops.ready();const gateway=await this.choose('PAGAMENTOS',[['1','Desabilitado','none'],['2','Stripe','stripe'],['3','Asaas','asaas'],['4','Mercado Pago','mercadopago']]);if(!gateway)return;const values={};if(gateway!=='none'){const key={stripe:'stripeprivatekey',asaas:'asaastoken',mercadopago:'mpaccesstoken'}[gateway];values[key]=await this.ask('Credencial privada do gateway',undefined,true);if(!values[key])throw Error('Credencial vazia.');if(gateway==='asaas'||gateway==='mercadopago')values[gateway==='asaas'?'asaassandbox':'mpsandbox']=/^s(im)?$/i.test(await this.ask('Usar sandbox (s/n)','s'))?'true':'false';}values.activePaymentGateway=gateway;this.out('Teste cobranças e webhooks com a conta do provedor antes de ativar produção.');return ops.settings(values,await this.ask('E-mail administrativo atual','admin@amanda.com.br'),await this.ask('Senha administrativa atual',undefined,true));}
       case'push':return ops.configure({pushEmail:await this.ask('E-mail de contato VAPID')});
       case'postgres':{const a=await this.choose('POSTGRESQL EM CONTAINER',[['1','Econômico: 100 conexões / 128MB','small'],['2','Intermediário: 200 conexões / 256MB','medium'],['3','Alto desempenho: 300 conexões / 512MB','large'],['4','Personalizado (validado contra memória Docker)','custom']]);if(!a)return;const pg=a==='custom'?{maxConnections:Number(await this.ask('Máximo de conexões','100')),sharedBuffers:await this.ask('shared_buffers','128MB')}:PG_PROFILES[a];validatePg(pg);return ops.configure({pg});}
       case'wuzapi-start':m.load();return m.services().includes('wuzapi')?ops.services('start','wuzapi'):this.enable('wuzapi');
-      case'wuzapi-update':await ops.ready();await m.backup();await m.compose(['pull','wuzapi'],{label:'Obtendo imagem WuzAPI indicada pelo Compose oficial'});return ops.services('start','wuzapi');
+      case'wuzapi-update':return new(require('./api-services.cjs').ApiServices)(m).updateWuzapi(await this.ask('Digite ATUALIZAR '+m.state.project+' wuzapi'));
       case'databases':return ops.databases();
       case'schedule-backup':case'schedule-update':return ops.schedule(action==='schedule-backup'?'backup':'update',Number(await this.ask('Hora diária em UTC (0–23)','3')));
       case'ghcr':return ops.ghcr(await this.ask('Usuário GitHub / GHCR'),await this.ask('Token de leitura GHCR',undefined,true));

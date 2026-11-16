@@ -104,9 +104,10 @@ function input(changes={},project){
  const output=[],prompts=[];let index=0;
  return {output,prompts,options:{project,out:s=>output.push(s),directory:'/srv/acerti',question:async(label,fallback,secret)=>{prompts.push({label,secret,screen:output.at(-1)});if(index>=answers.length)throw Error('Pergunta inesperada: '+label);const value=answers[index++];return value===undefined?fallback??'':value;}}};
 }
-test('7a5b31d main presentation and banner are recovered verbatim except the unsafe scheduler label',()=>{
- assert.equal(plain(render('main')),historical('main').replace('Configurar Watchtower','Configurar Atualização Agendada'));
- assert.deepEqual(MAIN.map(x=>x[0]),Array.from({length:11},(_,i)=>String(i+1)));
+test('historical identity is preserved while base install and optional APIs have independent entries',()=>{
+ const expected=historical('main').replace('Configurar Watchtower','Configurar Atualização Agendada').replace('Docker Compose Completo + APIs','Plataforma Docker').replace(/(.*\[11\][^\n]+\n)/,'$1   [12] Instalar ou Gerenciar WhatsMeow/WuzAPI\n');
+ assert.equal(plain(render('main')),expected);
+ assert.deepEqual(MAIN.map(x=>x[0]),Array.from({length:12},(_,i)=>String(i+1)));
  for(const screen of ['main','tools','api'])assert.ok(render(screen).includes('MULTICANAL v1.0.0'));
 });
 test('historical tool sections, ordering and valid numbers remain; unavailable operations retain their slots',()=>{
@@ -183,7 +184,7 @@ test('unvalidated historical channels and unavailable tools never execute an upd
 test('HTTPS custom binding validation includes proxy and optional-service port collisions',()=>{
  const c={sourceUrl:SOURCE,edge:true,frontendUrl:'https://app.example.test',backendUrl:'https://api.example.test',options:{frontendPort:3310,backendPort:8810}};
  assert.equal(normalizeConfig(c).options.backendPort,8810);
- for(const options of [{backendPort:3310},{backendPort:443},{frontendPort:6000},{frontendPort:0},{backendPort:65536}])assert.throws(()=>normalizeConfig({...c,options:{...c.options,...options}}),/Porta/);
+ for(const options of [{backendPort:3310},{backendPort:443},{frontendPort:6000,services:{official:true}},{frontendPort:0},{backendPort:65536}])assert.throws(()=>normalizeConfig({...c,options:{...c.options,...options}}),/Porta/);
 });
 test('every recovered historical entry point delegates to the isolated Docker bootstrap',()=>{
  const entries=['atualizador_pro.sh','atualizador_fast_sistema.sh','atualizador_remoto.sh','atualizador_remoto_FAST.sh','atualizar_apioficial.sh','instalador_apioficial.sh','instalador_whatsmeow.sh','instalar_nginx_ssl.sh','tools/agendar_backup_bd_docker.sh','tools/instalador_instancias.sh','tools/instalar_push.sh','tools/roolback_versao.sh','tools/trocar_dominios.sh'];
@@ -200,5 +201,5 @@ test('historical performance choices map to bounded PostgreSQL profiles in conta
 test('real color terminals retain menu dispatch while rendering the original lilac highlights',()=>{
  const script="Object.defineProperty(process.stdout,'isTTY',{value:true});const {MAIN,TOOLS}=require('./docker/installer/menus.cjs');const {render}=require('./docker/installer/historical.cjs');process.stdout.write(JSON.stringify({main:MAIN.map(x=>x[0]),tools:TOOLS.map(x=>x[0]),screen:render('main')}));";
  const result=spawnSync(process.execPath,['-e',script],{cwd:path.join(__dirname,'..'),encoding:'utf8',env:{...process.env,TERM:'xterm-256color',NO_COLOR:undefined}});assert.equal(result.status,0,result.stderr);
- const value=JSON.parse(result.stdout);assert.equal(value.main.length,11);assert.equal(value.tools.length,27);assert.ok(value.screen.includes('\x1b[1;38;2;167;139;250m'));assert.ok(value.screen.includes('\x1b[38;2;139;92;246m'));
+ const value=JSON.parse(result.stdout);assert.equal(value.main.length,12);assert.equal(value.tools.length,27);assert.ok(value.screen.includes('\x1b[1;38;2;167;139;250m'));assert.ok(value.screen.includes('\x1b[38;2;139;92;246m'));
 });
