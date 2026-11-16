@@ -1,3 +1,18 @@
+# Formatação de painéis — 16/11/2026
+
+`panel_format_tests.cjs` integra a suíte Docker-only: linhas distintas para
+Empresa/Projeto/Estado/URL, oito seções, estados reais/desconhecidos, terminais
+estreitos, modo sem cores, caracteres de controle, ANSI/OSC e segredos. Não
+sanitizar o relatório pronto com ui.text nem aceitar LF arbitrário em valores:
+usar valores individuais sanitizados e ui.lines com estrutura produzida pelo
+renderizador. API já instalada não pode chamar enable ao escolher a opção 1.
+Validar o refresh do menu e o painel/aviso Baileys, além de serviço/nome/saúde
+no dashboard. Em terminal colorido, o clear-screen deve anteceder o relatório.
+
+`navigation_runtime.test.cjs` também exige Empresa, Projeto, Estado e URL pública
+em linhas distintas após atravessar Shell e CLI real em container, com inventário
+externo de fixture. Nenhuma dessas verificações autoriza operações na VPS.
+
 # Descoberta e navegação 4/11/12 — 16/11/2026
 
 `instance_selection_tests.cjs` usa arquivos reais e o validador de diretório real.

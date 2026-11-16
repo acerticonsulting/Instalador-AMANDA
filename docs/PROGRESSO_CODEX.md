@@ -1,3 +1,48 @@
+# Formatação segura dos painéis API/Baileys — 16/11/2026
+
+Regressão visual da versão 8e06291: renderApi juntava linhas com LF e o menu
+enviava o bloco inteiro a ui.text, removendo esses separadores. Corrigido com
+ui.lines: recebe somente uma lista de linhas estruturadas, sanitiza cada entrada
+e só então acrescenta quebras próprias e quebra visual conforme a largura.
+ui.text permanece de linha única. O sanitizador remove sequências VT/ANSI/OSC,
+controles C0/C1, separadores Unicode e controles direcionais. Valores dinâmicos
+são sanitizados antes de compor as linhas; não há liberação geral de LF vindo
+de metadados. URLs com credenciais, query, fragmento ou caminho inesperado não
+são exibidas. Valores registrados como secretos passam pelo mask do Runner.
+
+Menus 11/12 apresentam Empresa, Estado do Serviço, Container, Rede e Portas,
+URL Pública/HTTPS, Configurações, Volumes e Backup. Estados de apresentação:
+HEALTHY, UNHEALTHY, RUNNING SEM HEALTHCHECK, PARADO, NÃO INSTALADO e NÃO VERIFICADO;
+estados transitórios conhecidos continuam explícitos. A ausência de informação
+não é convertida em sucesso. HTTPS inclui a data da última verificação registrada;
+abrir o painel não dispara probes, ACME ou alterações na instalação.
+
+API instalada é sinalizada na opção 1 e orienta usar 8 para domínio/HTTPS. Escolher
+1 nesse estado somente reapresenta a orientação, sem entrar no instalador.
+O relatório é impresso depois do banner, evitando que o segundo clear-screen
+apague os dados em terminais coloridos. O mesmo ajuste de ordem/formatação foi
+aplicado ao painel Baileys e sua confirmação. A listagem de containers também
+utilizava ui.text em blocos: serviço, nome e saúde agora ficam em linhas distintas.
+
+Logo e cores usuais preservados. Em terminais menores que 64 colunas, o cabeçalho
+usa AMANDA em formato compacto; linhas são ajustadas à largura (mínimo 20,
+máximo 100). Menus mantêm IDs e a seleção multiempresa existente.
+
+Validação Node 22 em Docker: bash tests/validar_instalador.sh aprovado (85 scripts,
+5 etapas, 388 testes: 386 aprovados, 0 falhas, 2 TTY optativos ignorados).
+27 regressões novas em panel_format_tests.cjs cobrem separação das linhas e
+seções, estados, dados ausentes, ausência de ANSI com NO_COLOR/TERM=dumb,
+injeções LF/CR/CSI/OSC/C1, redaction de segredos/URLs, 24/38/80 colunas, proteção
+contra reinstalação, refresh real do menu, Baileys, dashboard e ordem do banner.
+Navegação Shell/CLI em container: 7 aprovados, 0 falhas, com asserções adicionais
+de Empresa/Projeto/Estado/URL em linhas separadas nos painéis reais. Inventário
+externo é fixture; arquivos das empresas montados read-only e preservados.
+Evidências ignoradas: tmp/panel-full.log e tmp/panel-navigation.log.
+
+Nenhum deploy, restart, atualização de serviço, migration, seed ou mudança na
+VPS. Perfis, dados, volumes e sessões preservados. Publicação via PR/main após
+validação do índice pelo hook obrigatório. Saúde da VPS não foi verificada.
+
 # Reconhecimento compartilhado e navegação dos menus 4/11/12 — 16/11/2026
 
 Causa reproduzida sobre 3fe5308: selectInstance(true) chamava inspectInstallation
