@@ -3,7 +3,7 @@
 # Gerado por tools/extrair_interface_historica.cjs; adaptações explícitas nesse arquivo.
 historical_theme() {
   PURPLE= BLUE= MAGENTA= GREEN= WHITE= RED= YELLOW= CYAN= NC= RESET=
-  if { [ -t 1 ] || [ "${AMANDA_UI_TTY:-}" = 1 ]; } && [ "${TERM:-}" != dumb ] && [ "${NO_COLOR+x}" != x ]; then
+  if { [ -t 1 ] || [ "${AMANDA_UI_TTY:-}" = 1 ]; } && [ "${AMANDA_COLOR_OUTPUT:-1}" != 0 ] && [ "${TERM:-}" != dumb ] && [ "${NO_COLOR+x}" != x ]; then
     PURPLE='\033[38;5;99m'; BLUE='\033[1;94m'; GREEN='\033[1;92m'; WHITE='\033[1;97m'; RED='\033[1;91m'; YELLOW='\033[1;93m'; CYAN='\033[1;96m'
     case "${COLORTERM:-}:${TERM:-}:${WT_SESSION:-}" in *truecolor*|*24bit*|*xterm*|*256color*|*screen*|*tmux*|*linux*|*alacritty*|*kitty*)
       PURPLE='\033[38;2;139;92;246m'; BLUE='\033[1;38;2;167;139;250m'; GREEN='\033[1;38;2;74;222;128m'; WHITE='\033[1;38;2;255;255;255m'; RED='\033[1;38;2;248;113;113m'; YELLOW='\033[1;38;2;250;204;21m'; CYAN='\033[1;38;2;56;189;248m' ;;
@@ -12,7 +12,8 @@ historical_theme() {
   fi
 }
 banner() {
-  if { [ -t 1 ] || [ "${AMANDA_UI_TTY:-}" = 1 ]; } && [ "${TERM:-}" != dumb ] && [ "${NO_COLOR+x}" != x ]; then printf '\033[2J\033[H'; fi
+  if [ "${AMANDA_UI_COMPACT:-0}" = 1 ]; then printf '%b AMANDA • Instalador Docker%b\n\n' "$PURPLE" "$WHITE"; return; fi
+  if { [ -t 1 ] || [ "${AMANDA_UI_TTY:-}" = 1 ]; } && [ "${AMANDA_COLOR_OUTPUT:-1}" != 0 ] && [ "${TERM:-}" != dumb ] && [ "${NO_COLOR+x}" != x ]; then printf '\033[2J\033[H'; fi
   printf "${PURPLE}"
   printf "\n"
   printf "  █████╗ ███╗   ███╗ █████╗ ███╗   ██╗██████╗  █████╗ \n"

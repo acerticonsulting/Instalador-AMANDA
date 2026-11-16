@@ -1,3 +1,83 @@
+# Dashboard compacto e domínio público único — 16/11/2026
+
+Base f1994e4. Antes, menus 11/12 abriam o relatório de oito seções e exibiam
+informações internas no wizard. Agora renderApi abre um quadro compacto com
+empresa, serviço, saúde do container, presença da API, URL pública, HTTPS, porta
+efetiva/configurada e presença do token. Imagem/SHA, ID do container, uptime,
+redes, endpoints Docker, perfis, volumes, banco, backup, revisão, datas e
+diagnóstico ficam somente em 3 — Status detalhado. A opção 1 sinaliza API já
+instalada e mantém a proteção contra reinstalação.
+
+ui.panel sanitiza dados antes do layout e aplica só ANSI do próprio tema depois
+de quebrar/padronizar as linhas. Cores recuperadas da identidade histórica:
+roxo na estrutura, ciano nas URLs, verde em saúde/instalação/HTTPS confirmados,
+amarelo em pendências/verificações ausentes, vermelho em falha/erro interrompido
+e cinza em ausência/estado neutro. Largura visível desconsidera ANSI gerado pelo
+tema e considera caracteres largos; quadro limitado a 56 colunas ou à largura
+disponível. URLs longas são quebradas sem truncamento. NO_COLOR, TERM=dumb,
+terminais sem suporte e saída não TTY não recebem cores. O bootstrap informa
+quando o stdout do host é redirecionado, sem retirar o TTY necessário à entrada
+interativa no container. Valores externos nunca autorizam ANSI.
+
+Submenus usam cabeçalhos compactos; o logotipo completo continua no principal.
+O quadro já contém o título/empresa, sem duplicação de banner ou diretório.
+Start/restart no menu não acrescenta o relatório longo de conclusão da API;
+os demais chamadores conservam o resumo existente. A leitura do painel não
+executa probes HTTPS nem grava estado.
+
+Referências estudadas: solicitar_dados_apioficial em
+https://github.com/scriptswhitelabel/instalador_single_oficial/blob/main/instalador_apioficial.sh#L359
+e solicitar_subdominio_whatsmeow em
+https://github.com/scriptswhitelabel/instalador_single_oficial/blob/main/instalador_whatsmeow.sh#L602.
+Reaproveitada a experiência de uma entrada de domínio, sem importar execução
+nativa, Nginx, Certbot, PM2, credenciais impressas ou arquitetura da referência.
+
+Instalação pergunta um domínio público da API selecionada, normaliza hostname
+para HTTPS e mostra DNS, disponibilidade de configuração Caddy e porta automática.
+Não solicita frontend, backend, endpoint interno ou porta. Os endereços
+http://api_oficial:6000 e http://wuzapi:8080 são mantidos automaticamente nas
+transações existentes. Confirmações, locks, backup, ownership, rollback e
+recuperação continuam ativos. Nenhum ajuste na plataforma/Caddy foi necessário.
+
+Opção 8 mostra URL atual e aceita Nova URL (ENTER mantém). Entrada equivalente
+não faz probes, não grava configuração e não reinicia serviços. Alteração real
+valida formato, conflitos e DNS, pede confirmação, modifica só a rota da API e
+recria edge; frontend/backend e credenciais permanecem intactos. A transação
+também recusa portas explícitas, inclusive :443 após normalização de esquema.
+
+DNS e HTTPS são resultados distintos. A opção 3 oferece VERIFICAR HTTPS, uma
+consulta explícita DNS/TLS/HTTP que registra metadados do resultado no estado da
+empresa, sem alterar .env, Caddy, containers, volumes ou certificados. DNS ruim
+interrompe antes de TLS e não dispara ACME. Consultas indisponíveis são registradas
+como inconclusivas; conflito de portas não é apresentado como DNS incorreto.
+HTTPS só fica validado após retorno
+bem-sucedido do verificador existente; falha efetiva é registrada separadamente.
+Cache antigo sem URL correspondente/data válida aparece como NÃO VERIFICADO.
+Falhas de operação preservam checkpoint e sinalizam operação interrompida.
+
+WuzAPI usa o mesmo quadro e a mesma pergunta de domínio. Publicação pública
+permanece bloqueada por não haver contrato homologado de proteção de todas as
+rotas administrativas. Após bloqueio, o usuário pode escolher INTERNO e confirmar
+explicitamente; nenhuma URL pública é publicada ou apresentada como funcional.
+
+Arquivos: api-services.cjs, ui.cjs, menus.cjs, historical.sh, dashboard.cjs,
+operations.cjs e instalador_single.sh; testes e documentação relacionados.
+Validação Node 22 em Docker:
+bash tests/validar_instalador.sh aprovado (85 scripts/5 etapas, 431 testes:
+429 aprovados, 0 falhas, 2 TTY optativos ignorados). compact_api_tests acrescenta
+43 casos de cores, estados, largura/ANSI, resumo/detalhes, wizard único,
+idempotência, segurança WuzAPI e verificação separada DNS/HTTPS. Regressões
+anteriores atualizadas para o novo contrato de apresentação, sem remover
+proteções de instalação, update, backup, isolamento ou segredos.
+
+Navegação Shell → CLI em container: 7 aprovados, 0 falhas, com inventário externo
+de fixture, arquivos de empresas read-only e asserções do quadro compacto.
+Prévia textual sem cores revisada a 56 colunas; testes verificam SGR verde,
+amarelo, vermelho e cinza em TTY, além de 24/38/56/80 colunas. Evidências locais
+ignoradas: tmp/compact-full.log e tmp/compact-navigation.log. Nenhum acesso,
+deploy, restart ou alteração na VPS; validação pública e saúde real não aferidas.
+Publicação por PR e integração à main após o hook obrigatório.
+
 # Formatação segura dos painéis API/Baileys — 16/11/2026
 
 Regressão visual da versão 8e06291: renderApi juntava linhas com LF e o menu

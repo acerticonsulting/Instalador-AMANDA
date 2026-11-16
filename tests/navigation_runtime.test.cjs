@@ -54,14 +54,14 @@ esac
     assert.match(output,choice==='4'?/STATUS DA PLATAFORMA/:choice==='11'?/API Oficial/:/WhatsMeow\/WuzAPI/);
     if(choice!=='4'){
       const project=bravo?'bravo':'acerti';
-      assert.match(output,new RegExp('\\nEmpresa: '+project+'\\r*\\n'));
-      assert.match(output,new RegExp('\\nProjeto: '+project+'\\r*\\n'));
-      assert.match(output,new RegExp('\\nEstado: '+(bravo?'NÃO INSTALADO':'HEALTHY')+'\\r*\\n'));
-      assert.match(output,/\nURL pública: [^\r\n]+\r*\n/);
+      assert.match(output,new RegExp('│ Empresa: '+project+' +│'));
+      assert.match(output,new RegExp('● Container: '+(bravo?'NÃO INSTALADO':'HEALTHY')));
+      assert.match(output,/│ URL pública: +│/);assert.match(output,/HTTPS: NÃO VERIFICADO/);
+      assert.ok(!output.includes('ID da imagem:'));assert.ok(!output.includes('URL interna:'));assert.equal((output.match(new RegExp('AMANDA • '+(choice==='11'?'API OFICIAL':'WhatsMeow/WuzAPI'),'g'))||[]).length,1);
       if(!bravo)assert.match(output,/Já instalada — domínio em \[8\]/);
     }
-    if(bravo){assert.match(output,/Projeto: bravo/);assert.match(output,/Instalado: Não/);assert.ok(!output.includes('acerti_api_oficial'));assert.ok(!output.includes('acerti_wuzapi'));}
-    else{assert.match(output,/acerti_backend|acerti_api_oficial|acerti_wuzapi/);assert.match(output,/HEALTHY|Healthy:/);}
+    if(bravo){assert.match(output,/Empresa: bravo/);assert.match(output,/API: NÃO INSTALADA/);assert.ok(!output.includes('acerti_api_oficial'));assert.ok(!output.includes('acerti_wuzapi'));}
+    else{if(choice==='4')assert.match(output,/acerti_backend/);else assert.match(output,/Empresa: acerti/);assert.match(output,/HEALTHY|Healthy:/);}
     if(switchCompany){assert.match(secondPanel,/bravo_backend/);assert.ok(!secondPanel.includes('acerti_backend'));}else assert.ok(!output.includes('bravo_backend'));
     assert.ok(!output.includes('synthetic-private-token'));assert.ok(!output.includes('synthetic-wuzapi-token'));
     const after=t.snapshot();for(const[key,value]of Object.entries(before))assert.equal(after[key],value,key);

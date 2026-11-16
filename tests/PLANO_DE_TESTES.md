@@ -1,3 +1,26 @@
+# Dashboard compacto / URL única — 16/11/2026
+
+compact_api_tests.cjs integra o executor obrigatório por api_services_tests.cjs.
+Cobertura: cores SGR por estado real e política NO_COLOR/TERM/TTY, largura visível
+com ANSI confiável, 24/38/56/80 colunas, stdout redirecionado sem perder o TTY
+de entrada, terminais sem suporte, URL longa sem perda, resumo versus
+diagnóstico, quadro sem duplicação, injeção de controle e ausência de segredos.
+Wizard: um domínio por API, endpoints automáticos, nenhuma pergunta de frontend
+ou backend, preservação de tokens/URLs/volumes, ENTER idempotente e aplicação só
+no Caddy para mudança de domínio. WuzAPI pública continua bloqueada e fallback
+interno exige escolha e confirmação explícitas.
+
+Verificação de leitura separa DNS de TLS/HTTP: cache legado não produz sucesso,
+DNS incorreto não chama TLS, consulta inconclusiva/conflito de portas não inventa
+DNS incorreto, falha TLS fica vermelha e só sucesso efetivo registra
+validado. Não há restart, mudança de ambiente ou remoção de recursos. Casos de
+rede usam fixtures/probes controlados e não comprovam HTTPS da VPS. Os testes
+HTTPS existentes também continuam sendo executados na suíte completa.
+
+navigation_runtime.test.cjs exige quadro compacto e empresa correta no caminho
+Shell/CLI em container, mantendo inventário externo sintético e arquivos das
+empresas somente para leitura. Não executar estes testes com sessões reais.
+
 # Formatação de painéis — 16/11/2026
 
 `panel_format_tests.cjs` integra a suíte Docker-only: linhas distintas para

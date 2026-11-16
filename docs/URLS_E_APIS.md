@@ -1,5 +1,20 @@
 # URLs próprias e APIs independentes
 
+O painel inicial dos menus 11/12 é compacto e colorido conforme o estado real.
+Saúde, instalação confirmada e HTTPS validado são verdes; pendências amarelas;
+falhas vermelhas; ausência cinza. NO_COLOR, TERM=dumb e saída redirecionada
+desativam cores. A opção 3 apresenta o relatório técnico completo.
+
+Instalar pede somente um domínio público (hostname ou origem HTTPS), seguido de
+validação e confirmação. O instalador gerencia automaticamente endpoints/portas
+internas. Para uma API existente, use 8 — Configurar URL / HTTPS; ENTER mantém
+a URL sem reaplicar configurações. A opção 1 nunca reinstala uma API encontrada.
+
+Em 3, digite VERIFICAR HTTPS para consultar DNS/TLS/HTTP sem reconfigurar serviços.
+O resultado da verificação é registrado no estado da empresa. DNS compatível
+não implica TLS validado; abrir o menu não executa a verificação. URL antiga
+sem registro HTTPS correspondente aparece como NÃO VERIFICADO.
+
 Selecione a empresa reconhecida antes de entrar no menu 11 (API Oficial) ou 12
 (WhatsMeow/WuzAPI). O cabeçalho informa projeto e diretório reais. Status consulta
 containers por labels de projeto e serviço; uma declaração no Compose não conta
