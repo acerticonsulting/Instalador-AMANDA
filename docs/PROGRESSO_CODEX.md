@@ -1,3 +1,56 @@
+# Reconhecimento compartilhado e navegação dos menus 4/11/12 — 16/11/2026
+
+Causa reproduzida sobre 3fe5308: selectInstance(true) chamava inspectInstallation
+sem projeto. O validador exigia identidade no estado e no setup.json, classificava
+a instalação ready como unknown e a removia da lista. O teste antigo do seletor
+substituía esse validador por `{kind:'complete'}`, mascarando a regressão. Também
+havia duas lacunas no Shell: opção inicial 12 e comando direto wuzapi ausentes
+das listas de argumentos aceitos.
+
+Reprodução antes do ajuste: tmp/discovery-before.log, 3 falhas — seleção estrita,
+descoberta sem projeto e entrada Shell 12. Fixtures com permissões privadas,
+ready, perfis opcionais, .env e setup.json íntegro; nenhuma simulação do validador.
+
+Correção: inspectInstallation solicita descoberta controlada quando o projeto
+foi omitido. A identidade é obtida dentro do validador, após verificar caminho,
+ownership, diretório privado e arquivo de estado; todas as verificações de schema,
+fonte, projeto, setup, checkpoint e plataforma permanecem ativas. /home/deploy/empresa
+exige correspondência com o nome da pasta; layouts legados com nome distinto
+em instances exigem setup.json íntegro e vinculado ao diretório/projeto. A seleção
+revalida o estado após a escolha e não aceita a troca de identidade. Rejeições
+incluem motivo sanitizado, sem conteúdo do JSON ou segredos. Diretórios simbólicos
+de empresas e de descoberta continuam bloqueados.
+
+Menus 4, 11 e 12 usam a mesma seleção validada e o Manager da empresa escolhida.
+O status das APIs passa a consultar o inventário somente para leitura, como o
+dashboard, sem criar lock ou arquivos persistentes apenas por abrir o painel.
+Eliminada seleção duplicada nesses fluxos. Shell aceita 12, informa intervalo
+0–12 e encaminha wuzapi à CLI já existente. Nenhuma operação administrativa foi
+liberada em estados parciais. Publicação WuzAPI continua bloqueada.
+
+Regressão integral: `bash tests/validar_instalador.sh`, 85 scripts / 5 etapas;
+361 testes, 359 aprovados, 0 falhas e 2 testes TTY optativos ignorados. Inclui
+fixtures reais do diretório, inclusive /home/deploy/amanda no filesystem isolado
+do container, perfis opcionais, duas empresas, troca/cancelamento, legado, JSON
+inválido, projeto divergente, ownership/permissões, symlinks, estado parcial,
+revalidação após escolha e preservação byte a byte de arquivos persistentes.
+
+Integração de entrada: `navigation_runtime.test.cjs`, 7 aprovados, 0 falhas.
+Percorre Shell real, opção inicial 4/11/12, seleção de empresa, CLI em container,
+painel real, volta ao principal, comando direto wuzapi, empresas sem APIs e troca
+de empresa pelo menu 4. Usa inventário externo Git/Docker de fixture com whitelist
+somente para leitura; descoberta, validador, Manager.load, menus e dashboard são
+reais. Arquivos da instância montados somente para leitura no container da CLI.
+Não equivale a inspeção dos serviços da VPS. Não executa builds da plataforma,
+updates, migrations, seeds, backups, reinícios ou remoções de recursos da aplicação.
+
+Evidências locais ignoradas pelo Git: tmp/discovery-before.log,
+tmp/discovery-full.log e tmp/navigation-runtime.log. Correção restrita ao
+instalador; plataforma, credenciais, volumes, sessões e perfis reais não alterados.
+VPS /home/deploy/amanda não acessada: não há sessão remota autorizada disponível
+neste workspace para executar `--plataforma`. A validação reportada é local.
+Entrega por PR e integração à main, conforme solicitação atual e AGENTS.md.
+
 # APIs independentes e instalação base — 16/11/2026
 
 Base: main do instalador c7dc546 e plataforma b0467a9. Instalação nova, wizard

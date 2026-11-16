@@ -2,7 +2,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const SOURCE='https://github.com/acerticonsulting/AMANDA.git';
 const PHASES=new Set(['preparing','build','migrations','seed','starting','https-pending','ready','preparing-update','migration-update']);
 const hash=value=>crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
-function inspectDirectory(root,{project,owner,logicalRoot=root}={}){
+function inspectDirectory(root,{project,owner,logicalRoot=root,discoverProject=false}={}){
   const result={root,project};
   const reject=reason=>({...result,kind:'unknown',reason});
   const allowedOwners=new Set([0,owner?.uid,process.getuid?.()].filter(Number.isInteger));
@@ -41,12 +41,23 @@ function inspectDirectory(root,{project,owner,logicalRoot=root}={}){
       }
     }
     const stateFile=path.join(privateDir,'state.json'),setupFile=path.join(privateDir,'setup.json');
+    // Discover only inside the directory whose path, ownership, private entries
+    // and file permissions were checked above. The full validator still runs.
+    if(project===undefined&&discoverProject&&fs.existsSync(stateFile)){
+      check(stateFile,false,true);
+      const candidate=JSON.parse(fs.readFileSync(stateFile,'utf8'));
+      if(typeof candidate?.project!=='string'||!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(candidate.project))throw Error('Identidade project inválida no estado persistido.');
+      project=candidate.project;result.project=project;
+    }
+    if(project!==undefined&&path.dirname(logicalRoot)==='/home/deploy'&&path.basename(logicalRoot)!==project)throw Error('Identidade project não corresponde ao diretório da empresa.');
     let saved;
     if(fs.existsSync(setupFile)){
       check(setupFile,false,true);const record=JSON.parse(fs.readFileSync(setupFile,'utf8'));
-      if(record.schema!==1||record.sourceUrl!==SOURCE||record.root!==logicalRoot||!record.config||hash(record.config)!==record.sha256||record.config.project!==project||record.config.sourceUrl!==SOURCE)throw Error('Configuração salva sem integridade ou identidade confirmada.');
+      if(record.schema!==1||record.sourceUrl!==SOURCE||record.root!==logicalRoot||!record.config||hash(record.config)!==record.sha256||record.config.sourceUrl!==SOURCE)throw Error('Configuração salva sem integridade ou identidade confirmada.');
+      if(record.config.project!==project)throw Error('Identidade project diverge da configuração salva da empresa.');
       saved=record.config;
     }
+    if(project!==undefined&&path.basename(path.dirname(logicalRoot))==='instances'&&path.basename(logicalRoot)!==project&&!saved)throw Error('Identidade project sem correspondência com diretório ou configuração salva da empresa.');
     if(!fs.existsSync(stateFile)){
       if(entries.some(n=>n!=='.amanda-installer'))return reject('Há conteúdo sem estado confirmado da instalação.');
       const known=new Set(['install.log','operation.lock','operation.lock.guard','setup.json']);

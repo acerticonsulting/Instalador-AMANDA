@@ -8,14 +8,21 @@ TOOLS.find(item=>item[0]==='3')[2]='wuzapi';
 class Menus{
   async selectInstance(strict=false){
     const {Manager}=require('./manager.cjs'),base=this.baseRoot,children=process.env.AMANDA_DEPLOY_LAYOUT==='1'?require('./deploy.cjs').BASE:path.join(base,'instances');
-    const roots=[...new Set([...(fs.existsSync(path.join(base,'.amanda-installer/state.json'))?[base]:[]),...(fs.existsSync(children)?fs.readdirSync(children).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&!fs.lstatSync(path.join(children,n)).isSymbolicLink()&&fs.existsSync(path.join(children,n,'.amanda-installer/state.json'))).sort().map(n=>path.join(children,n)):[])])].filter(root=>!strict||['complete','partial'].includes(require('./deploy.cjs').inspectInstallation(root).kind));
-    if(!roots.length){if(strict)throw Error('Nenhuma instalação reconhecida.');return;}
-    if(roots.length===1){if(roots[0]!==this.m.root)this.m=new Manager(roots[0]);this.m.load();return;}
+    const {inspectInstallation}=require('./deploy.cjs'),safe=value=>this.ui.text(String(value)).replace(/[\x00-\x1f\x7f]/g,' ').slice(0,300);
+    const accepted=new Map(),rejected=[],childrenExist=fs.existsSync(children),childrenSafe=childrenExist&&fs.lstatSync(children).isDirectory()&&!fs.lstatSync(children).isSymbolicLink()&&fs.realpathSync(children)===children;
+    if(childrenExist&&!childrenSafe)rejected.push(safe(children)+': Diretório de empresas inválido ou simbólico.');
+    const candidates=[...new Set([...(fs.existsSync(path.join(base,'.amanda-installer/state.json'))?[base]:[]),...(childrenSafe?fs.readdirSync(children).filter(n=>/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)&&(fs.lstatSync(path.join(children,n)).isSymbolicLink()||fs.existsSync(path.join(children,n,'.amanda-installer/state.json')))).sort().map(n=>path.join(children,n)):[])])];
+    for(const root of candidates){const expected=root===this.m.root?this.m.state?.project:undefined,info=inspectInstallation(root,expected);if(['complete','partial'].includes(info.kind))accepted.set(root,info.project);else rejected.push(safe(root)+': '+safe(info.reason||info.kind));}
+    const roots=[...accepted.keys()];
+    const select=root=>{const info=inspectInstallation(root,accepted.get(root));if(!['complete','partial'].includes(info.kind))throw Error('Instalação não reconhecida: '+safe(info.reason||info.kind));const selected=root===this.m.root?this.m:new Manager(root);selected.load();if(selected.state.project!==info.project)throw Error('Identidade da empresa mudou durante a seleção.');this.m=selected;};
+    if(!roots.length){if(strict||rejected.length)throw Error('Nenhuma instalação reconhecida.'+(rejected.length?'\n'+rejected.join('\n'):''));return;}
+    if(rejected.length)this.out('Instalações descartadas:\n'+rejected.join('\n'));
+    if(roots.length===1){select(roots[0]);return;}
     this.out(this.ui.banner('SELECIONAR INSTÂNCIA'));roots.forEach((root,i)=>this.out(this.ui.item(String(i+1),path.basename(root))));
     const value=await this.ask('Selecione a instância (0 cancela)',String(roots.indexOf(this.m.root)+1));
     if(value==='0')throw Error('Operação cancelada.');
     if(!/^[1-9][0-9]*$/.test(value)||!roots[+value-1])throw Error('Instância inválida.');
-    if(roots[+value-1]!==this.m.root){this.m=new Manager(roots[+value-1]);this.m.load();}
+    select(roots[+value-1]);
   }
   async update(){
     this.m.load();this.out(require('./historical.cjs').render('update','',{empresa:this.m.state.project}));
@@ -80,7 +87,7 @@ class Menus{
     await this.selectInstance(true);const{ApiServices,DEFINITIONS}=require('./api-services.cjs'),d=DEFINITIONS[service];
     const entries=[['1','Instalar '+d.label,'install'],['2',service==='api_oficial'?'Atualizar plataforma AMANDA (inclui API Oficial)':'Atualizar somente imagem WuzAPI','update'],['3','Status e diagnóstico','ps'],['4','Iniciar / reiniciar','restart'],['5','Parar','stop'],['6','Logs recentes','logs'],['7','Sincronizar integração interna do backend','sync'],['8','Domínio próprio e HTTPS','ssl'],['9','Remover somente container (preservar volumes)','rm']];
     while(true){try{
-      const api=new ApiServices(this.m),info=await this.m.lock(()=>api.inspect(service));this.out(this.ui.banner(d.label));this.out(this.ui.text(require('./api-services.cjs').renderApi(info)));
+      const api=new ApiServices(this.m),info=await api.inspect(service);this.out(this.ui.banner(d.label));this.out(this.ui.text(require('./api-services.cjs').renderApi(info)));
       const a=await this.choose(d.label,entries);if(!a)return;const ops=new Operations(this.m);
       if(a==='install')await this.enable(service);
       else if(a==='update'){if(service==='api_oficial')await this.m.lock(()=>this.update());else{const confirmation=await this.ask('Digite ATUALIZAR '+this.m.state.project+' wuzapi');await this.m.lock(()=>api.updateWuzapi(confirmation));}}
@@ -150,7 +157,7 @@ class Menus{
   }
   async dispatch(action,locked=false){
     if(action==='audit')return this.auditCenter();
-    if(!locked&&!['install','new-instance','tools','official','wuzapi','instances','doctor','native-unavailable','portainer-unavailable'].includes(action))await this.selectInstance();
+    if(!locked&&!['install','new-instance','tools','official','wuzapi','services','instances','doctor','native-unavailable','portainer-unavailable'].includes(action))await this.selectInstance();
     if(!locked&&!['install','new-instance','tools','official','wuzapi','configure','services','urls','instances','automation','baileys'].includes(action))return this.m.lock(async()=>{this.m.runner.emit('Operação: '+action+'\n');try{const value=await this.dispatch(action,true);this.m.runner.emit('OK: '+action+'\n');return value;}catch(error){this.m.runner.emit('FALHA: '+action+' — '+error.message+'\n');throw error;}});
     const m=this.m,ops=new Operations(m);
     if(action?.startsWith('restore-'))return this.restore(action.slice(8));

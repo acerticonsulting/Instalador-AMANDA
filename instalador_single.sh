@@ -21,7 +21,7 @@ while [ "$#" -gt 0 ]; do
     --config) [ "$#" -ge 2 ] || { printf '%s\n' 'Falta o arquivo de configuração.' >&2; exit 2; }; config=$2; shift 2 ;;
     --atualizar|atualizar|2) action=update; shift ;;
     --help|-h|help) action=help; shift ;;
-    menu|install|wizard|configure|instances|migration-plan|urls|services|official|ssl|push|'postgres'|optional-service|rollback|schedule-backup|wuzapi-start|native-unavailable|channels-unavailable|external-unavailable|helper-unavailable|update|resume|adopt|start|stop|restart|status|logs|backup|doctor|https-diagnose|state-diagnose|build-token|unlock) action=$1; shift ;;
+    menu|install|wizard|configure|instances|migration-plan|urls|services|official|wuzapi|ssl|push|'postgres'|optional-service|rollback|schedule-backup|wuzapi-start|native-unavailable|channels-unavailable|external-unavailable|helper-unavailable|update|resume|adopt|start|stop|restart|status|logs|backup|doctor|https-diagnose|state-diagnose|build-token|unlock) action=$1; shift ;;
     *) printf 'Argumento não suportado: %s\nUse: sh instalador_single.sh help\n' "$1" >&2; exit 2 ;;
   esac
 done
@@ -40,8 +40,8 @@ if [ "$action" = menu ] && [ -t 0 ]; then
     case "$initial" in
       '') continue ;;
       0) exit 0 ;;
-      1|2|3|4|5|6|7|8|9|10|11) break ;;
-      *) printf '%s\n' 'Opção inválida. Digite um número de 0 a 11.' >&2 ;;
+      1|2|3|4|5|6|7|8|9|10|11|12) break ;;
+      *) printf '%s\n' 'Opção inválida. Digite um número de 0 a 12.' >&2 ;;
     esac
   done
 fi
