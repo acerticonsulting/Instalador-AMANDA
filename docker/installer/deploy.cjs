@@ -5,7 +5,7 @@ const {inspectDirectory,conflict}=require('./directory-state.cjs');
 function companyDirectory(project){if(typeof project!=='string'||!/^[a-z0-9][a-z0-9_]{0,39}$/.test(project))throw Error('Identificador de empresa inválido.');return BASE+'/'+project;}
 function account(passwd){const row=passwd.split('\n').find(l=>l.startsWith('deploy:'));if(!row)return null;const fields=row.split(':'),uid=Number(fields[2]),gid=Number(fields[3]);if(!Number.isInteger(uid)||uid<=0||!Number.isInteger(gid)||gid<0)throw Error('Conta deploy sem identidade segura.');return {uid,gid};}
 function hostOwner(){return account(fs.readFileSync(fs.existsSync('/run/amanda-host-passwd')?'/run/amanda-host-passwd':'/etc/passwd','utf8'));}
-function inspectInstallation(root,project){return inspectDirectory(root,{project,owner:hostOwner()});}
+function inspectInstallation(root,project){return inspectDirectory(root,{project,owner:hostOwner(),discoverProject:project===undefined});}
 function assertDirectory(dir){const st=fs.lstatSync(dir);if(!st.isDirectory()||st.isSymbolicLink()||fs.realpathSync(dir)!==dir)throw Error('Diretório deploy não pode ser link simbólico.');}
 function provision(project,{host='/host',run=execFileSync}={}){
  const target=host+companyDirectory(project),base=host+BASE,passwd=host+'/etc/passwd';

@@ -1,3 +1,34 @@
+# Descoberta e navegação 4/11/12 — 16/11/2026
+
+`instance_selection_tests.cjs` usa arquivos reais e o validador de diretório real.
+Não substituir inspectInstallation por um retorno fixo nos testes de seleção ou
+coleta. Fixtures incluem setup.json, .env privado, estado ready e perfis opcionais;
+casos inválidos devem ser rejeitados com diagnóstico sanitizado e sem alteração
+de arquivos. O caso /home/deploy/amanda existe somente no filesystem temporário
+do container Node, sem montar diretório de uma instalação real.
+
+`navigation_runtime.test.cjs` é integração optativa com Shell e CLI em containers:
+
+```sh
+docker run --rm --name amanda-navigation-runner --entrypoint node \
+  --mount "type=bind,source=$PWD,target=/suite,readonly" \
+  -v amanda_navigation_fixtures:/navigation \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e TMPDIR=/navigation \
+  -e AMANDA_NAV_RUNNER_CONTAINER=amanda-navigation-runner \
+  -e AMANDA_NAV_TEST_IMAGE=amanda-installer:local \
+  -w /suite amanda-installer:local --test tests/navigation_runtime.test.cjs
+```
+
+Requer imagem do instalador já disponível; não constrói a plataforma. O transporte
+do bootstrap reutiliza a imagem e abre CLI real com fixtures montadas read-only.
+O preload de teste permite apenas consultas Git/Docker de inventário sintético;
+não altera inspectInstallation, validador ou Manager.load e rejeita comandos
+mutáveis. Os 7 cenários verificam menus 4/11/12, volta ao principal, comando
+direto wuzapi, empresa sem APIs e troca de empresa. Snapshot dos arquivos privados
+deve ser idêntico antes/depois. O volume nomeado contém apenas fixtures e é
+preservado; não usar volumes ou diretórios da instalação real nessa execução.
+
 # APIs independentes — 16/11/2026
 
 `api_services_tests.cjs` integra a suíte obrigatória Docker-only: 62 casos novos

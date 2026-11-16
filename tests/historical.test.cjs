@@ -57,7 +57,7 @@ test('bootstrap retries an invalid selection instead of closing the terminal men
 });
 
 test('bootstrap forwards the selected menu option after buffered blank lines without executing real Docker',async()=>{
- for(const choice of ['1','11']){const result=await runBootstrapTTY('\n '+choice+' \r\n','executable');assert.equal(result.status,0,result.output);assert.ok(!result.output.includes('Opção inválida'));assert.ok(result.commands.includes('--initial\n'+choice+'\n'));assert.equal(result.changed,false);}
+ for(const choice of ['1','4','11','12']){const result=await runBootstrapTTY('\n '+choice+' \r\n','executable');assert.equal(result.status,0,result.output);assert.ok(!result.output.includes('Opção inválida'));assert.ok(result.commands.includes('--initial\n'+choice+'\n'));assert.equal(result.changed,false);}
 });
 
 test('bootstrap keeps Docker TTY when stdin is interactive and stdout is piped',async()=>{

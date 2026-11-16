@@ -53,7 +53,7 @@ Node, Git, Compose, Buildx, ferramentas de banco e compiladores rodam em contain
     if(!process.stdin.isTTY)throw Error('O menu requer terminal interativo. Para instalar sem interação use install --config /arquivo.json.');
     return new Menus(manager,ask,context=>installInput(configFile,{directory:directory(context),getResources:()=>manager.resources()}),{initial,startInstall}).run();
   }
-  if(automatic&&!['menu','install','wizard','doctor','instances'].includes(action)){
+  if(automatic&&!['menu','install','wizard','doctor','instances','official','wuzapi','services'].includes(action)){
     const selection=new Menus(manager,ask,null);await selection.selectInstance();manager=selection.m;
     if(!fs.existsSync(manager.stateFile))throw Error('Selecione a instalação existente com --dir /home/deploy/empresa (ou seu caminho histórico).');
   }
