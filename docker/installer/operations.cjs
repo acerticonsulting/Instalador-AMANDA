@@ -8,11 +8,11 @@ class Operations {
   constructor(manager){this.m=manager;}
   async ready(restoring=false,configuring=false){const m=this.m;await m.doctor();m.load();await m.identifyManager();await m.validateSource();await m.configuration();if(['network','view'].includes(configuring)&&!m.state.initialized&&m.state.seedSucceeded&&m.state.phase==='https-pending')return;if(configuring&&!m.state.initialized&&m.state.seedSucceeded&&m.state.phase==='starting')return;if(!m.state.initialized||(m.state.phase!=='ready'&&!(restoring&&m.state.phase==='restoring')))throw Error('Instalação incompleta. Use Retomar operação ou repita a restauração registrada.');}
   service(name){if(![...this.m.services(),'edge'].includes(name))throw Error('Serviço inválido.');return name;}
-  async services(action,name){await this.ready();if(name)this.service(name);if(!['ps','restart','stop','start','logs','rm'].includes(action))throw Error('Operação inválida.');
+  async services(action,name,{summary=true}={}){await this.ready();if(name)this.service(name);if(!['ps','restart','stop','start','logs','rm'].includes(action))throw Error('Operação inválida.');
     const args=action==='ps'?['ps','--all']:action==='logs'?['logs','--no-color','--tail','200']:action==='start'?['up','-d','--no-deps','--wait']:action==='rm'?['rm','-s','-f']:[action];
     if(name)args.push(name);else if(['restart','stop','start','rm'].includes(action))args.push(...this.m.services(),...(this.m.state.profiles.includes('edge')?['edge']:[]));
     await this.m.compose(args,{label:'Gerenciamento de serviços Docker'});
-    if(name==='api_oficial'&&['start','restart'].includes(action))await require('./completion.cjs').showOfficialApiCompletion(this.m,{action});
+    if(summary&&name==='api_oficial'&&['start','restart'].includes(action))await require('./completion.cjs').showOfficialApiCompletion(this.m,{action});
   }
   current(){const m=this.m;const e=envValues(path.join(m.state.platform,'.env'));return {sourceUrl:m.state.sourceUrl,project:m.state.project,frontendUrl:e.FRONTEND_URL,backendUrl:e.BACKEND_URL,edge:m.state.profiles.includes('edge'),public:e.BIND_ADDRESS==='0.0.0.0',options:{frontendPort:+e.PORT_FRONTEND||3000,backendPort:+e.PORT_BACKEND||8080,services:{official:m.state.profiles.includes('official'),wuzapi:m.state.profiles.includes('whatsmeow'),rabbit:m.state.profiles.includes('rabbit')},officialPort:+e.PORT_APIOFICIAL||6000,wuzapiPort:+e.PORT_WUZAPI||8090,officialUrl:e.OFICIAL_HOST?`https://${e.OFICIAL_HOST}`:undefined}};}
   async pendingUrls(network,confirm){

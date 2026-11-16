@@ -84,10 +84,13 @@ if [ -d "$installer_dir/.git" ] || [ -f "$installer_dir/.git" ]; then
 fi
 docker run --rm --name "${bootstrap}_build" --mount "type=bind,source=$socket,target=/var/run/docker.sock" --mount "type=bind,source=$installer_dir,target=$installer_dir,readonly" -e DOCKER_HOST=unix:///var/run/docker.sock -e DOCKER_BUILDKIT=1 docker:27.5.1-cli docker build -f "$installer_dir/docker/installer/Dockerfile" -t "$image" "$installer_dir"
 terminal=-i
+color_output=0
+if [ -t 1 ]; then color_output=1; fi
 # The menu and Docker must agree on whether input is interactive, even through tee.
 if [ -t 0 ]; then terminal=-it; fi
 set -- run --rm --init --name "$bootstrap" "$terminal" --mount "type=bind,source=$socket,target=/var/run/docker.sock" -e "AMANDA_MANAGER_CONTAINER=$bootstrap" -e TERM -e COLORTERM -e NO_COLOR -e WT_SESSION -e DOCKER_HOST=unix:///var/run/docker.sock -e "AMANDA_DOCKER_SOCKET=$socket" -e "AMANDA_DEPLOY_LAYOUT=$deploy_layout" -e "AMANDA_INSTALL_DIR=$target" -e "AMANDA_MANAGER_IMAGE=$image"
 set -- "$@" --mount type=bind,source=/etc/passwd,target=/run/amanda-host-passwd,readonly
+set -- "$@" -e "AMANDA_COLOR_OUTPUT=$color_output"
 set -- "$@" -e AMANDA_HTTPS_TIMEOUT_MS -e AMANDA_HTTPS_EXPECTED_ADDRESSES
 set -- "$@" -e "AMANDA_INSTALLER_BRANCH=$installer_branch" -e "AMANDA_INSTALLER_COMMIT=$installer_commit" -e "AMANDA_INSTALLER_DIRTY=$installer_dirty"
 case "$action" in help|doctor) ;; state-diagnose) set -- "$@" --mount "type=bind,source=$target,target=$target,readonly" ;; *) set -- "$@" -v "$target:$target" ;; esac

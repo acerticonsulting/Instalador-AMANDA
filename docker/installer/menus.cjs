@@ -18,7 +18,7 @@ class Menus{
     if(!roots.length){if(strict||rejected.length)throw Error('Nenhuma instalação reconhecida.'+(rejected.length?'\n'+rejected.join('\n'):''));return;}
     if(rejected.length)this.out('Instalações descartadas:\n'+rejected.join('\n'));
     if(roots.length===1){select(roots[0]);return;}
-    this.out(this.ui.banner('SELECIONAR INSTÂNCIA'));roots.forEach((root,i)=>this.out(this.ui.item(String(i+1),path.basename(root))));
+    this.out(this.ui.heading('SELECIONAR INSTÂNCIA'));roots.forEach((root,i)=>this.out(this.ui.item(String(i+1),path.basename(root))));
     const value=await this.ask('Selecione a instância (0 cancela)',String(roots.indexOf(this.m.root)+1));
     if(value==='0')throw Error('Operação cancelada.');
     if(!/^[1-9][0-9]*$/.test(value)||!roots[+value-1])throw Error('Instância inválida.');
@@ -36,7 +36,15 @@ class Menus{
     return this.m.execute('update');
   }
   constructor(manager,ask,installInput,{out=console.log,initial,install,startInstall}={}){this.m=manager;this.baseRoot=manager.root;this.ask=ask;this.input=installInput;this.out=out;this.initial=initial;this.install=install;this.startInstall=startInstall;this.ui=createUI();}
-  async choose(title,items,before){const historical=items===MAIN?'main':items===TOOLS?'tools':items===API?'api':title==='STATUS E REINÍCIO'?'status':null;if(historical)this.out(require('./historical.cjs').render(historical,'',{emp:this.m.state?.project||'Instância atual'}));else this.out(this.ui.banner(title));if(before)await before();this.out(' Instância: '+this.m.root+'\n');if(historical==='status')for(const[id,label]of items.filter(x=>+x[0]>6))this.out(this.ui.item(id,label));if(!historical){this.out(' Selecione abaixo a opção desejada:\n');for(const[id,label]of items)this.out(this.ui.item(id,label));this.out(this.ui.item('0','Voltar / sair'));}const id=await this.ask('Selecione a opção desejada');if(id==='0')return null;const item=items.find(x=>x[0]===id);if(!item)throw Error('Opção inválida.');return item[2];}
+  async choose(title,items,before,{header=true,instance=true,optionTone}={}){
+    const historical=items===MAIN?'main':items===TOOLS?'tools':items===API?'api':title==='STATUS E REINÍCIO'?'status':null;
+    if(header){if(historical)this.out(require('./historical.cjs').render(historical,'',{emp:this.m.state?.project||'Instância atual',AMANDA_UI_COMPACT:historical==='main'?'0':'1'}));else this.out(this.ui.heading(title));}
+    if(before)await before();
+    if(instance)this.out(' Instância: '+this.ui.text(this.m.root)+'\n');
+    if(historical==='status')for(const[id,label]of items.filter(x=>+x[0]>6))this.out(this.ui.item(id,label));
+    if(!historical){for(const[id,label]of items)this.out(this.ui.item(id,label,optionTone));this.out(this.ui.item('0','Voltar / sair',optionTone));}
+    const id=await this.ask('Selecione a opção desejada');if(id==='0')return null;const item=items.find(x=>x[0]===id);if(!item)throw Error('Opção inválida.');return item[2];
+  }
   async form(group){const values={};const {envValues}=require('./manager.cjs');const file=this.m.state?path.join(this.m.state.platform,'.env.backend'):null,current=file&&fs.existsSync(file)?envValues(file):{};for(const[key,label,fallback,secret]of GROUPS[group]){const value=await this.ask(label+(secret&&current[key]?' (ENTER preserva o valor existente)':''),secret?undefined:(current[key]??fallback),secret);values[key]=secret&&!value&&current[key]?current[key]:value;}validateOptions(group==='identity'?values:{backendEnv:values});return values;}
   async changeUrls(ops,network){return ops.configure({network,confirmNetwork:async({urls,dnsValid,expected})=>{
     this.out('Frontend: '+urls.frontendUrl+'\nBackend: '+urls.backendUrl+'\n'+(dnsValid?'DNS compatível; TLS será validado na retomada.':'DNS pendente: somente a proposta será salva; serviços não serão alterados.'));
@@ -61,43 +69,58 @@ class Menus{
   async services(){
     const{Dashboard,render,ports,status}=require('./dashboard.cjs');await this.selectInstance(true);
     const entries=[['1','Atualizar painel','refresh'],['2','Detalhes','details'],['3','Logs recentes','logs'],['4','Reiniciar serviço','restart'],['5','Reiniciar todos','restart-all'],['6','Iniciar serviço','start'],['7','Parar serviço','stop'],['8','Iniciar plataforma','start-all'],['9','Parar plataforma','stop-all'],['10','Consumo de recursos','stats'],['11','Portas e redes','network'],['12','Trocar empresa','company']];
-    while(true){const d=new Dashboard(this.m);let model;try{model=await d.collect();this.out(render(model));}catch(error){this.out(this.ui.banner('STATUS — INCOMPLETO'));this.out(this.ui.text(error.message));if(await this.ask('ENTER tenta novamente; 0 volta')==='0')return;continue;}
+    while(true){const d=new Dashboard(this.m);let model;try{model=await d.collect();this.out(render(model));}catch(error){this.out(this.ui.heading('STATUS — INCOMPLETO'));this.out(this.ui.text(error.message));if(await this.ask('ENTER tenta novamente; 0 volta')==='0')return;continue;}
       for(const[id,label]of entries)this.out(this.ui.item(id,label));this.out(this.ui.item('0','Voltar'));const choice=await this.ask('Selecione a opção'),action=entries.find(x=>x[0]===choice)?.[2];if(choice==='0')return;if(!action){this.out('Opção inválida.');continue;}if(action==='refresh')continue;if(action==='company'){await this.selectInstance(true);continue;}
       try{if(action==='stats')this.out(JSON.stringify(await d.stats(),null,2));else if(action==='network')this.out(JSON.stringify(model.items.map(x=>({service:x.key,ports:ports(x.container),networks:Object.keys(x.container?.Networks||{}),access:x.service==='edge'?'Proxy Caddy; verificar binds efetivos':'Ver publicação; EXPOSE não indica acesso público'})),null,2));else{
         let selected=model.items;if(!action.endsWith('-all')){model.items.forEach((x,i)=>this.out(this.ui.item(String(i+1),x.key+' — '+(x.container?.Name||'AUSENTE')+' — '+status(x.container))));const value=await this.ask('Serviço (0 cancela)');if(value==='0')continue;if(!/^[1-9][0-9]*$/.test(value)||!model.items[+value-1])throw Error('Seleção inválida.');selected=[model.items[+value-1]];}
-        if(action==='details')this.out(JSON.stringify(d.details(selected[0]),(_k,v)=>v===undefined?'Não verificado':v,2));else if(action==='logs')this.out(await d.logs(selected[0].key));else{const op=action.replace('-all',''),verb={restart:'REINICIAR',start:'INICIAR',stop:'PARAR'}[op],scope=selected.length===model.items.length?'TODOS':selected[0].key;this.out('Empresa: '+model.project+'\nServiços: '+selected.map(x=>x.key).join(', ')+'\nPoderá ocorrer indisponibilidade. Dados e volumes serão preservados.');const confirmation=await this.ask('Digite '+verb+' '+model.project+' '+scope);this.out(this.ui.banner('RESULTADO DO GERENCIAMENTO'));this.out(JSON.stringify(await d.act(op,selected.map(x=>x.key),confirmation),null,2));}
+        if(action==='details')this.out(JSON.stringify(d.details(selected[0]),(_k,v)=>v===undefined?'Não verificado':v,2));else if(action==='logs')this.out(await d.logs(selected[0].key));else{const op=action.replace('-all',''),verb={restart:'REINICIAR',start:'INICIAR',stop:'PARAR'}[op],scope=selected.length===model.items.length?'TODOS':selected[0].key;this.out('Empresa: '+model.project+'\nServiços: '+selected.map(x=>x.key).join(', ')+'\nPoderá ocorrer indisponibilidade. Dados e volumes serão preservados.');const confirmation=await this.ask('Digite '+verb+' '+model.project+' '+scope);this.out(this.ui.heading('RESULTADO DO GERENCIAMENTO'));this.out(JSON.stringify(await d.act(op,selected.map(x=>x.key),confirmation),null,2));}
       }}catch(error){this.out(this.ui.text('OPERAÇÃO NÃO VALIDADA: '+error.message));}await this.ask('ENTER para voltar ao painel');
     }
   }
-  async apiPlan(service){
+  async apiPlan(service,{configure=false}={}){
     const{ApiServices,DEFINITIONS,publicUrl}=require('./api-services.cjs'),api=new ApiServices(this.m),d=DEFINITIONS[service];this.m.load();
-    this.out(this.ui.banner(d.label+' — DOMÍNIO PRÓPRIO'));
-    this.out('Empresa: '+(this.m.state.companyName||this.m.state.project)+'\nProjeto: '+this.m.state.project+'\nDiretório: '+this.m.root+'\nURL interna do backend: '+d.internal);
+    this.out(this.ui.heading((configure?'URL DA ':'INSTALAR ')+d.label));
+    this.out(this.ui.lines(['Empresa: '+this.ui.text(this.m.state.companyName||this.m.state.project)]));
     const env=require('./manager.cjs').envValues(path.join(this.m.state.platform,'.env'));
-    this.out('Docker: gerenciamento em container\nPerfil: '+d.profile+'\nPorta interna: '+(service==='api_oficial'?'6000':'8080')+'\nPorta no host em loopback: '+(service==='api_oficial'?(env.PORT_APIOFICIAL||6000):(env.PORT_WUZAPI||8090))+'\nVolume: '+this.m.state.project+'_'+(service==='api_oficial'?'oficial_public':'wuzapi_data')+'\nToken administrativo: '+(env[service==='api_oficial'?'TOKEN_API_OFICIAL':'WUZAPI_ADMIN_TOKEN']?'Configurado; será preservado':'Ausente; instalação bloqueada até configurar com segurança')+'\nCaddy: '+(this.m.state.profiles.includes('edge')?'Existente; somente domínio desta API será alterado':'Não habilitado'));
+    let current='';try{if(d.host&&env[d.host])current=publicUrl('https://'+env[d.host]);}catch{}
+    const edge=this.m.state.profiles.includes('edge');
+    if(configure)this.out(this.ui.lines(['URL atual:',current||'Não configurada']));else this.out('Exemplo: '+(service==='api_oficial'?'oficial':'whatsmeow')+'.exemplo.com.br');
     if(service==='wuzapi')this.out('Publicação WuzAPI bloqueada até homologar autenticação e bloqueio de rotas administrativas. O modo interno mantém sessões em volume.');
-    if(!this.m.state.profiles.includes('edge'))this.out('Esta instalação não possui Caddy. Disponível somente modo interno.');
-    const value=await this.ask('URL HTTPS própria da '+d.label+' (ou digite INTERNO)',this.m.state.pendingApi?.service===service?this.m.state.pendingApi.url:undefined);
-    if(value==='INTERNO'){if(await this.ask('Digite CONFIRMAR INTERNO','')!=='CONFIRMAR INTERNO')throw Error('Modo interno não confirmado.');return api.plan(service,'');}
-    const plan=await api.plan(service,publicUrl(value));
-    if(!plan.dnsValid)this.out(plan.dnsError+' A proposta poderá ser salva sem instalar nem emitir certificado.');
-    this.out('URL pública proposta: '+plan.url+'\nURL interna preservada: '+d.internal);return plan;
+    if(!edge)this.out('Sem Caddy: escolha explicitamente INTERNO para continuar sem publicação pública.');
+    const value=await this.ask(configure?'Nova URL (ENTER mantém a atual)':'Domínio público / URL HTTPS da '+d.label+' (ou INTERNO)',configure?current:undefined);
+    if(configure&&(!value||value!=='INTERNO'&&publicUrl(value)===current))return{service,url:current,unchanged:true};
+    const internal=async()=>{if(await this.ask('Digite CONFIRMAR INTERNO','')!=='CONFIRMAR INTERNO')throw Error('Modo interno não confirmado.');this.out('Somente interno. Nenhuma URL pública será publicada.');return api.plan(service,'');};
+    if(value==='INTERNO')return internal();
+    const url=publicUrl(value);let plan;
+    try{plan=await api.plan(service,url);}catch(error){
+      if(service!=='wuzapi'&&edge)throw error;
+      this.out(this.ui.lines([this.m.runner.mask(error.message)]));
+      if(await this.ask('Publicação bloqueada. Digite INTERNO para continuar somente na rede Docker (ENTER cancela)','')!=='INTERNO')throw Error('Publicação cancelada; nenhum serviço foi alterado.');
+      return internal();
+    }
+    this.out(this.ui.panel('DOMÍNIO IDENTIFICADO',[{text:plan.url,tone:'info'},{text:'DNS: '+(plan.dnsValid?'COMPATÍVEL':'INCOMPATÍVEL / PENDENTE'),tone:plan.dnsValid?'good':'warn'},{text:'Caddy: HABILITADO (será validado)',tone:'neutral'},'Porta interna: AUTOMÁTICA','HTTPS: NÃO VERIFICADO']));
+    if(!plan.dnsValid)this.out(this.ui.lines(['Proposta pendente: confirme para guardar sem instalar ou emitir certificado.']));return plan;
   }
   async official(service='api_oficial'){
     await this.selectInstance(true);const{ApiServices,DEFINITIONS}=require('./api-services.cjs'),d=DEFINITIONS[service];
-    const entries=[['1','Instalar '+d.label,'install'],['2',service==='api_oficial'?'Atualizar plataforma AMANDA (inclui API Oficial)':'Atualizar somente imagem WuzAPI','update'],['3','Status e diagnóstico','ps'],['4','Iniciar / reiniciar','restart'],['5','Parar','stop'],['6','Logs recentes','logs'],['7','Sincronizar integração interna do backend','sync'],['8','Domínio próprio e HTTPS','ssl'],['9','Remover somente container (preservar volumes)','rm']];
+    const entries=[['1','Instalar '+d.label,'install'],['2',service==='api_oficial'?'Atualizar plataforma AMANDA (inclui API Oficial)':'Atualizar somente imagem WuzAPI','update'],['3','Status detalhado','ps'],['4','Iniciar / reiniciar','restart'],['5','Parar','stop'],['6','Logs recentes','logs'],['7','Sincronizar integração interna do backend','sync'],['8','Configurar URL / HTTPS','ssl'],['9','Remover somente container (preservar volumes)','rm']];
     while(true){try{
       const api=new ApiServices(this.m),info=await api.inspect(service);
       entries[0][1]=info.installed?'Já instalada — domínio em [8]':'Instalar '+d.label;
-      const a=await this.choose(d.label,entries,()=>{this.out(require('./api-services.cjs').renderApi(info,{ui:this.ui,mask:value=>this.m.runner.mask(value)}));if(info.installed)this.out(this.ui.lines(['API já instalada. Use [8] Domínio próprio e HTTPS para configurar somente a URL pública. Não é necessário reinstalar.']));});if(!a)return;const ops=new Operations(this.m);
+      const a=await this.choose(d.label,entries,()=>this.out(require('./api-services.cjs').renderApi(info,{ui:this.ui,mask:value=>this.m.runner.mask(value)})),{header:false,instance:false,optionTone:'info'});if(!a)return;const ops=new Operations(this.m);
       if(a==='install'){if(info.installed)this.out(this.ui.lines(['API já instalada. Utilize [8] Domínio próprio e HTTPS para configurar a URL pública, ou [4] para iniciar/reiniciar.']));else await this.enable(service);}
       else if(a==='update'){if(service==='api_oficial')await this.m.lock(()=>this.update());else{const confirmation=await this.ask('Digite ATUALIZAR '+this.m.state.project+' wuzapi');await this.m.lock(()=>api.updateWuzapi(confirmation));}}
-      else if(a==='ssl'){const plan=await this.apiPlan(service),confirmation=await this.ask('Digite DOMINIO '+this.m.state.project+' '+service);await this.m.lock(()=>api.domain(service,plan,confirmation));}
+      else if(a==='ssl'){const plan=await this.apiPlan(service,{configure:true});if(plan.unchanged)this.out('URL mantida. Nenhuma configuração ou serviço foi alterado. Use [3] para verificar HTTPS.');else{const confirmation=await this.ask('Digite DOMINIO '+this.m.state.project+' '+service);await this.m.lock(()=>api.domain(service,plan,confirmation));}}
       else if(a==='sync'){await ops.ready();ops.service(service);await ops.configure({backendEnv:{[d.integration]:d.internal}});}
-      else if(a==='ps'){this.out(require('./api-services.cjs').renderApi(await api.inspect(service),{ui:this.ui,mask:value=>this.m.runner.mask(value)}));}
+      else if(a==='ps'){
+        const details=await api.inspect(service);this.out(this.ui.heading('STATUS DETALHADO • '+d.label));this.out(require('./api-services.cjs').renderApi(details,{ui:this.ui,mask:value=>this.m.runner.mask(value),detailed:true}));
+        if(details.publicUrl!=='Não configurada'&&await this.ask('Digite VERIFICAR HTTPS para consultar DNS/TLS/HTTP sem reconfigurar (ENTER volta)','')==='VERIFICAR HTTPS'){
+          const result=await this.m.lock(()=>api.verify(service));this.out(this.ui.paint('DNS: '+({compatible:'COMPATÍVEL',incompatible:'INCOMPATÍVEL',inconclusive:'INCONCLUSIVO'})[result.dns],result.dns==='compatible'?'good':result.dns==='incompatible'?'bad':'warn'));this.out(this.ui.paint('HTTPS: '+({validated:'VALIDADO',pending:'PENDENTE',failed:'COM FALHA'})[result.https],result.https==='validated'?'good':result.https==='failed'?'bad':'warn'));await this.ask('Pressione ENTER para voltar');
+        }else if(details.publicUrl==='Não configurada')await this.ask('Pressione ENTER para voltar');continue;
+      }
       else if(a==='rm'){this.out('Serão preservados banco, credenciais e volumes: '+JSON.stringify(info.volumes||[])+'\nA integração ficará indisponível até iniciar novamente.');if(await this.ask('Digite REMOVER '+this.m.state.project+' '+service)!=='REMOVER '+this.m.state.project+' '+service)throw Error('Remoção cancelada.');await ops.services('rm',service);}
       else if(a==='logs')this.out(await new(require('./dashboard.cjs').Dashboard)(this.m).logs(service));
-      else if(a==='restart'){if(await this.ask('Digite INICIAR '+this.m.state.project+' '+service)!=='INICIAR '+this.m.state.project+' '+service)throw Error('Operação cancelada.');await ops.services(info.installed?'restart':'start',service);}
+      else if(a==='restart'){if(await this.ask('Digite INICIAR '+this.m.state.project+' '+service)!=='INICIAR '+this.m.state.project+' '+service)throw Error('Operação cancelada.');await ops.services(info.installed?'restart':'start',service,{summary:false});}
       else if(a==='stop'){if(await this.ask('Digite PARAR '+this.m.state.project+' '+service)!=='PARAR '+this.m.state.project+' '+service)throw Error('Operação cancelada.');await ops.services('stop',service);}
     }catch(error){this.out(this.ui.text('OPERAÇÃO NÃO CONCLUÍDA: '+this.m.runner.mask(error.message)));}await this.ask('Pressione ENTER para continuar');}
   }

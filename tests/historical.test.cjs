@@ -57,11 +57,11 @@ test('bootstrap retries an invalid selection instead of closing the terminal men
 });
 
 test('bootstrap forwards the selected menu option after buffered blank lines without executing real Docker',async()=>{
- for(const choice of ['1','4','11','12']){const result=await runBootstrapTTY('\n '+choice+' \r\n','executable');assert.equal(result.status,0,result.output);assert.ok(!result.output.includes('Opção inválida'));assert.ok(result.commands.includes('--initial\n'+choice+'\n'));assert.equal(result.changed,false);}
+ for(const choice of ['1','4','11','12']){const result=await runBootstrapTTY('\n '+choice+' \r\n','executable');assert.equal(result.status,0,result.output);assert.ok(!result.output.includes('Opção inválida'));assert.ok(result.commands.includes('--initial\n'+choice+'\n'));assert.ok(result.commands.includes('AMANDA_COLOR_OUTPUT=1'));assert.equal(result.changed,false);}
 });
 
 test('bootstrap keeps Docker TTY when stdin is interactive and stdout is piped',async()=>{
- const result=await runBootstrapTTY('1\n','stdout-pipe');assert.equal(result.status,0,result.output);assert.ok(result.commands.split('\n').includes('-it'),result.commands);assert.ok(result.commands.includes('--initial\n1\n'));assert.equal(result.changed,false);
+ const result=await runBootstrapTTY('1\n','stdout-pipe');assert.equal(result.status,0,result.output);assert.ok(result.commands.split('\n').includes('-it'),result.commands);assert.ok(result.commands.includes('--initial\n1\n'));assert.ok(result.commands.includes('AMANDA_COLOR_OUTPUT=0'));assert.equal(result.changed,false);
 });
 
 test('bootstrap keeps noninteractive Docker input without allocating a TTY',async()=>{

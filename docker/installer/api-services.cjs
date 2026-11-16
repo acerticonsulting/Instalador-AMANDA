@@ -19,27 +19,45 @@ function apiStatus(info){
   if(info.installed===false||['AUSENTE','NÃO INSTALADO'].includes(info.status))return'NÃO INSTALADO';
   if(['EXITED','CREATED','STOPPED','DEAD','PARADO'].includes(info.status))return'PARADO';
   if(['RUNNING — SEM HEALTHCHECK','RUNNING SEM HEALTHCHECK','RUNNING'].includes(info.status))return'RUNNING SEM HEALTHCHECK';
-  return['HEALTHY','UNHEALTHY','STARTING','RESTARTING','PAUSED'].includes(info.status)?info.status:'NÃO VERIFICADO';
+  return['HEALTHY','UNHEALTHY','ERROR','STARTING','RESTARTING','PAUSED'].includes(info.status)?info.status:'NÃO VERIFICADO';
 }
-function renderApi(info,{ui=require('./ui.cjs').createUI(),mask=value=>value}={}){
+function publicDisplay(value){if(!value||value==='Não configurada')return'Não configurada';try{const u=new URL(value);if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.search||u.hash||u.pathname!=='/')return'NÃO VERIFICADO';return u.origin;}catch{return'NÃO VERIFICADO';}}
+function httpsStatus(info){if(info.operation?.stage==='https'&&!['validated','failed'].includes(info.https?.status))return'PENDENTE';return({validated:'VALIDADO',internal:'SOMENTE INTERNO',pending:'PENDENTE',failed:'COM FALHA'})[info.https?.status]||'NÃO VERIFICADO';}
+function renderApi(info,{ui=require('./ui.cjs').createUI(),mask=value=>value,detailed=false}={}){
+  if(detailed)return renderApiDetails(info,{ui,mask});
+  const state=apiStatus(info),https=httpsStatus(info),clean=value=>ui.text(mask(String(value??'NÃO VERIFICADO')));
+  const tone=state==='HEALTHY'?'good':['UNHEALTHY','ERROR'].includes(state)||info.operation?.rollbackRequired?'bad':['STARTING','RESTARTING','NÃO VERIFICADO'].includes(state)?'warn':state==='RUNNING SEM HEALTHCHECK'?'warn':'muted';
+  return ui.panel(info.service==='wuzapi'?'WhatsMeow/WuzAPI':'API OFICIAL',[
+    {text:'Empresa: '+clean(info.company||info.project),tone:'info'},'',
+    {text:'● Container: '+state,tone},
+    {text:'● API: '+(info.installed===true?'INSTALADA':info.installed===false?'NÃO INSTALADA':'NÃO VERIFICADO'),tone:info.installed===true?'good':info.installed===false?'muted':'warn'},
+    {text:'HTTPS: '+https,tone:https==='VALIDADO'?'good':https==='COM FALHA'?'bad':https==='SOMENTE INTERNO'?'muted':'warn'},'',
+    {text:'URL pública:',tone:'neutral'},{text:clean(publicDisplay(info.publicUrl)),tone:'info'},'',
+    {text:'Porta: '+clean(info.port)+' | Token: '+(info.adminToken===true?'Configurado':info.adminToken===false?'Não configurado':'NÃO VERIFICADO'),tone:info.adminToken===false?'warn':'neutral'},
+    ...(info.operation?[{text:'Operação: '+(info.operation.rollbackRequired?'ERRO / rollback pendente':info.operation.interrupted?'ERROR / interrompida':'PENDING'),tone:info.operation.rollbackRequired||info.operation.interrupted?'bad':'warn'}]:[]),
+  ]);
+}
+function renderApiDetails(info,{ui=require('./ui.cjs').createUI(),mask=value=>value}={}){
   const clean=value=>ui.text(mask(String(value??'NÃO VERIFICADO'))),rows=[];
   const section=title=>rows.push('',title,'─'.repeat(Math.min(72,ui.width)));
   const field=(label,value)=>rows.push(label+': '+clean(value));
-  const url=value=>{if(!value||value==='Não configurada')return'Não configurada';try{const u=new URL(value);if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.search||u.hash||u.pathname!=='/')return'NÃO VERIFICADO';return u.origin;}catch{return'NÃO VERIFICADO';}};
+  const url=publicDisplay;
   section('Empresa');field('Empresa',info.company);field('Projeto',info.project);field('Diretório',info.directory);
   section('Estado do Serviço');field('Estado',apiStatus(info));field('Instalado',info.installed===true?'Sim (container encontrado)':info.installed===false?'Não; declaração Compose não comprova instalação':'NÃO VERIFICADO');field('Uptime (segundos)',info.uptimeSeconds);
-  section('Container');field('Container',info.container||'NÃO VERIFICADO');field('Imagem',info.image);field('ID da imagem',info.imageId);
+  section('Container');field('Container',info.container||'NÃO VERIFICADO');field('ID do container',info.containerId);field('Imagem',info.image);field('ID da imagem',info.imageId);
   section('Rede e Portas');field('URL interna',url(info.internalUrl));field('Redes',info.networks?.map(clean).join(', ')||'NÃO VERIFICADO');
   if(info.ports?.length)for(const port of info.ports)field('Porta',port);else field('Portas','Sem publicação confirmada');
-  section('URL Pública/HTTPS');field('URL pública',url(info.publicUrl));field('HTTPS',({validated:'VALIDADO (última verificação)',internal:'MODO INTERNO',pending:'PENDENTE'})[info.https?.status]||'NÃO VERIFICADO');field('Última verificação HTTPS',info.https?.checkedAt);field('URL proposta',info.pending?url(info.pending):'Sem proposta pendente');
+  section('URL Pública/HTTPS');field('URL pública',url(info.publicUrl));field('HTTPS',httpsStatus(info));field('Última verificação HTTPS',info.https?.checkedAt);field('DNS',({compatible:'COMPATÍVEL',incompatible:'INCOMPATÍVEL',inconclusive:'INCONCLUSIVO'})[info.dns?.status]||'NÃO VERIFICADO');field('Última verificação DNS',info.dns?.checkedAt);field('URL proposta',info.pending?url(info.pending):'Sem proposta pendente');
   section('Configurações');field('Serviço',info.service);field('Perfil',info.profile);field('Perfil habilitado',info.enabled===true?'Sim':info.enabled===false?'Não':'NÃO VERIFICADO');field('Token administrativo',info.adminToken===true?'Configurado; preservado':info.adminToken===false?'Não configurado':'NÃO VERIFICADO');field('Banco / sessões',info.database);
   section('Volumes');if(info.volumes?.length)for(const volume of info.volumes)field('Volume',clean(volume.name||volume.type)+' → '+clean(volume.target));else field('Volumes','NÃO VERIFICADO');
   section('Backup');field('Backup',info.backup);field('Revisão',info.revision);
+  if(info.operation){section('Diagnóstico');field('Operação',info.operation.action);field('Etapa',info.operation.stage);field('Rollback pendente',info.operation.rollbackRequired?'Sim':'Não');}
   return ui.lines(rows);
 }
 function publicUrl(value){
-  if(typeof value!=='string'||/[\s\x00-\x1f\x7f]/.test(value)||/https?:\/\/[^/]+:/.test(value))throw Error('Use domínio HTTPS sem porta, credencial ou caminho.');
+  if(typeof value!=='string'||/[\s\x00-\x1f\x7f]/.test(value))throw Error('Use domínio HTTPS sem porta, credencial ou caminho.');
   const url=/^[a-z][a-z0-9+.-]*:\/\//i.test(value)?value:'https://'+value;
+  if(/^https?:\/\/[^/]+:/i.test(url))throw Error('Use domínio HTTPS sem porta, credencial ou caminho.');
   validateOptions({officialUrl:url});return new URL(url).origin;
 }
 function assertPublication(service,url,edge){
@@ -72,7 +90,7 @@ class ApiServices{
     const m=this.m,{probe,evaluate}=require('./domain-preflight.cjs');
     const report=await probe(m,{apiUrl:url},{existing:true}),verdict=evaluate(report);
     m.runner.emit('DNS da API: '+JSON.stringify(verdict)+'\n');
-    if(!verdict.ok)throw Error('DNS/portas da API incompatíveis ou inconclusivos. Nenhuma configuração Caddy foi aplicada.');return verdict;
+    if(!verdict.ok)throw Object.assign(Error('DNS/portas da API incompatíveis ou inconclusivos. Nenhuma configuração Caddy foi aplicada.'),{verdict});return verdict;
   }
   async plan(service,url=''){
     const m=this.m;definition(service);assertPublication(service,url,m.state.profiles.includes('edge'));
@@ -127,11 +145,14 @@ class ApiServices{
     }catch(recovery){m.save({...m.state,phase:'migration-update',optionalOperation:{...op,rollbackRequired:true}});throw new AggregateError([cause,recovery],'Falha ao aplicar API e ao restaurar configuração; preserve os recursos e consulte config-history.');}
   }
   async finish(){
+    try{return await this.applyPending();}catch(error){const m=this.m;if(m.state.optionalOperation)m.save({...m.state,optionalOperation:{...m.state.optionalOperation,interrupted:true}});throw error;}
+  }
+  async applyPending(){
     const m=this.m,op=m.state.optionalOperation,d=definition(op?.service);
     if(op.rollbackRequired)throw Error('Rollback pendente: diagnostique config-history antes de retomar.');
     if(await m.revision()!==m.state.pendingRevision)throw Error('Revisão difere da operação da API.');
     if(op.action==='update')return this.finishUpdate();
-    if(op.url)await this.dns(op.url); // Before migrations, edge recreation or any ACME trigger.
+    if(op.url){await this.dns(op.url);m.save({...m.state,apiDns:{...m.state.apiDns,[op.service]:{url:op.url,status:'compatible',checkedAt:new Date().toISOString()}}});} // Before any ACME trigger.
     if(op.action==='install'&&op.stage!=='https'){
       if(op.stage==='configure'){
         const profiles=[...new Set([...m.state.profiles,d.profile])];
@@ -152,7 +173,7 @@ class ApiServices{
       writeEnv(path.join(m.state.platform,'.env'),{[d.host]:new URL(op.url).hostname});
       if(m.state.optionalOperation.stage!=='https')await m.compose(['up','-d','--no-deps','--wait','--wait-timeout','60','edge'],{label:'Aplicando domínio próprio no Caddy'});
       m.save({...m.state,optionalOperation:{...m.state.optionalOperation,stage:'https',irreversible:true}});
-      await this.https(op.url);
+      try{await this.https(op.url);}catch(error){m.save({...m.state,apiHttps:{...m.state.apiHttps,[op.service]:{url:op.url,status:'failed',checkedAt:new Date().toISOString(),code:'TLS_HTTP_FAILED'}}});throw error;}
     }
     if(op.action==='domain'&&!op.url&&d.host){writeEnv(path.join(m.state.platform,'.env'),{[d.host]:''});if(m.state.profiles.includes('edge'))await m.compose(['up','-d','--no-deps','--wait','edge']);}
     const checked=op.url?{url:op.url,status:'validated',checkedAt:new Date().toISOString()}:{status:'internal'};
@@ -170,6 +191,9 @@ class ApiServices{
   async domain(service,plan,confirmation){
     await this.ready(service);const m=this.m,d=definition(service);if(!m.services().includes(service))throw Error('Instale a API primeiro.');
     if(confirmation!=='DOMINIO '+m.state.project+' '+service)throw Error('Alteração cancelada.');
+    const env=envValues(path.join(m.state.platform,'.env'));let current='';try{if(d.host&&env[d.host])current=publicUrl('https://'+env[d.host]);}catch{}
+    const requested=plan.url?publicUrl(plan.url):'';
+    if(requested===current&&!m.state.pendingApi&&!m.state.optionalOperation)return{unchanged:true};
     plan=await this.plan(service,plan.url);
     if(!plan.dnsValid){m.save({...m.state,pendingApi:{service,url:plan.url,action:'domain'}});return{pending:true};}
     const previous={...structuredClone(m.state),phase:'ready',optionalOperation:null},history=path.join(m.private,'config-history','api-domain-'+crypto.randomUUID());
@@ -179,7 +203,22 @@ class ApiServices{
   }
   async inspect(service){
     const m=this.m,d=definition(service),{Dashboard}=require('./dashboard.cjs'),dashboard=new Dashboard(m),model=await dashboard.collect(),row=model.items.find(x=>x.key===service),env=envValues(path.join(m.state.platform,'.env'));
-    return{company:m.state.companyName||m.state.project,project:m.state.project,directory:m.root,service,profile:d.profile,enabled:m.state.profiles.includes(d.profile),installed:Boolean(row?.container),...(row?dashboard.details(row):{status:'NÃO INSTALADO'}),internalUrl:d.internal,publicUrl:d.host&&env[d.host]?'https://'+env[d.host]:'Não configurada',https:m.state.apiHttps?.[service]||{status:'Não verificado nesta operação'},pending:m.state.pendingApi?.service===service?m.state.pendingApi.url:undefined,adminToken:Boolean(env[service==='api_oficial'?'TOKEN_API_OFICIAL':'WUZAPI_ADMIN_TOKEN']),revision:m.state.revision,backup:m.state.lastBackup||'Não registrado',database:service==='api_oficial'?'api_oficial (PostgreSQL)':'SQLite no volume wuzapi_data; sessões preservadas'};
+    const url=d.host&&env[d.host]?'https://'+env[d.host]:'',saved=m.state.apiHttps?.[service],matches=saved?.url===url||!url&&saved?.status==='internal',https=matches&&(saved?.status!=='validated'||Number.isFinite(Date.parse(saved.checkedAt)))?saved:{status:'not-verified'};
+    const bindings=row?.container?.Ports?.[service==='api_oficial'?'6000/tcp':'8080/tcp'],port=bindings?.length?bindings.map(b=>b.HostPort).join(', '):row?.container?(service==='api_oficial'?'6000':'8080')+' (interna)':String(env[service==='api_oficial'?'PORT_APIOFICIAL':'PORT_WUZAPI']||(service==='api_oficial'?6000:8090))+' (configurada)';
+    const operation=m.state.optionalOperation?.service===service?{action:m.state.optionalOperation.action,stage:m.state.optionalOperation.stage,rollbackRequired:Boolean(m.state.optionalOperation.rollbackRequired),interrupted:Boolean(m.state.optionalOperation.interrupted)}:undefined;
+    return{company:m.state.companyName||m.state.project,project:m.state.project,directory:m.root,service,profile:d.profile,enabled:m.state.profiles.includes(d.profile),installed:Boolean(row?.container),...(row?dashboard.details(row):{status:'NÃO INSTALADO'}),port,internalUrl:d.internal,publicUrl:url||'Não configurada',https,dns:m.state.apiDns?.[service]?.url===url?m.state.apiDns[service]:undefined,operation,pending:m.state.pendingApi?.service===service?m.state.pendingApi.url:undefined,adminToken:Boolean(env[service==='api_oficial'?'TOKEN_API_OFICIAL':'WUZAPI_ADMIN_TOKEN']),revision:m.state.revision,backup:m.state.lastBackup||'Não registrado',database:service==='api_oficial'?'api_oficial (PostgreSQL)':'SQLite no volume wuzapi_data; sessões preservadas'};
+  }
+  async verify(service){
+    const m=this.m,info=await this.inspect(service),url=info.publicUrl;
+    if(url==='Não configurada')throw Error('Nenhuma URL pública configurada para verificar.');
+    publicUrl(url);const checkedAt=()=>new Date().toISOString();
+    try{await this.dns(url);}catch(error){
+      const hosts=error.verdict?.hosts||[],status=hosts.some(h=>h.status==='incompatible')?'incompatible':hosts.length&&hosts.every(h=>h.status==='compatible')?'compatible':'inconclusive';
+      m.save({...m.state,apiDns:{...m.state.apiDns,[service]:{url,status,checkedAt:checkedAt()}},apiHttps:{...m.state.apiHttps,[service]:{url,status:'pending',code:'DNS_OR_PORTS_PENDING'}}});return{dns:status,https:'pending'};
+    }
+    m.save({...m.state,apiDns:{...m.state.apiDns,[service]:{url,status:'compatible',checkedAt:checkedAt()}}});
+    try{await this.https(url);m.save({...m.state,apiHttps:{...m.state.apiHttps,[service]:{url,status:'validated',checkedAt:checkedAt()}}});return{dns:'compatible',https:'validated'};}
+    catch(error){m.save({...m.state,apiHttps:{...m.state.apiHttps,[service]:{url,status:'failed',checkedAt:checkedAt(),code:'TLS_HTTP_FAILED'}}});return{dns:'compatible',https:'failed'};}
   }
   async updateWuzapi(confirmation){
     await this.ready();const m=this.m; if(!m.services().includes('wuzapi'))throw Error('WuzAPI não habilitada.');
